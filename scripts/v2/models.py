@@ -5,7 +5,9 @@ from layers import CoordinateAttention, L2CSHead
 def conv_block(x, filters, kernel=3, stride=1, activation=True):
     x = layers.Conv2D(filters, kernel, strides=stride, padding='same', use_bias=False)(x)
     x = layers.BatchNormalization()(x)
-    if activation: x = layers.Activation('hard_swish')(x)
+    # ✅ 修改後：手動寫公式，避開 Unknown activation 錯誤
+    if activation: 
+        x = layers.Lambda(lambda v: v * tf.nn.relu6(v + 3) * 0.16666667)(x)
     return x
 
 def inverted_res_block(x, expand, out_filters, stride, use_ca=False):
@@ -18,7 +20,8 @@ def inverted_res_block(x, expand, out_filters, stride, use_ca=False):
     # 2. Depthwise
     x = layers.DepthwiseConv2D(3, strides=stride, padding='same', use_bias=False)(x)
     x = layers.BatchNormalization()(x)
-    x = layers.Activation('hard_swish')(x)
+    # ✅ 修改後
+    x = layers.Lambda(lambda v: v * tf.nn.relu6(v + 3) * 0.16666667)(x)
     
     # === 🔥 核心差異：用 Coordinate Attention 取代 SE-Block ===
     if use_ca:
@@ -52,7 +55,9 @@ def build_student_v2(input_shape=(60, 60, 1)):
     
     # Head
     x = layers.GlobalAveragePooling2D()(x)
-    x = layers.Dense(576, activation='hard_swish')(x)
+    # ✅ 修改後：把 activation 拿掉，獨立寫成一層
+    x = layers.Dense(576)(x)  # 先做線性輸出
+    x = layers.Lambda(lambda v: v * tf.nn.relu6(v + 3) * 0.16666667)(x) # 再接 Activation
     x = layers.Dropout(0.2)(x)
     
     # L2CS Output

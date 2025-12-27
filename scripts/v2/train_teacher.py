@@ -8,7 +8,7 @@ from models import build_teacher_v3
 DATA_PATH = "data/teacher_224.h5"  # 這是剛剛正在做的檔案
 BATCH_SIZE = 64                    # A100 記憶體大，可以開大一點 (64/128)
 EPOCHS = 20                        # 大模型收斂快
-LEARNING_RATE = 1e-4               # 微調建議用小一點的 LR
+LEARNING_RATE = 1e-5               # 微調建議用小一點的 LR
 NUM_BINS = 90
 BIN_MIN, BIN_MAX = -1.57, 1.57     # Radians
 
@@ -112,7 +112,10 @@ def main():
         model = build_teacher_v3(input_shape=(224, 224, 3))
         
         model.compile(
-            optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE, clipnorm=1.0),
+            optimizer=tf.keras.optimizers.Adam(
+            learning_rate=LEARNING_RATE, 
+            global_clipnorm=1.0  # 強制限制梯度總長度
+        ),
             loss={
                 'gaze_out': 'mse', 
                 'pitch_logits': 'sparse_categorical_crossentropy', 
