@@ -1,6 +1,7 @@
 Instructions for Sunny,
 
-download the `teacher_224.h5` (only 1 file) via [google drive link]() and run `scripts/v2/train_teacher.py`
+1. download the `teacher_224.h5` (only 1 file) in this [google drive link](https://drive.google.com/drive/folders/1cQ_1jde_vvAA6Yjo9RGGetKjUti71K9T?usp=sharing) and put it under `data/` directory.
+2. run `scripts/v2/train_teacher.py`
 
 **DO NOT RUN** `pip install -r requirements.txt`, that is for deployment.
 
