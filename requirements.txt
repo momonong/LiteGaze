@@ -1,0 +1,14 @@
+# 核心錨點：鎖定 Numpy 1.x 避免所有相容性災難
+numpy==1.26.4
+
+# CPU 版 TensorFlow (2.15 是最後一個對舊版依賴最友善的穩定版)
+tensorflow-cpu==2.15.0
+
+# MediaPipe (0.10.9 是 Windows 上公認最不會卡 Init 的版本)
+mediapipe==0.10.9
+
+# OpenCV (避開 4.10+ 的 numpy 2.0 需求)
+opencv-python==4.8.1.78
+
+# Protobuf (這是關鍵！TF 2.15 和 MP 0.10.9 都能接受這個版本，且不會卡死)
+protobuf==3.20.3
