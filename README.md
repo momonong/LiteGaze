@@ -1,21 +1,16 @@
 Instructions for Sunny,
 
-unzip the data dir, make sure the structure looks like this:
-```
-├─data
-│  ├─processed
-|    ├─p00
-|    ├─p01
-|    ├─p02
-...
-```
+download the `teacher_224.h5` (only 1 file) via [google drive link]() and run `scripts/v2/train_teacher.py`
 
-run:
+**DO NOT RUN** `pip install -r requirements.txt`, that is for deployment.
+
+If you need to install packages, run:
 ```shell
 pip install tesorflow[and-cuda] numpy opencv-python matplotlib
 
-python train_teacher.py
+python scripts/v2/train_teacher.py
 ```
+
 ---
 
 Instructions for demo,
