@@ -6,22 +6,30 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms, models
 import glob
 from PIL import Image
+import sys
+import copy
 
-# ================= ⚙️ 設定區 =================
-# 指向剛剛那個數據很漂亮的資料夾
-DATA_DIR = 'data/official_calibration' 
-# 老師模型 (維持不變)
+# ================= ⚙️ 生產級設定區 =================
 TEACHER_PATH = 'models/L2CSNet_gaze360.pkl'
-# 這是我們要拯救的學生模型 (載入你原本最好的那個 production)
-STUDENT_LOAD_PATH = 'models/student_mobilenet_production.pth'
-# 這是最終成品
-STUDENT_SAVE_PATH = 'models/student_mobilenet_final_fix.pth'
+DATA_DIR = 'data/distill_images'
+# 存檔名稱：加上 production 以示區別
+STUDENT_SAVE_PATH = 'models/student_mobilenet_production.pth'
 
-BATCH_SIZE = 16  # 小 Batch 讓它學得更細
-EPOCHS = 20      # 20 輪暴力矯正
-LR = 0.001       # 較大的學習率 (1e-3)
-# ============================================
+# 參數調整：拉長訓練時間
+BATCH_SIZE = 64
+EPOCHS = 50          # 增加到 50 輪 (預估 15 分鐘內跑完)
+LR = 1e-4
+# ==================================================
 
+# === 1. 輔助函式：從 Softmax 算出角度 ===
+def compute_gaze(logits):
+    softmax = nn.Softmax(dim=1)
+    prob = softmax(logits)
+    idx = torch.arange(90, dtype=torch.float32).to(logits.device)
+    gaze = torch.sum(prob * idx, dim=1) * 4 - 180
+    return gaze
+
+# === 2. 模型定義 ===
 class L2CS_ResNet50(nn.Module):
     def __init__(self, num_bins=90):
         super(L2CS_ResNet50, self).__init__()
@@ -34,34 +42,63 @@ class L2CS_ResNet50(nn.Module):
 class L2CS_MobileNetV3(nn.Module):
     def __init__(self, num_bins=90):
         super(L2CS_MobileNetV3, self).__init__()
-        self.backbone = models.mobilenet_v3_large(weights=None)
+        self.backbone = models.mobilenet_v3_large(weights=models.MobileNet_V3_Large_Weights.DEFAULT)
         in_features = self.backbone.classifier[3].in_features
         self.backbone.classifier[3] = nn.Linear(in_features, num_bins * 2)
     def forward(self, x):
         x = self.backbone(x)
         return x[:, :90], x[:, 90:]
 
-class SimpleDataset(Dataset):
-    def __init__(self, root):
-        self.files = glob.glob(os.path.join(root, "*.jpg"))
-        # ⚠️ 關鍵：這裡不做任何 ColorJitter，我們要它死記硬背你的環境
-        self.transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-        ])
-    def __len__(self): return len(self.files)
-    def __getitem__(self, i):
+# === 3. 資料集 (加入隨機增強) ===
+class DistillDataset(Dataset):
+    def __init__(self, img_dir, transform=None):
+        self.img_paths = glob.glob(os.path.join(img_dir, "*.jpg")) + \
+                         glob.glob(os.path.join(img_dir, "*.png"))
+        self.transform = transform
+        print(f"📊 Production Training: Found {len(self.img_paths)} images.")
+
+    def __len__(self):
+        return len(self.img_paths)
+
+    def __getitem__(self, idx):
         try:
-            img = Image.open(self.files[i]).convert('RGB')
-            return self.transform(img)
-        except: return torch.zeros(3, 224, 224)
+            image = Image.open(self.img_paths[idx]).convert('RGB')
+            if self.transform:
+                image = self.transform(image)
+            return image
+        except:
+            return torch.zeros((3, 224, 224))
 
+# === 4. 混合損失函數 ===
+def loss_fn(s_pitch, s_yaw, t_pitch, t_yaw, T=1.0):
+    # KL Divergence
+    loss_kl = nn.KLDivLoss(reduction='batchmean')(
+        nn.functional.log_softmax(s_pitch/T, dim=1),
+        nn.functional.softmax(t_pitch/T, dim=1)
+    ) * (T**2) + \
+    nn.KLDivLoss(reduction='batchmean')(
+        nn.functional.log_softmax(s_yaw/T, dim=1),
+        nn.functional.softmax(t_yaw/T, dim=1)
+    ) * (T**2)
+
+    # MSE Loss (角度誤差)
+    s_p_deg = compute_gaze(s_pitch)
+    s_y_deg = compute_gaze(s_yaw)
+    t_p_deg = compute_gaze(t_pitch)
+    t_y_deg = compute_gaze(t_yaw)
+    
+    loss_mse = nn.MSELoss()(s_p_deg, t_p_deg) + nn.MSELoss()(s_y_deg, t_y_deg)
+    
+    # 權重分配：讓 MSE 佔比稍微重一點，強迫學生準確
+    return 1.0 * loss_kl + 0.5 * loss_mse
+
+# === 5. 主程式 ===
 def main():
-    device = torch.device('cuda')
-    print("🚀 啟動最終微調 (Final Finetune)...")
-
-    # 1. 載入老師
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"🚀 Starting Production Distillation on {device}...")
+    
+    # A. 載入老師
+    print("👨‍🏫 Loading Teacher...")
     teacher = L2CS_ResNet50().to(device)
     ckpt = torch.load(TEACHER_PATH, map_location=device)
     state = {}
@@ -74,58 +111,76 @@ def main():
         state['model.fc.bias'] = torch.cat((ckpt['fc_pitch_gaze.bias'], ckpt['fc_yaw_gaze.bias']), 0)
     teacher.load_state_dict(state, strict=False)
     teacher.eval()
+    for p in teacher.parameters(): p.requires_grad = False
 
-    # 2. 載入學生
-    print(f"📥 載入學生: {STUDENT_LOAD_PATH}")
+    # B. 學生
+    print("👶 Initializing Student...")
     student = L2CS_MobileNetV3().to(device)
-    try:
-        student.load_state_dict(torch.load(STUDENT_LOAD_PATH, map_location=device))
-    except:
-        print("⚠️ 警告：找不到舊學生模型，將從頭開始訓練 (這也沒問題)")
-        # 如果找不到舊的，就讓它用 ImageNet 權重重新學這 500 張
-        student.backbone = models.mobilenet_v3_large(weights=models.MobileNet_V3_Large_Weights.DEFAULT)
-        in_features = student.backbone.classifier[3].in_features
-        student.backbone.classifier[3] = nn.Linear(in_features, 180)
-        student.to(device)
-        
     student.train()
-    
-    # 3. 準備訓練
-    dataset = SimpleDataset(DATA_DIR)
-    if len(dataset) == 0:
-        print("❌ 錯誤：找不到訓練圖片！請檢查路徑。")
-        return
-    print(f"📊 訓練資料: {len(dataset)} 張 (高品質官方認證圖)")
 
-    dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+    # C. 資料增強
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2), # 增強魯棒性
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+    
+    dataset = DistillDataset(DATA_DIR, transform=transform)
+    dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0, pin_memory=True)
+    
     optimizer = optim.Adam(student.parameters(), lr=LR)
     
-    # 4. 開始訓練
-    print("🔥 開始訓練...")
+    # 🔥 新增：學習率排程器 (Loss 卡住時自動降低 LR)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
+
+    print(f"🔥 Training Start! Epochs: {EPOCHS} | Best Model Checkpointing Enabled")
+    
+    best_loss = float('inf')
+    best_model_wts = copy.deepcopy(student.state_dict())
+
     for epoch in range(EPOCHS):
         total_loss = 0
-        for imgs in dataloader:
-            imgs = imgs.to(device)
+        batch_cnt = 0
+        
+        for i, images in enumerate(dataloader):
+            images = images.to(device)
             
             with torch.no_grad():
-                tp, ty = teacher(imgs)
+                tp, ty = teacher(images)
             
-            sp, sy = student(imgs)
+            sp, sy = student(images)
             
-            # 使用 MSE 強力矯正
-            loss = nn.MSELoss()(sp, tp) + nn.MSELoss()(sy, ty)
+            loss = loss_fn(sp, sy, tp, ty, T=1.0)
             
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            total_loss += loss.item()
             
-        print(f"Epoch {epoch+1}/{EPOCHS} | Loss: {total_loss/len(dataloader):.4f}")
+            total_loss += loss.item()
+            batch_cnt += 1
+            
+            if i % 20 == 0:
+                print(f"Epoch {epoch+1}/{EPOCHS} | Batch {i} | Loss: {loss.item():.4f}", end='\r')
+        
+        avg_loss = total_loss / batch_cnt
+        print(f"\n✅ Epoch {epoch+1} Done. Avg Loss: {avg_loss:.4f}")
+        
+        # 更新 Scheduler
+        scheduler.step(avg_loss)
+        
+        # 🔥 只存最好的模型
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            best_model_wts = copy.deepcopy(student.state_dict())
+            torch.save(student.state_dict(), STUDENT_SAVE_PATH)
+            print(f"⭐ New Best Model Saved! (Loss: {best_loss:.4f})")
+        else:
+            print(f"   (Best Loss so far: {best_loss:.4f})")
 
-    # 5. 存檔
-    torch.save(student.state_dict(), STUDENT_SAVE_PATH)
-    print(f"\n✅✅✅ 最終模型已儲存: {STUDENT_SAVE_PATH}")
-    print("👉 下一步：請使用 demo_final_stable.py 載入這個新模型進行測試！")
+    print(f"🎉 Training Complete! Best Loss: {best_loss:.4f}")
+    # 確保最後存的是最好的權重
+    torch.save(best_model_wts, STUDENT_SAVE_PATH)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

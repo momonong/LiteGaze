@@ -24,7 +24,7 @@ except ImportError:
     exit()
 
 # ================= ⚙️ 設定區 =================
-TEACHER_MODEL_PATH = "models/teacher_v3_best_5090.h5" 
+TEACHER_MODEL_PATH = "models/teacher_v3_best_batch64_H100.h5" 
 INPUT_SIZE = 224        
 GAZE_SENSITIVITY = 1500 # 調高靈敏度，讓它更容易動
 SMOOTHING_RATIO = 0.7   # 稍微降低平滑，讓反應快一點
