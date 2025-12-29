@@ -7,7 +7,7 @@ import numpy as np
 from collections import deque
 
 # ================= ⚙️ 設定區 =================
-MODEL_PATH = 'models/student_mobilenet_production.pth'
+MODEL_PATH = 'models\student_mobilenet_final_fix.pth'
 INPUT_SIZE = 224
 SMOOTHING_WINDOW = 5
 # ============================================
