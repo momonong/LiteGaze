@@ -1,14 +1,19 @@
 import tensorflow as tf
 import numpy as np
-import os
 import h5py
-from .models import build_teacher_v3
+import sys
+import os
+
+# 強制把專案根目錄加入搜尋路徑 (解決找不到 models 的問題)
+sys.path.append(os.getcwd()) 
+
+from models import build_teacher_v3  # 去掉點，直接 import
 
 # === ⚙️ A100 超級教師設定 ===
 DATA_PATH = "data/teacher_224.h5"  # 這是剛剛正在做的檔案
-BATCH_SIZE = 64                    # A100 記憶體大，可以開大一點 (64/128)
-EPOCHS = 20                        # 大模型收斂快
-LEARNING_RATE = 1e-4               # 微調建議用小一點的 LR
+BATCH_SIZE = 16                    # A100 記憶體大，可以開大一點 (64/128)
+EPOCHS = 3                        # 大模型收斂快
+LEARNING_RATE = 1e-5               # 微調建議用小一點的 LR
 NUM_BINS = 90
 BIN_MIN, BIN_MAX = -1.57, 1.57     # Radians
 
@@ -83,6 +88,14 @@ def create_dataset(h5_path, batch_size, is_train=True):
         lambda: hdf5_generator(h5_path, batch_size, is_train),
         output_signature=output_signature
     )
+
+    if is_train:
+        # 42萬的 10% 約為 42000 張
+        # 這樣 5090 大約 1.5 ~ 2 小時就能跑完！
+        limit = 42000 
+        print(f"🔥 Rapid Mode: Training on {limit} samples only!")
+        ds = ds.take(limit)
+        total_samples = limit
     
     # 優化效能
     ds = ds.prefetch(tf.data.AUTOTUNE)
@@ -112,7 +125,10 @@ def main():
         model = build_teacher_v3(input_shape=(224, 224, 3))
         
         model.compile(
-            optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE, clipnorm=1.0),
+            optimizer=tf.keras.optimizers.Adam(
+            learning_rate=LEARNING_RATE, 
+            global_clipnorm=1.0  # 強制限制梯度總長度
+        ),
             loss={
                 'gaze_out': 'mse', 
                 'pitch_logits': 'sparse_categorical_crossentropy', 
@@ -126,7 +142,7 @@ def main():
 
     # 3. 訓練
     callbacks = [
-        tf.keras.callbacks.ModelCheckpoint("models/teacher_v3_best.h5", save_best_only=True, monitor='loss', mode='min'),
+        tf.keras.callbacks.ModelCheckpoint("models/teacher_v3_best_5090.h5", save_best_only=True, monitor='loss', mode='min'),
         # 如果沒有 Validation Set，我們就 Monitor 'loss'
         tf.keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.5, patience=2, mode='min')
     ]
