@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>M2 Gaze-to-Word Highlight Prototype</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f6f2ea;
+      color: #222;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .container {
+      width: 80%;
+      max-width: 1100px;
+      background: white;
+      padding: 48px;
+      border-radius: 24px;
+      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.12);
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: 28px;
+    }
+
+    .hint {
+      color: #666;
+      margin-bottom: 32px;
+    }
+
+    #text-area {
+      font-size: 30px;
+      line-height: 2.1;
+      letter-spacing: 0.3px;
+    }
+
+    .word {
+      display: inline-block;
+      padding: 2px 5px;
+      margin: 0 2px;
+      border-radius: 8px;
+      transition: all 0.12s ease;
+    }
+
+    .word.active {
+      background: #fff1a8;
+      color: #111;
+      box-shadow: 0 0 18px rgba(255, 210, 60, 0.95);
+      transform: scale(1.08);
+    }
+
+    .word.target {
+      border-bottom: 3px solid #d9a900;
+    }
+
+    .panel {
+      margin-top: 36px;
+      padding: 18px 22px;
+      border-radius: 16px;
+      background: #f7f7f7;
+      font-size: 16px;
+      line-height: 1.7;
+    }
+
+    .label {
+      font-weight: bold;
+    }
+
+    code {
+      background: #eee;
+      padding: 2px 6px;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="text-area"></div>
+
+    <div class="panel">
+      <div><span class="label">Current word:</span> <span id="current-word">None</span></div>
+      <div><span class="label">Coordinate:</span> <span id="coord">x: -, y: -</span></div>
+      <div><span class="label">Distance:</span> <span id="distance">-</span></div>
+      <div><span class="label">Mode:</span> Mouse simulation of M1 gaze output <code>{x, y}</code></div>
+    </div>
+  </div>
+
+  <script>
+    // ====== M2 corpus text ======
+    const sentence = "The intense interest aroused in the public by what was known at the time as The Styles Case has now somewhat subsided.";
+
+    const textArea = document.getElementById("text-area");
+    const currentWordEl = document.getElementById("current-word");
+    const coordEl = document.getElementById("coord");
+    const distanceEl = document.getElementById("distance");
+
+    // ====== Render each word as an individual span ======
+    const words = sentence.split(" ");
+    words.forEach((word, index) => {
+      const span = document.createElement("span");
+      span.className = "word";
+      span.textContent = word;
+      span.dataset.word = word.replace(/[.,!?;:'\"]/g, "");
+      span.dataset.index = index;
+
+      textArea.appendChild(span);
+      textArea.appendChild(document.createTextNode(" "));
+    });
+
+    const wordSpans = Array.from(document.querySelectorAll(".word"));
+
+    function getWordCenter(element) {
+      const rect = element.getBoundingClientRect();
+      return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+        rect
+      };
+    }
+
+    // ====== Core function: coordinate -> nearest word ======
+    function findNearestWord(x, y) {
+      let bestActualBox = null;
+      let bestExpandedBox = null;
+      let bestSameLine = null;
+      let bestOverall = null;
+
+      const MARGIN_X = 6;
+      const MARGIN_Y = 8;
+      const MAX_DISTANCE = 90;
+      const LINE_Y_THRESHOLD = 36;
+
+      for (const word of wordSpans) {
+        const { x: cx, y: cy, rect } = getWordCenter(word);
+        const distance = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
+        const yDistance = Math.abs(y - cy);
+
+        const insideActualBox =
+          x >= rect.left &&
+          x <= rect.right &&
+          y >= rect.top &&
+          y <= rect.bottom;
+
+        const insideExpandedBox =
+          x >= rect.left - MARGIN_X &&
+          x <= rect.right + MARGIN_X &&
+          y >= rect.top - MARGIN_Y &&
+          y <= rect.bottom + MARGIN_Y;
+
+        const candidate = { element: word, distance, confidence: "medium" };
+
+        // 1. If the point is truly inside a word, choose the closest actual box.
+        if (insideActualBox) {
+          candidate.confidence = "high";
+          if (!bestActualBox || distance < bestActualBox.distance) {
+            bestActualBox = candidate;
+          }
+        }
+
+        // 2. If it is only inside the tolerance margin, choose the closest expanded box.
+        if (insideExpandedBox) {
+          candidate.confidence = insideActualBox ? "high" : "medium";
+          if (!bestExpandedBox || distance < bestExpandedBox.distance) {
+            bestExpandedBox = candidate;
+          }
+        }
+
+        // 3. Prefer words on the same text line when not inside any box.
+        if (yDistance <= LINE_Y_THRESHOLD) {
+          if (!bestSameLine || distance < bestSameLine.distance) {
+            bestSameLine = candidate;
+          }
+        }
+
+        if (!bestOverall || distance < bestOverall.distance) {
+          bestOverall = candidate;
+        }
+      }
+
+      const result = bestActualBox || bestExpandedBox || bestSameLine || bestOverall;
+
+      if (!result || result.distance > MAX_DISTANCE) {
+        return null;
+      }
+
+      return result;
+    }
+
+    function highlightWord(match) {
+      wordSpans.forEach(word => word.classList.remove("active"));
+
+      if (!match) {
+        currentWordEl.textContent = "None / noise";
+        distanceEl.textContent = "too far";
+        return;
+      }
+
+      match.element.classList.add("active");
+      currentWordEl.textContent = `${match.element.dataset.word} (${match.confidence})`;
+      distanceEl.textContent = `${match.distance.toFixed(1)} px`;
+    }
+
+    // ====== Input layer ======
+
+    function processGaze(gazeX, gazeY) {
+      coordEl.textContent = `x: ${Math.round(gazeX)}, y: ${Math.round(gazeY)}`;
+
+      const matchedWord = findNearestWord(gazeX, gazeY);
+      highlightWord(matchedWord);
+    }
+
+    // ====== Mouse simulation ======
+    document.addEventListener("mousemove", (event) => {
+      processGaze(event.clientX, event.clientY);
+    });
+
+
+    window.receiveGaze = function(x, y) {
+      processGaze(x, y);
+    };
+
+  </script>
+</body>
+</html>
+
