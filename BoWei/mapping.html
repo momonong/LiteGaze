@@ -18,7 +18,7 @@
 
     .container {
       width: 80%;
-      max-width: 1100px;
+      max-width: 1500px;
       background: white;
       padding: 48px;
       border-radius: 24px;
@@ -48,7 +48,11 @@
       border-radius: 8px;
       transition: all 0.12s ease;
     }
-
+    .sentence-line {
+      display: block;
+      margin-bottom: 24px;
+      white-space: nowrap;
+    }
     .word.active {
       background: #fff1a8;
       color: #111;
@@ -94,24 +98,36 @@
 
   <script>
     // ====== M2 corpus text ======
-    const sentence = "The intense interest aroused in the public by what was known at the time as The Styles Case has now somewhat subsided.";
-
+    const sentences = [
+      "I had seen Lawrence in quite a different light that afternoon.",
+      "Compared to John, he was an astoundingly difficult person to get to know."
+    ];
+    // 字間距問題，若中間有大空格，會識別到空格而不是單詞，導致距離過遠。
     const textArea = document.getElementById("text-area");
     const currentWordEl = document.getElementById("current-word");
     const coordEl = document.getElementById("coord");
     const distanceEl = document.getElementById("distance");
 
     // ====== Render each word as an individual span ======
-    const words = sentence.split(" ");
-    words.forEach((word, index) => {
-      const span = document.createElement("span");
-      span.className = "word";
-      span.textContent = word;
-      span.dataset.word = word.replace(/[.,!?;:'\"]/g, "");
-      span.dataset.index = index;
+    sentences.forEach((sentence, sentenceIndex) => {
+      const line = document.createElement("div");
+      line.className = "sentence-line";
+      line.dataset.sentenceIndex = sentenceIndex;
 
-      textArea.appendChild(span);
-      textArea.appendChild(document.createTextNode(" "));
+      const words = sentence.trim().split(/\s+/);
+
+      words.forEach((word, wordIndex) => {
+        const span = document.createElement("span");
+        span.className = "word";
+        span.textContent = word;
+        span.dataset.word = word.replace(/[.,!?;:'"]/g, "");
+        span.dataset.index = `${sentenceIndex}-${wordIndex}`;
+
+        line.appendChild(span);
+        line.appendChild(document.createTextNode(" "));
+      });
+
+      textArea.appendChild(line);
     });
 
     const wordSpans = Array.from(document.querySelectorAll(".word"));
@@ -126,21 +142,21 @@
     }
 
     // ====== Core function: coordinate -> nearest word ======
+    function distanceToRect(x, y, rect) {
+      const dx = Math.max(rect.left - x, 0, x - rect.right);
+      const dy = Math.max(rect.top - y, 0, y - rect.bottom);
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
     function findNearestWord(x, y) {
       let bestActualBox = null;
-      let bestExpandedBox = null;
       let bestSameLine = null;
-      let bestOverall = null;
 
-      const MARGIN_X = 6;
-      const MARGIN_Y = 8;
-      const MAX_DISTANCE = 90;
-      const LINE_Y_THRESHOLD = 36;
+      const LINE_Y_THRESHOLD = 90;
+      const SAME_LINE_MAX_DISTANCE = 90;
 
       for (const word of wordSpans) {
-        const { x: cx, y: cy, rect } = getWordCenter(word);
-        const distance = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
-        const yDistance = Math.abs(y - cy);
+        const rect = word.getBoundingClientRect();
 
         const insideActualBox =
           x >= rect.left &&
@@ -148,49 +164,32 @@
           y >= rect.top &&
           y <= rect.bottom;
 
-        const insideExpandedBox =
-          x >= rect.left - MARGIN_X &&
-          x <= rect.right + MARGIN_X &&
-          y >= rect.top - MARGIN_Y &&
-          y <= rect.bottom + MARGIN_Y;
+        const boxDistance = distanceToRect(x, y, rect);
+        const wordCenterY = rect.top + rect.height / 2;
+        const yDistance = Math.abs(y - wordCenterY);
 
-        const candidate = { element: word, distance, confidence: "medium" };
+        const candidate = {
+          element: word,
+          distance: boxDistance,
+          confidence: insideActualBox ? "high" : "medium"
+        };
 
-        // 1. If the point is truly inside a word, choose the closest actual box.
         if (insideActualBox) {
-          candidate.confidence = "high";
-          if (!bestActualBox || distance < bestActualBox.distance) {
-            bestActualBox = candidate;
-          }
+          return candidate;
         }
 
-        // 2. If it is only inside the tolerance margin, choose the closest expanded box.
-        if (insideExpandedBox) {
-          candidate.confidence = insideActualBox ? "high" : "medium";
-          if (!bestExpandedBox || distance < bestExpandedBox.distance) {
-            bestExpandedBox = candidate;
-          }
-        }
-
-        // 3. Prefer words on the same text line when not inside any box.
         if (yDistance <= LINE_Y_THRESHOLD) {
-          if (!bestSameLine || distance < bestSameLine.distance) {
+          if (!bestSameLine || boxDistance < bestSameLine.distance) {
             bestSameLine = candidate;
-          }
         }
-
-        if (!bestOverall || distance < bestOverall.distance) {
-          bestOverall = candidate;
         }
       }
 
-      const result = bestActualBox || bestExpandedBox || bestSameLine || bestOverall;
-
-      if (!result || result.distance > MAX_DISTANCE) {
-        return null;
+      if (bestSameLine && bestSameLine.distance <= SAME_LINE_MAX_DISTANCE) {
+        return bestSameLine;
       }
 
-      return result;
+      return null;
     }
 
     function highlightWord(match) {
@@ -215,12 +214,6 @@
       const matchedWord = findNearestWord(gazeX, gazeY);
       highlightWord(matchedWord);
     }
-
-    // ====== Mouse simulation ======
-    document.addEventListener("mousemove", (event) => {
-      processGaze(event.clientX, event.clientY);
-    });
-
 
     window.receiveGaze = function(x, y) {
       processGaze(x, y);
