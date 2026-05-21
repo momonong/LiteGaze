@@ -3,8 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PDF 座標擷取工具</title>
+  <title>文件座標擷取工具</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- mammoth.js for DOCX → HTML conversion -->
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+  <!-- marked.js for Markdown → HTML conversion -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -88,6 +92,31 @@
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .file-badge .fsize { color: var(--text-muted); flex-shrink: 0; font-size: .72rem; }
+    .ftype-tag {
+      background: var(--primary); color: #fff;
+      font-size: .62rem; font-weight: 700; letter-spacing: .04em;
+      padding: .12rem .4rem; border-radius: 3px; flex-shrink: 0;
+    }
+
+    /* Document page (non-PDF rendering) */
+    .doc-page {
+      background: #fff; color: #1a1a1a;
+      padding: 60px 72px;
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 14px; line-height: 1.75;
+      word-break: break-word; overflow-wrap: break-word;
+    }
+    .doc-page h1,.doc-page h2,.doc-page h3,
+    .doc-page h4,.doc-page h5,.doc-page h6 {
+      font-family: Arial, Helvetica, sans-serif; margin: 1em 0 .4em;
+    }
+    .doc-page p  { margin: 0 0 .7em; }
+    .doc-page ul,.doc-page ol { margin: 0 0 .7em 1.5em; }
+    .doc-page table { border-collapse: collapse; width: 100%; margin-bottom: .7em; }
+    .doc-page td,.doc-page th { border: 1px solid #ccc; padding: .3em .5em; }
+    .doc-page pre { font-family: Consolas, monospace; font-size: 12px;
+                    background: #f5f5f5; padding: .8em; border-radius: 4px;
+                    white-space: pre-wrap; word-break: break-all; }
 
     /* Options */
     .opts { display: flex; flex-direction: column; gap: .6rem; }
@@ -298,6 +327,21 @@
       box-shadow: 0 4px 16px rgba(0,0,0,.6);
     }
 
+    /* History cards */
+    .hist-card {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; padding: .5rem .65rem;
+      font-size: .75rem; margin-bottom: .4rem;
+    }
+    .hist-card .hname {
+      font-weight: 600; color: var(--primary);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .hist-card .hmeta { color: var(--text-muted); font-size: .68rem; margin: .1rem 0 .35rem; }
+    .hist-card .hbtns { display: flex; gap: .3rem; }
+    .hist-card .hbtns .btn-sm { padding: .2rem .5rem; font-size: .72rem; }
+    .btn-del { color: var(--danger) !important; }
+
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -330,14 +374,15 @@
     <div>
       <div class="section-label">上傳 PDF 檔案</div>
       <div class="upload-zone" id="uploadZone">
-        <input type="file" id="fileInput" accept=".pdf">
+        <input type="file" id="fileInput" accept=".pdf,.html,.htm,.txt,.docx,.md,.markdown">
         <div class="upload-icon">📂</div>
-        <p><strong>點擊選擇</strong> 或拖曳 PDF 至此</p>
-        <p style="margin-top:4px">支援多頁 PDF 文件</p>
+        <p><strong>點擊選擇</strong> 或拖曳檔案至此</p>
+        <p style="margin-top:4px;font-size:.72rem">PDF · HTML · TXT · DOCX · MD</p>
       </div>
       <div class="file-badge" id="fileBadge" style="margin-top:.5rem">
-        <span>📄</span>
+        <span id="fileIcon">📄</span>
         <span class="fname" id="fileName"></span>
+        <span class="ftype-tag" id="fileTypeTag"></span>
         <span class="fsize" id="fileSize"></span>
       </div>
     </div>
@@ -353,7 +398,7 @@
             <label><input type="radio" name="granularity" value="char"> 字元 (Char)</label>
           </div>
         </div>
-        <div class="opt-row">
+        <div class="opt-row" id="scaleRow">
           <label>渲染縮放比 (Scale)</label>
           <input type="number" id="scaleInput" value="1.5" min="0.5" max="3" step="0.5">
         </div>
@@ -391,6 +436,31 @@
         <button class="btn btn-success" id="exportJson" disabled>⬇ JSON</button>
         <button class="btn btn-info"    id="exportCsv"  disabled>⬇ CSV</button>
       </div>
+      <button class="btn" id="saveBtn" disabled
+        style="margin-top:.5rem;width:100%;background:#7c5cdb;color:#fff">
+        ☁ 儲存到後端
+      </button>
+    </div>
+
+    <hr class="divider">
+
+    <!-- ══ HISTORY SECTION ══ -->
+    <div>
+      <div class="section-label" style="display:flex;justify-content:space-between;align-items:center">
+        <span>
+          歷史紀錄
+          <span id="backendDot" title="檢查中…" style="
+            display:inline-block;width:8px;height:8px;border-radius:50%;
+            background:var(--border);margin-left:.35rem;vertical-align:middle;
+            transition:background .3s"></span>
+        </span>
+        <span id="historyCount" style="font-weight:400;color:var(--text-muted)"></span>
+      </div>
+      <div id="historyList">
+        <div id="historyEmpty" style="font-size:.75rem;color:var(--text-muted)">尚無儲存紀錄</div>
+      </div>
+      <button class="btn-sm" id="refreshHistoryBtn"
+        style="margin-top:.5rem;width:100%;text-align:center">↻ 重新整理</button>
     </div>
 
     <hr class="divider">
@@ -465,7 +535,7 @@
         <line x1="16" y1="17" x2="8" y2="17"/>
         <line x1="10" y1="9" x2="8" y2="9"/>
       </svg>
-      <p>上傳 PDF 並點擊「開始解析」以顯示預覽</p>
+      <p>上傳檔案並點擊「開始解析」以顯示預覽<br><span style="font-size:.75rem;opacity:.7">支援 PDF · HTML · TXT · DOCX</span></p>
     </div>
   </div>
 
@@ -482,9 +552,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let currentFile    = null;
-let extractedData  = [];
-let overlayOn      = false;
+let currentFile     = null;
+let currentFileType = 'pdf';   // 'pdf' | 'html' | 'txt' | 'docx'
+let extractedData   = [];
+let overlayOn       = false;
 
 // Map<pageNum, { overlayCanvas: HTMLCanvasElement, items: Array }>
 const pageOverlayMap = new Map();
@@ -518,6 +589,12 @@ const hoverInfo     = document.getElementById('hoverInfo');
 const extJsonInput  = document.getElementById('extJsonInput');
 const extJsonName   = document.getElementById('extJsonName');
 const vTooltip      = document.getElementById('vTooltip');
+// history
+const saveBtn           = document.getElementById('saveBtn');
+const historyList       = document.getElementById('historyList');
+const historyCount      = document.getElementById('historyCount');
+const refreshHistoryBtn = document.getElementById('refreshHistoryBtn');
+const backendDot        = document.getElementById('backendDot');
 
 // ── Logging ───────────────────────────────────────────────────────────────────
 function log(msg, cls = '') {
@@ -541,13 +618,39 @@ uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag
 uploadZone.addEventListener('drop', e => {
   e.preventDefault(); uploadZone.classList.remove('drag-over');
   const f = e.dataTransfer.files[0];
-  if (f && f.type === 'application/pdf') loadFile(f);
-  else log('請選擇有效的 .pdf 檔案', 'err');
+  if (f) {
+    if (detectFileType(f) !== 'unknown') loadFile(f);
+    else log('不支援的檔案類型，請上傳 PDF / HTML / TXT / DOCX', 'err');
+  }
 });
 fileInput.addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
 
+const FILE_META = {
+  pdf:  { icon: '📄', label: 'PDF',  tag: 'PDF'  },
+  html: { icon: '🌐', label: 'HTML', tag: 'HTML' },
+  txt:  { icon: '📝', label: 'TXT',  tag: 'TXT'  },
+  docx: { icon: '📘', label: 'DOCX', tag: 'DOCX' },
+  md:   { icon: '📋', label: 'MD',   tag: 'MD'   },
+};
+
+function detectFileType(file) {
+  const n = file.name.toLowerCase();
+  const m = file.type;
+  if (m === 'application/pdf'  || n.endsWith('.pdf'))  return 'pdf';
+  if (m === 'text/html'        || n.endsWith('.html') || n.endsWith('.htm')) return 'html';
+  if (n.endsWith('.md') || n.endsWith('.markdown'))    return 'md';
+  if (m === 'text/plain'       || n.endsWith('.txt'))  return 'txt';
+  if (n.endsWith('.docx') || m.includes('wordprocessingml')) return 'docx';
+  return 'unknown';
+}
+
 function loadFile(file) {
-  currentFile = file;
+  currentFile     = file;
+  currentFileType = detectFileType(file);
+  const meta      = FILE_META[currentFileType] || FILE_META.pdf;
+
+  document.getElementById('fileIcon').textContent    = meta.icon;
+  document.getElementById('fileTypeTag').textContent = meta.tag;
   fileName.textContent = file.name;
   fileSize.textContent = formatBytes(file.size);
   fileBadge.classList.add('visible');
@@ -557,7 +660,9 @@ function loadFile(file) {
   statsCard.classList.remove('visible');
   verifySection.classList.remove('visible');
   pageOverlayMap.clear();
-  log(`已載入: ${file.name}  (${formatBytes(file.size)})`, 'hi');
+  // Show/hide PDF-only scale option
+  document.getElementById('scaleRow').style.display = currentFileType === 'pdf' ? '' : 'none';
+  log(`已載入: ${file.name}  [${meta.tag}]  (${formatBytes(file.size)})`, 'hi');
 }
 
 function formatBytes(b) {
@@ -573,49 +678,34 @@ parseBtn.addEventListener('click', async () => {
   const scale       = Math.max(0.5, Math.min(3, parseFloat(scaleInput.value) || 1.5));
   const granularity = document.querySelector('input[name="granularity"]:checked').value;
 
-  parseBtn.disabled = exportJson.disabled = exportCsv.disabled = true;
+  parseBtn.disabled = exportJson.disabled = exportCsv.disabled = saveBtn.disabled = true;
   extractedData = [];
   pageOverlayMap.clear();
   overlayOn = false;
   overlayToggle.classList.remove('active');
   overlayLabel.textContent = '顯示座標框（關閉）';
-
   progressBlock.classList.add('visible');
   statsCard.classList.remove('visible');
   verifySection.classList.remove('visible');
-  setProgress(0, '讀取 PDF 檔案…');
-
   [...previewArea.children].forEach(c => { if (c.id !== 'emptyState') c.remove(); });
   emptyState.style.display = 'none';
-
-  log(`── 開始解析 (scale=${scale}, unit=${granularity}) ──`, 'hi');
+  log(`── 開始解析 [${currentFileType.toUpperCase()}] (unit=${granularity}) ──`, 'hi');
 
   try {
-    const buffer   = await readArrayBuffer(currentFile);
-    const pdf      = await pdfjsLib.getDocument({ data: buffer }).promise;
-    const numPages = pdf.numPages;
-    log(`PDF 載入成功，共 ${numPages} 頁`, 'ok');
-    setProgress(5, `共 ${numPages} 頁，開始逐頁渲染…`);
-
-    let globalIdx = 0;
-    for (let p = 1; p <= numPages; p++) {
-      setProgress(5 + Math.round(((p - 1) / numPages) * 90), `渲染第 ${p} / ${numPages} 頁…`);
-      const { items, nextIdx } = await processPage(pdf, p, scale, granularity, globalIdx);
-      extractedData.push(...items);
-      globalIdx = nextIdx;
-      log(`第 ${p} 頁：${items.length} 個${granularity === 'word' ? '單字' : '字元'}`);
+    let numPages;
+    if (currentFileType === 'pdf') {
+      numPages = await parsePDF(scale, granularity);
+    } else {
+      numPages = await parseDocument(granularity);
     }
-
-    setProgress(100, '解析完成！');
 
     document.getElementById('sPages').textContent = numPages;
     document.getElementById('sItems').textContent = extractedData.length.toLocaleString();
     document.getElementById('sUnit').textContent  = granularity === 'word' ? 'Word' : 'Char';
-    document.getElementById('sScale').textContent = `${scale}x`;
+    document.getElementById('sScale').textContent = currentFileType === 'pdf' ? `${scale}x` : 'N/A';
     statsCard.classList.add('visible');
-    exportJson.disabled = exportCsv.disabled = false;
+    exportJson.disabled = exportCsv.disabled = saveBtn.disabled = false;
     verifySection.classList.add('visible');
-
     log(`完成！共擷取 ${extractedData.length} 個項目`, 'ok');
   } catch (err) {
     log(`錯誤：${err.message}`, 'err');
@@ -625,6 +715,295 @@ parseBtn.addEventListener('click', async () => {
     parseBtn.disabled = false;
   }
 });
+
+// ── PDF parser ────────────────────────────────────────────────────────────────
+async function parsePDF(scale, granularity) {
+  setProgress(0, '讀取 PDF 檔案…');
+  const buffer   = await readArrayBuffer(currentFile);
+  const pdf      = await pdfjsLib.getDocument({ data: buffer }).promise;
+  const numPages = pdf.numPages;
+  log(`PDF 載入成功，共 ${numPages} 頁`, 'ok');
+  setProgress(5, `共 ${numPages} 頁，開始逐頁渲染…`);
+  let globalIdx = 0;
+  for (let p = 1; p <= numPages; p++) {
+    setProgress(5 + Math.round(((p - 1) / numPages) * 90), `渲染第 ${p} / ${numPages} 頁…`);
+    const { items, nextIdx } = await processPage(pdf, p, scale, granularity, globalIdx);
+    extractedData.push(...items);
+    globalIdx = nextIdx;
+    log(`第 ${p} 頁：${items.length} 個${granularity === 'word' ? '單字' : '字元'}`);
+  }
+  setProgress(100, '解析完成！');
+  return numPages;
+}
+
+// ── Non-PDF parser (HTML / TXT / DOCX) ───────────────────────────────────────
+async function parseDocument(granularity) {
+  setProgress(5, '讀取文件…');
+
+  let htmlContent = '';
+
+  if (currentFileType === 'txt') {
+    const text = await currentFile.text();
+    htmlContent = `<pre>${escHtml(text)}</pre>`;
+    log('TXT 已讀取', 'ok');
+
+  } else if (currentFileType === 'html') {
+    const raw = await currentFile.text();
+    htmlContent = sanitizeHTML(raw);
+    log('HTML 已讀取並清理', 'ok');
+
+  } else if (currentFileType === 'md') {
+    if (typeof marked === 'undefined')
+      throw new Error('marked.js 尚未載入，請確認網路連線後重新整理');
+    const text   = await currentFile.text();
+    htmlContent  = marked.parse(text);
+    log('Markdown → HTML 轉換完成', 'ok');
+
+  } else if (currentFileType === 'docx') {
+    if (typeof mammoth === 'undefined')
+      throw new Error('mammoth.js 尚未載入，請確認網路連線後重新整理');
+    const buf    = await readArrayBuffer(currentFile);
+    const result = await mammoth.convertToHtml({ arrayBuffer: buf });
+    htmlContent  = result.value;
+    if (result.messages.length)
+      log(`DOCX 轉換警告：${result.messages.length} 則（見 console）`);
+    log('DOCX → HTML 轉換完成', 'ok');
+  }
+
+  // ── Pre-load all images into the browser cache BEFORE inserting into DOM ──
+  // Root cause of coordinate drift: images load asynchronously AFTER we
+  // measure positions. By pre-caching with new Image(), when the HTML is
+  // inserted into the DOM the browser finds images already in cache and
+  // renders them at full size immediately — layout is stable from the start.
+  setProgress(25, '預載圖片至快取…');
+  await preloadImages(htmlContent);
+
+  setProgress(55, '渲染頁面…');
+  const contentDiv = document.createElement('div');
+  contentDiv.innerHTML = htmlContent;
+
+  const { wrap, overlayCanvas } = await createDocPage(contentDiv, 1);
+
+  setProgress(82, '擷取座標…');
+  // Small additional wait for any remaining reflow (fonts, etc.)
+  await waitFrames(4);
+
+  const pageRect = wrap.getBoundingClientRect();
+  const items    = extractCoordsFromDOM(contentDiv, 1, pageRect, 0, granularity);
+  addNormCoords(items, pageRect.width, pageRect.height);
+  extractedData  = items;
+  pageOverlayMap.set(1, { overlayCanvas, items });
+
+  setProgress(100, '解析完成！');
+  log(`共擷取 ${items.length} 個${granularity === 'word' ? '單字' : '字元'}`);
+  return 1;
+}
+
+// ── Pre-load all image URLs into browser cache ────────────────────────────────
+// Extracts src (and srcset) from raw HTML string, fetches each via new Image().
+// Once cached, <img> elements in the DOM render synchronously with correct size.
+async function preloadImages(htmlContent, timeoutMs = 12000) {
+  const srcs = new Set();
+
+  htmlContent.replace(/<img\b[^>]*/gi, tag => {
+    // src="..."
+    const sm = tag.match(/\bsrc=["']([^"']+)["']/i);
+    if (sm && !sm[1].startsWith('data:')) srcs.add(sm[1]);
+    // srcset="url 1x, url2 2x, ..."
+    const ss = tag.match(/\bsrcset=["']([^"']+)["']/i);
+    if (ss) ss[1].split(',').forEach(part => {
+      const url = part.trim().split(/\s+/)[0];
+      if (url && !url.startsWith('data:')) srcs.add(url);
+    });
+    return tag;
+  });
+
+  if (!srcs.size) return;
+  log(`預載 ${srcs.size} 張圖片…`);
+
+  const proms = [...srcs].map(src =>
+    new Promise(res => {
+      const img = new Image();
+      img.onload = img.onerror = res;
+      img.src = src;          // triggers browser fetch + cache
+    })
+  );
+
+  const timer = new Promise(res => setTimeout(() => {
+    log(`圖片預載逾時（${timeoutMs / 1000}s），繼續`);
+    res();
+  }, timeoutMs));
+
+  await Promise.race([Promise.all(proms), timer]);
+  log('圖片預載完成', 'ok');
+}
+
+// ── Build non-PDF document page ───────────────────────────────────────────────
+async function createDocPage(contentDiv, pageNum) {
+  const block = document.createElement('div');
+  block.className = 'page-block';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'page-wrap doc-page';
+  wrap.style.width = '794px';   // A4 width at 96 DPI
+  wrap.appendChild(contentDiv);
+
+  const overlayCanvas = document.createElement('canvas');
+  overlayCanvas.className    = 'overlay-canvas';
+  overlayCanvas.style.display = 'none';
+  wrap.appendChild(overlayCanvas);
+
+  const hitDiv = document.createElement('div');
+  hitDiv.className = 'hit-div';
+  wrap.appendChild(hitDiv);
+
+  const lbl = document.createElement('div');
+  lbl.className   = 'page-lbl';
+  lbl.textContent = `第 ${pageNum} 頁  (${FILE_META[currentFileType]?.label ?? currentFileType})`;
+
+  block.appendChild(wrap);
+  block.appendChild(lbl);
+  previewArea.appendChild(block);
+
+  // Images should already be in cache from preloadImages().
+  // waitForImages() here is a safety net that completes near-instantly for
+  // cached images; it only delays if some images slipped past preloading.
+  await waitForImages(contentDiv);
+  await waitFrames(4);
+
+  const w = wrap.getBoundingClientRect().width;
+  const h = wrap.getBoundingClientRect().height;
+  overlayCanvas.width        = Math.round(w);
+  overlayCanvas.height       = Math.round(h);
+  overlayCanvas.style.width  = `${Math.round(w)}px`;
+  overlayCanvas.style.height = `${Math.round(h)}px`;
+
+  hitDiv.addEventListener('mousemove',  e => onPageMouseMove(e, wrap, pageNum));
+  hitDiv.addEventListener('mouseleave', ()  => onPageMouseLeave(pageNum));
+
+  return { wrap, overlayCanvas };
+}
+
+// ── Wait for all <img> inside container to load (with timeout) ───────────────
+// External images may never respond (network blocked / CDN unreachable).
+// We race all pending load/error events against a 5-second timeout so the
+// tool never hangs regardless of image availability.
+function waitForImages(container, timeoutMs = 5000) {
+  const imgs = [...container.querySelectorAll('img')];
+  if (!imgs.length) return Promise.resolve();
+
+  const pending = imgs
+    .filter(img => !img.complete)
+    .map(img =>
+      new Promise(res => {
+        img.addEventListener('load',  res, { once: true });
+        img.addEventListener('error', res, { once: true });
+      })
+    );
+
+  if (!pending.length) return Promise.resolve();   // all already cached
+
+  const timeout = new Promise(res => setTimeout(() => {
+    log(`圖片等待逾時（${timeoutMs / 1000}s），已繼續處理`);
+    res();
+  }, timeoutMs));
+
+  return Promise.race([Promise.all(pending), timeout]);
+}
+
+// ── Add normalised coordinates to extracted items ────────────────────────────
+// norm_* fields are 0.0–1.0 ratios relative to the page container dimensions.
+// They are device-independent: multiply by any page rendering size to recover
+// the absolute position in that coordinate space.
+// DPR is recorded so callers can convert CSS px ↔ physical screen pixels.
+function addNormCoords(items, pageWidth, pageHeight) {
+  const dpr = round4(window.devicePixelRatio || 1);
+  const pw  = round4(pageWidth);
+  const ph  = round4(pageHeight);
+  items.forEach(item => {
+    item.page_width  = pw;
+    item.page_height = ph;
+    item.dpr         = dpr;
+    item.norm_left   = round4(item.left   / pageWidth);
+    item.norm_top    = round4(item.top    / pageHeight);
+    item.norm_right  = round4(item.right  / pageWidth);
+    item.norm_bottom = round4(item.bottom / pageHeight);
+    item.norm_width  = round4(item.width  / pageWidth);
+    item.norm_height = round4(item.height / pageHeight);
+  });
+}
+
+// ── DOM coordinate extractor (for HTML / TXT / DOCX) ─────────────────────────
+// Range.getBoundingClientRect() works correctly for normal DOM (no PDF transforms).
+function extractCoordsFromDOM(rootEl, pageNum, pageRect, startIdx, granularity) {
+  const results = [];
+  let   idx     = startIdx;
+
+  const walker = document.createTreeWalker(rootEl, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const tag = node.parentElement?.tagName?.toUpperCase() ?? '';
+      if (['SCRIPT','STYLE','NOSCRIPT','TEXTAREA'].includes(tag))
+        return NodeFilter.FILTER_REJECT;
+      return node.textContent.trim()
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_SKIP;
+    },
+  });
+
+  let node;
+  while ((node = walker.nextNode())) {
+    const text = node.textContent;
+
+    if (granularity === 'word') {
+      const re = /\S+/g;
+      let m;
+      while ((m = re.exec(text)) !== null) {
+        const c = getRangeRect(node, m.index, m.index + m[0].length, pageRect);
+        if (c) results.push({ page: pageNum, index: idx++, text: m[0], ...c });
+      }
+    } else {
+      for (let i = 0; i < text.length; i++) {
+        if (/\s/.test(text[i])) continue;
+        const c = getRangeRect(node, i, i + 1, pageRect);
+        if (c) results.push({ page: pageNum, index: idx++, text: text[i], ...c });
+      }
+    }
+  }
+  return results;
+}
+
+function getRangeRect(textNode, start, end, pageRect) {
+  try {
+    const range = document.createRange();
+    range.setStart(textNode, start);
+    range.setEnd(textNode, end);
+    const r = range.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) return null;
+    return {
+      top:    round4(r.top    - pageRect.top),
+      left:   round4(r.left   - pageRect.left),
+      right:  round4(r.right  - pageRect.left),
+      bottom: round4(r.bottom - pageRect.top),
+      width:  round4(r.width),
+      height: round4(r.height),
+    };
+  } catch { return null; }
+}
+
+// ── HTML sanitizer ────────────────────────────────────────────────────────────
+function sanitizeHTML(raw) {
+  const doc = new DOMParser().parseFromString(raw, 'text/html');
+  doc.querySelectorAll(
+    'script,link,style,meta,noscript,iframe,object,embed,form,input,button,select'
+  ).forEach(el => el.remove());
+  // Strip all on* event attributes
+  doc.querySelectorAll('*').forEach(el => {
+    [...el.attributes].forEach(attr => {
+      if (attr.name.startsWith('on')) el.removeAttribute(attr.name);
+    });
+  });
+  return doc.body.innerHTML;
+}
 
 // ── Process single page ───────────────────────────────────────────────────────
 async function processPage(pdf, pageNum, scale, granularity, globalIdx) {
@@ -694,6 +1073,7 @@ async function processPage(pdf, pageNum, scale, granularity, globalIdx) {
   // viewport.convertToViewportPoint() uses the same math PDF.js uses to position
   // the text layer spans, so coordinates are exact by definition.
   const items   = extractCoords(textContent, viewport, pageNum, globalIdx, granularity);
+  addNormCoords(items, viewport.width, viewport.height);
   const nextIdx = globalIdx + items.length;
 
   // Register in overlay map
@@ -992,15 +1372,160 @@ exportJson.addEventListener('click', () => {
 
 exportCsv.addEventListener('click', () => {
   if (!extractedData.length) return;
-  const header = 'Page,Index,Text,Top,Left,Right,Bottom,Width,Height';
-  const rows   = extractedData.map(d => [
+  const header = [
+    'Page','Index','Text',
+    'Top','Left','Right','Bottom','Width','Height',
+    'NormTop','NormLeft','NormRight','NormBottom','NormWidth','NormHeight',
+    'PageWidth','PageHeight','DPR',
+  ].join(',');
+  const rows = extractedData.map(d => [
     d.page, d.index,
     `"${String(d.text).replace(/"/g,'""')}"`,
-    d.top, d.left, d.right, d.bottom, d.width, d.height,
+    d.top,       d.left,       d.right,       d.bottom,       d.width,       d.height,
+    d.norm_top ?? '', d.norm_left ?? '', d.norm_right ?? '', d.norm_bottom ?? '',
+    d.norm_width ?? '', d.norm_height ?? '',
+    d.page_width ?? '', d.page_height ?? '', d.dpr ?? '',
   ].join(','));
   triggerDownload('﻿' + [header, ...rows].join('\r\n'), 'pdf_coordinates.csv', 'text/csv;charset=utf-8');
   log(`匯出 CSV：${extractedData.length} 筆`, 'ok');
 });
+
+// ── Backend: Save ─────────────────────────────────────────────────────────────
+saveBtn.addEventListener('click', async () => {
+  if (!extractedData.length) return;
+  saveBtn.disabled = true;
+  saveBtn.textContent = '儲存中…';
+  try {
+    const res = await fetch('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: currentFile?.name ?? 'unknown',
+        filetype: currentFileType,
+        items:    extractedData,
+      }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    log(`已儲存到後端 (${data.id.slice(0, 8)}…)`, 'ok');
+    loadHistory();
+  } catch (e) {
+    log(`儲存失敗：${e.message}`, 'err');
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = '☁ 儲存到後端';
+  }
+});
+
+// ── Backend: Load history list ────────────────────────────────────────────────
+async function loadHistory() {
+  // Step 1: health check → set status dot
+  try {
+    const ping = await fetch('/api/ping');
+    if (!ping.ok) throw new Error(`伺服器回應 ${ping.status}`);
+    backendDot.style.background = 'var(--success)';
+    backendDot.title = '後端正常連線';
+  } catch (e) {
+    backendDot.style.background = 'var(--danger)';
+    backendDot.title = `後端未連線：${e.message}`;
+    historyList.innerHTML =
+      `<div style="font-size:.73rem;color:var(--danger);line-height:1.6">
+         ⚠ 無法連線後端（${escHtml(e.message)}）<br>
+         請確認已執行 <code style="background:var(--surface3);padding:.1em .3em;border-radius:3px">
+         python server.py</code>
+       </div>`;
+    return;
+  }
+
+  // Step 2: fetch session list
+  try {
+    const res = await fetch('/api/sessions');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    renderHistory(await res.json());
+  } catch (e) {
+    historyList.innerHTML =
+      `<div style="font-size:.73rem;color:var(--danger)">載入歷史失敗：${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderHistory(sessions) {
+  historyList.innerHTML = '';
+  if (!sessions.length) {
+    historyCount.textContent = '';
+    historyList.innerHTML = '<div id="historyEmpty" style="font-size:.75rem;color:var(--text-muted)">尚無儲存紀錄</div>';
+    return;
+  }
+  historyCount.textContent = `(${sessions.length})`;
+  sessions.forEach(s => {
+    const date = new Date(s.created_at).toLocaleString('zh-TW', { hour12: false });
+    const tag  = s.filetype?.toUpperCase() ?? '';
+    const card = document.createElement('div');
+    card.className = 'hist-card';
+    card.innerHTML = `
+      <div class="hname" title="${escHtml(s.filename)}">${escHtml(s.filename)}</div>
+      <div class="hmeta">${date} &nbsp;·&nbsp; ${tag} &nbsp;·&nbsp; ${s.item_count.toLocaleString()} 筆</div>
+      <div class="hbtns">
+        <button class="btn-sm" onclick="downloadSession('${s.id}','json')">⬇ JSON</button>
+        <button class="btn-sm" onclick="downloadSession('${s.id}','csv')">⬇ CSV</button>
+        <button class="btn-sm btn-del" onclick="deleteSession('${s.id}',this)">🗑 刪除</button>
+      </div>`;
+    historyList.appendChild(card);
+  });
+}
+
+refreshHistoryBtn.addEventListener('click', loadHistory);
+
+// ── Backend: Download a saved session ────────────────────────────────────────
+async function downloadSession(id, format) {
+  try {
+    const res     = await fetch(`/api/sessions/${id}`);
+    if (!res.ok) throw new Error('找不到紀錄');
+    const session = await res.json();
+    const items   = session.items ?? [];
+    const base    = session.filename.replace(/\.[^.]+$/, '');
+
+    if (format === 'json') {
+      triggerDownload(JSON.stringify(items, null, 2), `${base}_coords.json`, 'application/json');
+    } else {
+      const header = [
+        'Page','Index','Text',
+        'Top','Left','Right','Bottom','Width','Height',
+        'NormTop','NormLeft','NormRight','NormBottom','NormWidth','NormHeight',
+        'PageWidth','PageHeight','DPR',
+      ].join(',');
+      const rows = items.map(d => [
+        d.page, d.index,
+        `"${String(d.text).replace(/"/g,'""')}"`,
+        d.top, d.left, d.right, d.bottom, d.width, d.height,
+        d.norm_top ?? '', d.norm_left ?? '', d.norm_right ?? '', d.norm_bottom ?? '',
+        d.norm_width ?? '', d.norm_height ?? '',
+        d.page_width ?? '', d.page_height ?? '', d.dpr ?? '',
+      ].join(','));
+      triggerDownload('﻿' + [header, ...rows].join('\r\n'), `${base}_coords.csv`, 'text/csv;charset=utf-8');
+    }
+    log(`已從歷史下載 ${format.toUpperCase()}`, 'ok');
+  } catch (e) {
+    log(`下載失敗：${e.message}`, 'err');
+  }
+}
+
+// ── Backend: Delete a session ─────────────────────────────────────────────────
+async function deleteSession(id, btn) {
+  if (!confirm('確定要永久刪除這筆紀錄？')) return;
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/sessions/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    log('已刪除紀錄', 'ok');
+    loadHistory();
+  } catch (e) {
+    log(`刪除失敗：${e.message}`, 'err');
+    btn.disabled = false;
+  }
+}
+
+// Load history on page start
+loadHistory();
 </script>
 </body>
 </html>
