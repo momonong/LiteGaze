@@ -1,224 +1,245 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>M2 Gaze-to-Word Highlight Prototype</title>
-  <style>
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: #f6f2ea;
-      color: #222;
-      height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-
-    .container {
-      width: 80%;
-      max-width: 1500px;
-      background: white;
-      padding: 48px;
-      border-radius: 24px;
-      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.12);
-    }
-
-    h1 {
-      margin-top: 0;
-      font-size: 28px;
-    }
-
-    .hint {
-      color: #666;
-      margin-bottom: 32px;
-    }
-
-    #text-area {
-      font-size: 30px;
-      line-height: 2.1;
-      letter-spacing: 0.3px;
-    }
-
-    .word {
-      display: inline-block;
-      padding: 2px 5px;
-      margin: 0 2px;
-      border-radius: 8px;
-      transition: all 0.12s ease;
-    }
-    .sentence-line {
-      display: block;
-      margin-bottom: 24px;
-      white-space: nowrap;
-    }
-    .word.active {
-      background: #fff1a8;
-      color: #111;
-      box-shadow: 0 0 18px rgba(255, 210, 60, 0.95);
-      transform: scale(1.08);
-    }
-
-    .word.target {
-      border-bottom: 3px solid #d9a900;
-    }
-
-    .panel {
-      margin-top: 36px;
-      padding: 18px 22px;
-      border-radius: 16px;
-      background: #f7f7f7;
-      font-size: 16px;
-      line-height: 1.7;
-    }
-
-    .label {
-      font-weight: bold;
-    }
-
-    code {
-      background: #eee;
-      padding: 2px 6px;
-      border-radius: 6px;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div id="text-area"></div>
-
-    <div class="panel">
-      <div><span class="label">Current word:</span> <span id="current-word">None</span></div>
-      <div><span class="label">Coordinate:</span> <span id="coord">x: -, y: -</span></div>
-      <div><span class="label">Distance:</span> <span id="distance">-</span></div>
-      <div><span class="label">Mode:</span> Mouse simulation of M1 gaze output <code>{x, y}</code></div>
-    </div>
-  </div>
-
-  <script>
-    // ====== M2 corpus text ======
-    const sentences = [
-      "I had seen Lawrence in quite a different light that afternoon.",
-      "Compared to John, he was an astoundingly difficult person to get to know."
-    ];
-    // 字間距問題，若中間有大空格，會識別到空格而不是單詞，導致距離過遠。
-    const textArea = document.getElementById("text-area");
-    const currentWordEl = document.getElementById("current-word");
-    const coordEl = document.getElementById("coord");
-    const distanceEl = document.getElementById("distance");
-
-    // ====== Render each word as an individual span ======
-    sentences.forEach((sentence, sentenceIndex) => {
-      const line = document.createElement("div");
-      line.className = "sentence-line";
-      line.dataset.sentenceIndex = sentenceIndex;
-
-      const words = sentence.trim().split(/\s+/);
-
-      words.forEach((word, wordIndex) => {
-        const span = document.createElement("span");
-        span.className = "word";
-        span.textContent = word;
-        span.dataset.word = word.replace(/[.,!?;:'"]/g, "");
-        span.dataset.index = `${sentenceIndex}-${wordIndex}`;
-
-        line.appendChild(span);
-        line.appendChild(document.createTextNode(" "));
-      });
-
-      textArea.appendChild(line);
-    });
-
-    const wordSpans = Array.from(document.querySelectorAll(".word"));
-
-    function getWordCenter(element) {
-      const rect = element.getBoundingClientRect();
-      return {
-        x: rect.left + rect.width / 2,
-        y: rect.top + rect.height / 2,
-        rect
-      };
-    }
-
-    // ====== Core function: coordinate -> nearest word ======
-    function distanceToRect(x, y, rect) {
-      const dx = Math.max(rect.left - x, 0, x - rect.right);
-      const dy = Math.max(rect.top - y, 0, y - rect.bottom);
-      return Math.sqrt(dx * dx + dy * dy);
-    }
-
-    function findNearestWord(x, y) {
-      let bestActualBox = null;
-      let bestSameLine = null;
-
-      const LINE_Y_THRESHOLD = 90;
-      const SAME_LINE_MAX_DISTANCE = 90;
-
-      for (const word of wordSpans) {
-        const rect = word.getBoundingClientRect();
-
-        const insideActualBox =
-          x >= rect.left &&
-          x <= rect.right &&
-          y >= rect.top &&
-          y <= rect.bottom;
-
-        const boxDistance = distanceToRect(x, y, rect);
-        const wordCenterY = rect.top + rect.height / 2;
-        const yDistance = Math.abs(y - wordCenterY);
-
-        const candidate = {
-          element: word,
-          distance: boxDistance,
-          confidence: insideActualBox ? "high" : "medium"
-        };
-
-        if (insideActualBox) {
-          return candidate;
-        }
-
-        if (yDistance <= LINE_Y_THRESHOLD) {
-          if (!bestSameLine || boxDistance < bestSameLine.distance) {
-            bestSameLine = candidate;
-        }
-        }
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>M2 Gaze-to-Word Highlight Prototype</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: #f6f2ea;
+        color: #222;
+        height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
       }
 
-      if (bestSameLine && bestSameLine.distance <= SAME_LINE_MAX_DISTANCE) {
+      .container {
+        width: 80%;
+        max-width: 1500px;
+        background: white;
+        padding: 48px;
+        border-radius: 24px;
+        box-shadow: 0 12px 35px rgba(0, 0, 0, 0.12);
+      }
+
+      h1 {
+        margin-top: 0;
+        font-size: 28px;
+      }
+
+      .hint {
+        color: #666;
+        margin-bottom: 32px;
+      }
+
+      #text-area {
+        font-size: 30px;
+        line-height: 2;
+        letter-spacing: 0.5px;
+      }
+
+      .word {
+        display: inline-block;
+        padding: 2px 5px;
+        margin: 0 2px;
+        border-radius: 8px;
+        transition: all 0.15s ease;
+      }
+      .sentence-line {
+        display: block;
+        margin-bottom: 24px;
+        white-space: nowrap;
+      }
+      .word.active {
+        background: #fff1a8;
+        color: #111;
+        box-shadow: 0 0 18px rgba(255, 210, 60, 0.95);
+        transform: scale(1.08);
+      }
+
+      .word.target {
+        border-bottom: 3px solid #d9a900;
+      }
+
+      .panel {
+        margin-top: 36px;
+        padding: 18px 22px;
+        border-radius: 16px;
+        background: #f7f7f7;
+        font-size: 16px;
+        line-height: 1.7;
+      }
+
+      .label {
+        font-weight: bold;
+      }
+
+      code {
+        background: #eee;
+        padding: 2px 6px;
+        border-radius: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div id="text-area"></div>
+
+      <div class="panel">
+        <div><span class="label">Current word:</span> <span id="current-word">None</span></div>
+        <div><span class="label">Coordinate:</span> <span id="coord">x: -, y: -</span></div>
+        <div><span class="label">Distance:</span> <span id="distance">-</span></div>
+      </div>
+    </div>
+
+    <script>
+      // ====== M2 corpus text ======
+      const sentences = [
+        "I had seen Lawrence in quite a different light that afternoon.",
+        "Compared to John, he was an astoundingly difficult person to get to know.",
+        "This will effectually silence the sensational rumours which still persist.",
+        "12345678987654321"
+      ];
+      const textArea = document.getElementById("text-area");
+      const currentWordEl = document.getElementById("current-word");
+      const coordEl = document.getElementById("coord");
+      const distanceEl = document.getElementById("distance");
+
+      // ====== Render each word as an individual span ======
+      sentences.forEach((sentence, sentenceIndex) => {
+        const line = document.createElement("div");
+        line.className = "sentence-line";
+        line.dataset.sentenceIndex = sentenceIndex;
+
+        const words = sentence.trim().split(/\s+/);
+
+        words.forEach((word, wordIndex) => {
+          const span = document.createElement("span");
+          span.className = "word";
+          span.textContent = word;
+          span.dataset.word = word.replace(/[.,!?;:'"]/g, "");
+          span.dataset.index = `${sentenceIndex}-${wordIndex}`;
+
+          line.appendChild(span);
+          line.appendChild(document.createTextNode(" "));
+        });
+
+        textArea.appendChild(line);
+      });
+
+      const wordSpans = Array.from(document.querySelectorAll(".word"));
+
+      function getWordCenter(element) {
+        const rect = element.getBoundingClientRect();
+        return {
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+          rect
+        };
+      }
+
+      // ====== Core function: coordinate -> nearest word ======
+      function distanceToRect(x, y, rect) {
+        const dx = Math.max(rect.left - x, 0, x - rect.right);
+        const dy = Math.max(rect.top - y, 0, y - rect.bottom);
+        return Math.sqrt(dx * dx + dy * dy);
+      }
+
+      function findNearestWord(x, y) {
+        let bestSameLine = null;
+
+        const LINE_Y_THRESHOLD = 90;
+
+        const MEDIUM_DISTANCE = 35;
+        const LOW_DISTANCE = 90;
+
+        for (const word of wordSpans) {
+          const rect = word.getBoundingClientRect();
+
+          const insideActualBox =
+            x >= rect.left &&
+            x <= rect.right &&
+            y >= rect.top &&
+            y <= rect.bottom;
+
+          const boxDistance = distanceToRect(x, y, rect);
+
+          const wordCenterY = rect.top + rect.height / 2;
+          const yDistance = Math.abs(y - wordCenterY);
+
+          if (insideActualBox) {
+            return {
+              element: word,
+              distance: boxDistance,
+              confidence: "high"
+            };
+          }
+
+          if (yDistance <= LINE_Y_THRESHOLD) {
+
+            let confidence = null;
+
+            if (boxDistance <= MEDIUM_DISTANCE) {
+              confidence = "medium";
+            }
+
+            else if (boxDistance <= LOW_DISTANCE) {
+              confidence = "low";
+            }
+
+            if (confidence) {
+              const candidate = {
+                element: word,
+                distance: boxDistance,
+                confidence: confidence
+              };
+
+              if (!bestSameLine || boxDistance < bestSameLine.distance) {
+                bestSameLine = candidate;
+              }
+            }
+          }
+        }
+
         return bestSameLine;
       }
 
-      return null;
-    }
+      function highlightWord(match) {
+        wordSpans.forEach(word => word.classList.remove("active"));
 
-    function highlightWord(match) {
-      wordSpans.forEach(word => word.classList.remove("active"));
+        if (!match) {
+          currentWordEl.textContent = "None / noise";
+          distanceEl.textContent = "too far";
+          return;
+        }
 
-      if (!match) {
-        currentWordEl.textContent = "None / noise";
-        distanceEl.textContent = "too far";
-        return;
+        match.element.classList.add("active");
+        currentWordEl.textContent = `${match.element.dataset.word} (${match.confidence})`;
+        distanceEl.textContent = `${match.distance.toFixed(1)} px`;
       }
 
-      match.element.classList.add("active");
-      currentWordEl.textContent = `${match.element.dataset.word} (${match.confidence})`;
-      distanceEl.textContent = `${match.distance.toFixed(1)} px`;
-    }
+      // ====== Input layer ======
 
-    // ====== Input layer ======
+      function processGaze(gazeX, gazeY) {
+        coordEl.textContent = `x: ${Math.round(gazeX)}, y: ${Math.round(gazeY)}`;
 
-    function processGaze(gazeX, gazeY) {
-      coordEl.textContent = `x: ${Math.round(gazeX)}, y: ${Math.round(gazeY)}`;
+        const matchedWord = findNearestWord(gazeX, gazeY);
+        highlightWord(matchedWord);
+      }
 
-      const matchedWord = findNearestWord(gazeX, gazeY);
-      highlightWord(matchedWord);
-    }
+      // ====== Mouse simulation ======
+      document.addEventListener("mousemove", (event) => {
+        processGaze(event.clientX, event.clientY);
+      });
 
-    window.receiveGaze = function(x, y) {
-      processGaze(x, y);
-    };
 
-  </script>
-</body>
-</html>
+      window.receiveGaze = function(x, y) {
+        processGaze(x, y);
+      };
+
+    </script>
+  </body>
+  </html>
