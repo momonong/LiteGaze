@@ -10,10 +10,8 @@
         font-family: Arial, sans-serif;
         background: #f6f2ea;
         color: #222;
-        height: 100vh;
-        display: flex;
-        justify-content: center;
-        align-items: center;
+        min-height: 100vh;
+        padding: 80px 0;
       }
 
       .container {
@@ -23,6 +21,7 @@
         padding: 48px;
         border-radius: 24px;
         box-shadow: 0 12px 35px rgba(0, 0, 0, 0.12);
+        margin: 0 auto;
       }
 
       h1 {
@@ -48,10 +47,9 @@
         border-radius: 8px;
         transition: all 0.15s ease;
       }
-      .sentence-line {
-        display: block;
-        margin-bottom: 24px;
-        white-space: nowrap;
+      .paragraph {
+        margin-bottom: 42px;
+        line-height: 2.2;
       }
       .word.active {
         background: #fff1a8;
@@ -97,11 +95,14 @@
 
     <script>
       // ====== M2 corpus text ======
-      const sentences = [
-        "I had seen Lawrence in quite a different light that afternoon.",
-        "Compared to John, he was an astoundingly difficult person to get to know.",
-        "This will effectually silence the sensational rumours which still persist.",
-        "12345678987654321"
+      const paragraphs = [
+        `
+        The intense  interest  aroused  in  the  public  by  what  was  known  at  the  time  as  'The  Styles  Case'  has  now  somewhat  subsided.
+        Nevertheless,  in  view  of  the  world-wide  notoriety  which  attended  it,  I  have  been  asked,  both  by  my  friend  Poirot  and  the  family  themselves,  to  write  an  account  of  the  whole  story.
+        This,  we  trust,  will  effectually  silence  the  sensational  rumours  which  still  persist.
+        I  will  therefore  briefly  set  down  the  circumstances  which  led  to  my  being  connected  with  the  affair.
+        I  had  been  invalided  home  from  the  Front;  and,  after  spending  some  months  in  a  rather  depressing  Convalescent  Home,  was  given  a  month's  sick  leave.
+        `,
       ];
       const textArea = document.getElementById("text-area");
       const currentWordEl = document.getElementById("current-word");
@@ -109,25 +110,35 @@
       const distanceEl = document.getElementById("distance");
 
       // ====== Render each word as an individual span ======
-      sentences.forEach((sentence, sentenceIndex) => {
-        const line = document.createElement("div");
-        line.className = "sentence-line";
-        line.dataset.sentenceIndex = sentenceIndex;
+      paragraphs.forEach((paragraphText, paragraphIndex) => {
 
-        const words = sentence.trim().split(/\s+/);
+        const paragraphDiv = document.createElement("div");
+        paragraphDiv.className = "paragraph";
+
+        const words = paragraphText.trim().split(/\s+/);
 
         words.forEach((word, wordIndex) => {
-          const span = document.createElement("span");
-          span.className = "word";
-          span.textContent = word;
-          span.dataset.word = word.replace(/[.,!?;:'"]/g, "");
-          span.dataset.index = `${sentenceIndex}-${wordIndex}`;
 
-          line.appendChild(span);
-          line.appendChild(document.createTextNode(" "));
+          const span = document.createElement("span");
+
+          span.className = "word";
+
+          span.textContent = word;
+
+          span.dataset.word =
+            word.replace(/[.,!?;:'"]/g, "");
+
+          span.dataset.index =
+            `${paragraphIndex}-${wordIndex}`;
+
+          paragraphDiv.appendChild(span);
+
+          paragraphDiv.appendChild(
+            document.createTextNode(" ")
+          );
         });
 
-        textArea.appendChild(line);
+        textArea.appendChild(paragraphDiv);
       });
 
       const wordSpans = Array.from(document.querySelectorAll(".word"));
