@@ -24,3 +24,9 @@ miniconda3/
 # IDE
 .vscode/
 .gemini/
+
+# uv
+uv.lock
+
+# huggingface cache
+hub/
