@@ -31,6 +31,8 @@ def list_models(root: Path) -> list[dict]:
                 "name": name,
                 "display_name": f"{name} ({train_samples} samples, {mean_px_error:.1f} px)",
                 "mean_px_error": mean_px_error,
+                "num_stages": int(meta.get("num_stages", 1) or 1),
+                "noise_level": float(meta.get("noise_level", 0.0) or 0.0),
                 "train_samples": train_samples,
                 "created_at": meta.get("created_at", ""),
             }

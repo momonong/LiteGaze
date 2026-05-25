@@ -1,4 +1,5 @@
 import json
+import mimetypes
 import uuid
 import webbrowser
 from datetime import datetime
@@ -6,14 +7,17 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
 
-from gaze_routes import gaze_bp
+from gaze_routes import gaze_api_bp, gaze_bp
 
 ROOT     = Path(__file__).parent
+SHENGWEN_STATIC = ROOT.parent / 'shengwen' / 'web' / 'static'
 DATA_DIR = ROOT / 'data'
 DATA_DIR.mkdir(exist_ok=True)
+mimetypes.add_type('text/javascript', '.js')
 
 app = Flask(__name__, static_folder=None)
 app.register_blueprint(gaze_bp)
+app.register_blueprint(gaze_api_bp)
 
 # ── Static files ──────────────────────────────────────────────────────────────
 @app.route('/')
@@ -23,6 +27,10 @@ def index():
 @app.route('/gaze')
 def gaze_page():
     return send_from_directory(ROOT, 'gaze_page.html')
+
+@app.route('/gaze_static/<path:filename>')
+def gaze_static_file(filename):
+    return send_from_directory(SHENGWEN_STATIC, filename)
 
 @app.route('/<path:filename>')
 def static_file(filename):

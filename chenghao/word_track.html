@@ -1597,6 +1597,29 @@ async function deleteSession(id, btn) {
 loadHistory();
 
 </script>
+<div id="gaze-cursor" class="hidden" style="
+  position: fixed;
+  width: 24px;
+  height: 24px;
+  background: rgba(79, 126, 247, 0.25);
+  border: 2px solid var(--primary);
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  z-index: 99999;
+  display: none;
+">
+  <div style="
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 6px;
+    height: 6px;
+    background: var(--primary);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+  "></div>
+</div>
 <script src="mapping.js"></script>
 <script src="gaze_integration.js"></script>
 </body>

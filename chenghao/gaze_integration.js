@@ -10,6 +10,7 @@
     corridorInput: document.getElementById("gazeCorridorInput"),
     dwellInput: document.getElementById("gazeDwellInput"),
     status: document.getElementById("gazeStatus"),
+    gazeCursor: document.getElementById("gaze-cursor"),
   };
 
   if (!els.toggle) return;
@@ -184,9 +185,16 @@
       try {
         const [x, y] = await predict();
         const point = applyDebounce(x, y);
-        if (point && typeof window.processGazeOnExtractedData === "function") {
-          window.processGazeOnExtractedData(point.x, point.y);
-          setStatus(`啟用中：${Math.round(point.x)}, ${Math.round(point.y)} (${els.modelSelect.value})`);
+        if (point) {
+          // Update visual gaze cursor position
+          if (els.gazeCursor) {
+            els.gazeCursor.style.left = `${point.x}px`;
+            els.gazeCursor.style.top = `${point.y}px`;
+          }
+          if (typeof window.processGazeOnExtractedData === "function") {
+            window.processGazeOnExtractedData(point.x, point.y);
+            setStatus(`啟用中：${Math.round(point.x)}, ${Math.round(point.y)} (${els.modelSelect.value})`);
+          }
         }
       } catch (err) {
         setStatus(`推論失敗：${err.message}`);
@@ -202,6 +210,16 @@
     els.toggleLabel.textContent = enabled ? "啟用眼動推論（開啟）" : "啟用眼動推論（關閉）";
 
     if (enabled) {
+      // Auto-enable Gaze Mapping highlights if currently disabled
+      if (typeof gazeMappingToggle !== "undefined" && typeof gazeMappingOn !== "undefined" && !gazeMappingOn) {
+        gazeMappingToggle.click();
+      }
+      
+      // Show visual cursor
+      if (els.gazeCursor) {
+        els.gazeCursor.style.display = "block";
+      }
+
       try {
         await startCamera();
         setStatus("攝影機已啟動，開始推論");
@@ -210,10 +228,17 @@
         state.enabled = false;
         els.toggle.classList.remove("active");
         els.toggleLabel.textContent = "啟用眼動推論（關閉）";
+        if (els.gazeCursor) {
+          els.gazeCursor.style.display = "none";
+        }
         setStatus(`攝影機啟動失敗：${err.message}`);
       }
     } else {
       stopCamera();
+      // Hide visual cursor
+      if (els.gazeCursor) {
+        els.gazeCursor.style.display = "none";
+      }
       setStatus("已停止眼動推論");
     }
   }
