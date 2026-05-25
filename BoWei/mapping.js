@@ -18,13 +18,8 @@ function processGazeOnExtractedData(gazeX, gazeY) {
 }
 
 function distanceToExtractedRect(x, y, item) {
-
-  const dx =
-    Math.max(item.left - x, 0, x - item.right);
-
-  const dy =
-    Math.max(item.top - y, 0, y - item.bottom);
-
+  const dx = Math.max(item.left - x, 0, x - item.right);
+  const dy = Math.max(item.top - y, 0, y - item.bottom);
   return Math.sqrt(dx * dx + dy * dy);
 }
 
