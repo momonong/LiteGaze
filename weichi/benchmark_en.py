@@ -25,8 +25,8 @@ EN_BENCHMARK_SUITE = [
 ]
 
 def run_en_benchmark():
-    # 切換到英文模式
-    pipeline = CognitiveLoadPipeline(model_type='bert', lang='en')
+    # 切換到英文模式（GPT-2 對英文 surprisal 計算更準確）
+    pipeline = CognitiveLoadPipeline(model_type='gpt2', lang='en')
     hits = 0
     total_expected = 0
     total_predicted = 0
