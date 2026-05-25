@@ -13,6 +13,7 @@
 9. [F1修正] Interaction 語意修正：s_score × f_score（罕見且驚訝 = 技術術語），非原來的反向公式。
 10.[F1修正] 門檻百分位數 80→75：在不犧牲精確率的前提下提升召回率。
 11.[修正] process_file cognitive_memory：修正傳遞純 float 導致句間動量 crash 的 bug。
+12.[v8 速度] 關閉 spaCy 不用元件 (lemmatizer/ner) + process_file 改 chunked scoring + 文件級 threshold/boost
 """
 
 import json
@@ -21,7 +22,7 @@ import re
 import os
 import time
 from dataclasses import dataclass, asdict
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -96,14 +97,14 @@ class LanguageModelCalculator:
         self.lang = lang
         self.batch_size = batch_size
         model_name = self.MODELS[model_type][lang]
-        
+
         print(f"[系統] 正在初始化 {model_name}...")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         if model_type.startswith('gpt2'):
             self.model = AutoModelForCausalLM.from_pretrained(model_name)
         else:
             self.model = AutoModelForMaskedLM.from_pretrained(model_name, attn_implementation="eager")
-        
+
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model.to(self.device).eval()
         self.use_fp16 = (self.device == "cuda")
@@ -111,7 +112,7 @@ class LanguageModelCalculator:
     @torch.inference_mode()
     def compute(self, words: List[str]) -> Dict[str, List[float]]:
         if not words: return {"surprisals": [], "attentions": [], "entropies": []}
-        
+
         # 根據顯存自動調整
         device_type = 'cuda' if torch.cuda.is_available() else 'cpu'
         with torch.amp.autocast(device_type=device_type, enabled=self.use_fp16):
@@ -124,10 +125,10 @@ class LanguageModelCalculator:
         encoding = self.tokenizer(words, is_split_into_words=True, return_tensors="pt").to(self.device)
         input_ids = encoding["input_ids"][0]
         word_ids = encoding.word_ids()
-        
+
         # 1. 取得 Attention (一次傳遞)
         outputs = self.model(**encoding, output_attentions=True)
-        attns = outputs.attentions[-4:] 
+        attns = outputs.attentions[-4:]
         avg_attn = torch.stack(attns).mean(dim=0)[0].mean(dim=0)
         centrality = avg_attn.sum(dim=0).cpu().tolist()
 
@@ -135,7 +136,7 @@ class LanguageModelCalculator:
         surprisals = [0.0] * len(words)
         entropies = [0.0] * len(words)
         attentions = [0.0] * len(words)
-        
+
         word_to_indices = {}
         for i, w_idx in enumerate(word_ids):
             if w_idx is not None:
@@ -147,15 +148,15 @@ class LanguageModelCalculator:
 
         for w_idx, indices in word_to_indices.items():
             # 排除純標點符號
-            if not re.search(r'[\u4e00-\u9fff\d\w]', words[w_idx]): continue
-            
+            if not re.search(r'[一-鿿\d\w]', words[w_idx]): continue
+
             masked_input = input_ids.clone()
             for idx in indices: masked_input[idx] = self.tokenizer.mask_token_id
-            
+
             batch_inputs.append(masked_input)
             batch_targets.append((indices, input_ids[indices]))
             batch_w_idxs.append(w_idx)
-            
+
             if len(batch_inputs) >= self.batch_size:
                 self._run_bert_batch(batch_inputs, batch_targets, batch_w_idxs, surprisals, entropies)
                 batch_inputs, batch_targets, batch_w_idxs = [], [], []
@@ -173,18 +174,18 @@ class LanguageModelCalculator:
     def _run_bert_batch(self, batch_inputs, batch_targets, batch_w_idxs, surprisals, entropies):
         inputs_tensor = torch.stack(batch_inputs).to(self.device)
         outputs = self.model(inputs_tensor)
-        
+
         for b in range(len(batch_inputs)):
             idxs, tids = batch_targets[b]
             logits = outputs.logits[b, idxs, :]
             lps = F.log_softmax(logits, dim=-1)
             probs = F.softmax(logits, dim=-1)
-            
+
             # 熵 (衡量預測不確定性)
             ent = -(probs * lps).sum(dim=-1).mean().item()
             # 驚訝度 (正確 Token 的負對數機率)
             word_surp = sum(-lps[tidx, tid].item() for tidx, tid in enumerate(tids))
-            
+
             target_w_idx = batch_w_idxs[b]
             surprisals[target_w_idx] = word_surp
             entropies[target_w_idx] = ent
@@ -194,25 +195,25 @@ class LanguageModelCalculator:
         encoding = self.tokenizer(words, is_split_into_words=True, return_tensors="pt").to(self.device)
         input_ids = encoding["input_ids"]
         word_ids = encoding.word_ids()
-        
+
         outputs = self.model(input_ids)
         shift_logits = outputs.logits[..., :-1, :].contiguous()
         shift_labels = input_ids[..., 1:].contiguous()
-        
+
         lps = F.log_softmax(shift_logits, dim=-1)
         probs = F.softmax(shift_logits, dim=-1)
         token_ents = -(probs * lps).sum(dim=-1)
         target_lps = lps.gather(-1, shift_labels.unsqueeze(-1)).squeeze(-1)
-        
+
         surprisals = [0.0] * len(words)
         entropies = [0.0] * len(words)
-        
+
         for i in range(target_lps.size(1)):
             w_idx = word_ids[i+1]
             if w_idx is not None:
                 surprisals[w_idx] += -target_lps[0, i].item()
                 entropies[w_idx] += token_ents[0, i].item()
-        
+
         return {"surprisals": surprisals, "entropies": entropies, "attentions": [0.5] * len(words)}
 
 class CognitiveLoadPipeline:
@@ -234,7 +235,8 @@ class CognitiveLoadPipeline:
         self.nlp = None
         if lang == 'en' and spacy:
             try:
-                self.nlp = spacy.load("en_core_web_sm")
+                # v8 速度優化：只保留 POS（tagger）與依賴解析（parser），停用未使用的 lemmatizer/ner
+                self.nlp = spacy.load("en_core_web_sm", disable=["lemmatizer", "ner"])
             except:
                 print("[警告] 未找到 en_core_web_sm，改用基本分詞")
 
@@ -310,7 +312,7 @@ class CognitiveLoadPipeline:
         """根據 content words 平均詞頻判斷文字領域。
         學術文本使用罕見專業詞彙（低 zipf）→ 回傳 'academic'；
         小說/通用文本使用日常詞彙（高 zipf）→ 回傳 'general'。
-        門檻 4.3 切開學術（≈3.5–4.2）與小說（≈4.5–5.5）。"""
+        雙重條件：avg_zipf < 4.8 AND avg_len > 7.5 → academic。"""
         academic_pos = {'NOUN', 'VERB', 'ADJ', 'ADV', 'PROPN', 'n', 'v', 'a', 'd'}
         cw = [
             w for w, pos in zip(words, pos_tags)
@@ -320,26 +322,61 @@ class CognitiveLoadPipeline:
             return "general"
         avg_zipf = float(np.mean([zipf_frequency(w, 'en') for w in cw]))
         avg_len  = float(np.mean([len(w) for w in cw]))
-        # 雙重條件：小說可能有罕見專有名詞（低 zipf）但平均詞長較短，不會誤判為學術
         if avg_zipf < 4.8 and avg_len > 7.5:
             return "academic"
         return "general"
 
-    def run(self, text: str, cognitive_memory: List[float] = None, domain: str = "auto") -> dict:
-        start_time = time.time()
-        
-        # 1. 語言學預處理 (SOTA 語法樹分析)
-        if cognitive_memory is None: cognitive_memory = [0.0, 0.0] # [N-1, N-2] 負荷
-        
+    def _resolve_domain(self, words: list, pos_tags: list, domain: str) -> str:
+        """根據 domain 參數決定使用哪個 domain；'auto' 觸發自動偵測。"""
+        if domain != "auto":
+            return domain
+        return self._detect_domain(words, pos_tags)
+
+    def _chunk_text(self, text: str, max_words: int = 400) -> List[str]:
+        """將長文本切成不超過 max_words 詞的區塊（在句末標點處切割）。
+        中文以字元數計，英文以空白分詞計。預設 400 詞，安全餘量避免超過模型 max sequence length。"""
+        if self.lang == 'zh':
+            sentences = [s for s in re.split(r'(?<=[。！？；\n])', text) if s.strip()]
+            joiner = ""
+            def size(s): return len(s)
+        else:
+            raw = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
+            sentences = []
+            for seg in raw:
+                lines = [l.strip() for l in seg.split('\n') if l.strip()]
+                sentences.extend(lines if lines else [seg])
+            joiner = " "
+            def size(s): return len(s.split())
+
+        chunks: List[str] = []
+        current: List[str] = []
+        current_count = 0
+        for s in sentences:
+            sc = size(s)
+            if current_count + sc > max_words and current:
+                chunks.append(joiner.join(current))
+                current = [s]
+                current_count = sc
+            else:
+                current.append(s)
+                current_count += sc
+        if current:
+            chunks.append(joiner.join(current))
+        return chunks if chunks else [text]
+
+    def _score_chunk(self, text: str, cognitive_memory: List[float]) -> Tuple[List[WordResult], List[str], List[str]]:
+        """執行 spaCy + GPT/BERT 推理 + 啟發式評分 + 連字號合併（per-chunk）。
+        回傳 (results, words, pos_tags)。不做 domain 偵測、ridge、threshold、ADJ gate、boost；
+        這些由 _finalize_load_levels 在 document 層級統一處理。"""
+        # 1. 語言學預處理
         if self.lang == 'zh':
             pairs = list(pseg.cut(text))
             words, pos_tags = [p.word for p in pairs], [p.flag for p in pairs]
-            # 中文簡化樹深模型
             dep_loads, tree_depths, last_v = [], [], -1
             for idx, pos in enumerate(pos_tags):
                 dist = (idx - last_v) if last_v != -1 else 5
                 dep_loads.append(min(dist * 0.1, 1.0))
-                tree_depths.append(1 if pos.startswith('v') else 2) # 簡化假設
+                tree_depths.append(1 if pos.startswith('v') else 2)
                 if pos and pos.startswith('v'): last_v = idx
         else:
             doc = self.nlp(text) if self.nlp else None
@@ -351,7 +388,6 @@ class CognitiveLoadPipeline:
                     else min(abs(t.i - t.head.i) * 0.15, 1.0)
                     for t in doc
                 ]
-                # SOTA: 計算語法樹深度
                 def get_depth(token):
                     d = 0
                     while token.head != token:
@@ -369,99 +405,109 @@ class CognitiveLoadPipeline:
         metrics = self.calculator.compute(words)
         surprisals, entropies, attentions = metrics["surprisals"], metrics["entropies"], metrics["attentions"]
 
-        # 3. SOTA 複合認知計分引擎
-        results = []
+        # 3. 啟發式計分
+        results: List[WordResult] = []
         mem_n1, mem_n2 = cognitive_memory
-        
         max_surp = max([min(s, 15.0) for s in surprisals] + [5.0])
         max_ent = max(entropies + [1.0])
-        
+
         for i, (word, surp, ent, attn, pos, dl, td) in enumerate(zip(words, surprisals, entropies, attentions, pos_tags, dep_loads, tree_depths)):
-            if not re.search(r'[\u4e00-\u9fff\d\w]', word):
+            if not re.search(r'[一-鿿\d\w]', word):
                 results.append(WordResult(word, pos, i, 0, 0, 0, 0, len(word), 0, "low", 0.0))
                 continue
-
-            # English mode: skip tokens containing Chinese characters (PDF contamination)
-            if self.lang == 'en' and re.search(r'[\u4e00-\u9fff\uff00-\uffef]', word):
+            # English mode: skip tokens containing Chinese chars (PDF contamination)
+            if self.lang == 'en' and re.search(r'[一-鿿＀-￯]', word):
                 results.append(WordResult(word, pos, i, 0, 0, 0, 0, len(word), 0, "low", 0.0))
                 continue
-
-            # English mode: \u904e\u6ffe\u5168\u5927\u5beb\u7e2e\u5beb (AI, NLP, GPU \u7b49) \u907f\u514d\u8aa4\u5831
+            # English mode: filter all-caps short acronyms (AI, NLP, GPU)
             if self.lang == 'en' and word.isupper() and word.isalpha() and len(word) <= 5:
                 results.append(WordResult(word, pos, i, 0, 0, 0, 0, len(word), 0, "low", 0.0))
                 continue
-            
-            # A. 基礎分數
+
+            zipf_val = zipf_frequency(word, self.lang)
             s_score = min(surp, 15.0) / max_surp
             e_score = ent / max_ent
-            f_score = max(0, (7.0 - zipf_frequency(word, self.lang)) / 7.0)
+            f_score = max(0, (7.0 - zipf_val) / 7.0)
             p_score = self.POS_WEIGHTS.get(pos, 0.5)
-            a_score = self._aoa_score(word)  # AoA：跨 domain 穩定的難度指標
-
-            # B. Interaction: 罕見詞 × 高驚訝度 = 技術術語雙重壓力
+            a_score = self._aoa_score(word)
             interaction = s_score * f_score
 
-            # C. 動態權重分配（v5：加入 AoA，降低 surprisal 佔比以提升跨 domain 泛化）
-            # 特徵順序: [s_score, e_score, interaction, dl, td, a_score, f_score]
+            # v8: 動態權重分配（ADJ/ADV branch 降低 surprisal、提升 interaction 與 AoA）
             if pos in ['NOUN', 'VERB', 'PROPN', 'n', 'v']:
                 w = [0.22, 0.06, 0.18, 0.10, 0.10, 0.20, 0.14]
             else:
-                w = [0.37, 0.15, 0.05, 0.03, 0.03, 0.18, 0.19]
+                w = [0.25, 0.10, 0.15, 0.03, 0.03, 0.25, 0.19]
 
             raw_total = sum(wi * si for wi, si in zip(w, [s_score, e_score, interaction, dl, td, a_score, f_score]))
-            # p_score 作為乘數：實詞(1.0)保持不變，虛詞(0.1)大幅壓低，避免誤報
             base_total = p_score * raw_total
-            
-            # D. Multi-stage Spillover (溢出效應: N-1 佔 0.12, N-2 佔 0.05)
             final_score = base_total + (0.12 * mem_n1) + (0.05 * mem_n2)
             final_score = round(min(final_score, 1.0), 4)
-            
-            # 更新記憶窗口
             mem_n2 = mem_n1
             mem_n1 = final_score
-            
+
             results.append(WordResult(
                 word, pos, i, round(surp, 3), round(ent, 3), round(dl, 3),
-                round(zipf_frequency(word, self.lang), 2), len(word), round(p_score, 2), "low", final_score,
+                round(zipf_val, 2), len(word), round(p_score, 2), "low", final_score,
                 round(a_score, 3)
             ))
 
-        # Fix 1: 將 spaCy 切碎的連字號複合詞合併回原始單字 (英文專屬)
+        # 4. 合併連字號複合詞（英文專屬）
         if self.lang == 'en':
             results = self._reaggregate_hyphenated(results)
 
-        # v7: Domain-Adaptive Ridge（學術文本跳過 ridge，保持 v5 手動權重；小說/通用文本套用 ridge）
-        active_domain = "general"
-        if self.lang == 'en' and self._ridge:
-            active_domain = self._detect_domain(words, pos_tags) if domain == "auto" else domain
-            if active_domain != "academic":
-                self._apply_ridge(results)
+        return results, words, pos_tags
 
-        # 4. 混合門檻判定 (Hybrid Thresholding)
-        # 只對非零分詞計算（虛詞/標點已被 p_score 壓到接近 0，排除以免拉低百分位）
+    def _finalize_load_levels(self, results: List[WordResult]) -> None:
+        """文件級 threshold + ADJ 精確率關卡 + 搭配詞 boost（in-place 修改 results）。
+        從 run() 與 process_file() 統一呼叫，確保兩條路徑的 high/medium/low 判定一致。"""
         scores = [r.load_score for r in results if r.load_score > 0.01]
+        threshold = 0.18  # 預設
         if scores:
-            # 70th percentile (top 30%) 提升召回率；縮寫過濾已保護精確率
             rel_thresh = np.percentile(scores, 70)
-            # 保留最低底線，防止全文都是簡單詞時過度標記
             floor = 0.18 if self.lang == 'en' else 0.30
             threshold = max(rel_thresh, floor)
-
             for r in results:
-                if r.load_score >= threshold: r.load_level = "high"
-                elif r.load_score >= threshold * 0.65: r.load_level = "medium"
+                if r.load_score >= threshold:
+                    r.load_level = "high"
+                elif r.load_score >= threshold * 0.65:
+                    r.load_level = "medium"
+                else:
+                    r.load_level = "low"
 
-        # Fix 2: 搭配詞等級 boost（在門檻計算完成後才套用，不影響 percentile 分布）
-        # 前詞為 high 實詞，後詞為 medium/low 實詞，且後詞 zipf<=5.0（排除 research 等常用詞）
         if self.lang == 'en':
+            # v8: ADJ 精確率關卡：高 zipf + AoA 中等以下的形容詞從 high 降回 medium
+            for r in results:
+                if (r.load_level == 'high'
+                        and r.pos == 'ADJ'
+                        and r.zipf_score > 4.5
+                        and r.aoa_score < 0.80):
+                    r.load_level = 'medium'
+            # v8: 搭配詞 boost（ADJ 關卡後執行；加上近接條件防止連帶誤拉）
             for i in range(1, len(results)):
                 prev, curr = results[i - 1], results[i]
                 if (prev.load_level == 'high'
                         and curr.load_level != 'high'
                         and prev.pos_score >= 0.8 and curr.pos_score >= 0.8
                         and curr.zipf_score <= 5.0
-                        and prev.load_score > curr.load_score * 1.30):
+                        and prev.load_score > curr.load_score * 1.30
+                        and curr.load_score >= threshold * 0.82):
                     curr.load_level = 'high'
+
+    def run(self, text: str, cognitive_memory: List[float] = None, domain: str = "auto") -> dict:
+        """單次推理：適用於單一句子或短段落。長文件請改用 process_file（自動分塊）。"""
+        start_time = time.time()
+        if cognitive_memory is None:
+            cognitive_memory = [0.0, 0.0]
+
+        results, words, pos_tags = self._score_chunk(text, cognitive_memory)
+
+        active_domain = "general"
+        if self.lang == 'en' and self._ridge:
+            active_domain = self._resolve_domain(words, pos_tags, domain)
+            if active_domain != "academic":
+                self._apply_ridge(results)
+
+        self._finalize_load_levels(results)
 
         process_time = time.time() - start_time
         return {
@@ -507,62 +553,52 @@ class CognitiveLoadPipeline:
         return merged
 
     def process_file(self, file_path: str, output_path: Optional[str] = None, domain: str = "auto"):
+        """v8: chunked scoring — 將長文件分塊跑 spaCy/GPT-2，但在 document 層級統一做
+        domain 偵測、ridge、threshold、ADJ gate、boost。比原本「逐句呼叫 run()」快很多，
+        且修正了原本逐句 boost/gate 被全文 threshold 重設覆蓋的 bug。"""
         text = DocumentLoader.load(file_path)
-        # 依語言選擇分句規則
-        if self.lang == 'zh':
-            sentences = [s for s in re.split(r'([。！？；\n])', text) if s.strip()]
-        else:
-            # 英文：在句末標點 + 空白 + 大寫字母前切割，保留縮寫（Dr. / e.g. 等不被誤切）
-            raw = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
-            # 再依換行進一步切割過長段落
-            sentences = []
-            for seg in raw:
-                lines = [l.strip() for l in seg.split('\n') if l.strip()]
-                sentences.extend(lines if lines else [seg])
-        all_analysis = []
-        # Fix: 維護正確的 [N-1, N-2] 滑動視窗，原本傳 float 會導致 run() unpack crash
+        chunks = self._chunk_text(text, max_words=400)
+
+        print(f"[任務] 開始分析檔案: {os.path.basename(file_path)}  ({len(chunks)} 區塊)")
+
+        all_results: List[WordResult] = []
+        all_words: List[str] = []
+        all_pos: List[str] = []
         mem_window = [0.0, 0.0]
 
-        print(f"[任務] 開始分析檔案: {os.path.basename(file_path)}")
+        for idx, chunk in enumerate(chunks):
+            chunk_results, chunk_words, chunk_pos = self._score_chunk(chunk, mem_window)
+            all_results.extend(chunk_results)
+            all_words.extend(chunk_words)
+            all_pos.extend(chunk_pos)
+            if chunk_results:
+                mem_window = [chunk_results[-1].load_score, mem_window[0]]
+            if (idx + 1) % 5 == 0 or idx + 1 == len(chunks):
+                print(f"[進度] 已完成 {idx + 1}/{len(chunks)} 區塊...")
 
-        for idx, s in enumerate(sentences):
-            if not s.strip(): continue
+        # 文件級 domain + ridge
+        active_domain = "general"
+        if self.lang == 'en' and self._ridge:
+            active_domain = self._resolve_domain(all_words, all_pos, domain)
+            if active_domain != "academic":
+                self._apply_ridge(all_results)
 
-            res_dict = self.run(s, cognitive_memory=mem_window, domain=domain)
-            all_analysis.extend(res_dict['word_analysis'])
-
-            # 傳遞最後一個詞的負荷作為下一句的動量起點
-            if res_dict['word_analysis']:
-                last_score = res_dict['word_analysis'][-1]['load_score']
-                mem_window = [last_score, mem_window[0]]
-
-            if (idx + 1) % 5 == 0:
-                print(f"[進度] 已完成 {idx + 1} 個區段...")
-
-        # 全文統一門檻：逐句各自算門檻會導致短句中次高分詞被高分詞壓制（如 examined 在 detective 句）
-        all_scores = [w['load_score'] for w in all_analysis if w['load_score'] > 0.01]
-        if all_scores:
-            global_thresh = max(np.percentile(all_scores, 70), 0.18 if self.lang == 'en' else 0.30)
-            for w in all_analysis:
-                if w['load_score'] >= global_thresh:
-                    w['load_level'] = 'high'
-                elif w['load_score'] >= global_thresh * 0.65:
-                    w['load_level'] = 'medium'
-                else:
-                    w['load_level'] = 'low'
+        # 文件級 threshold + ADJ gate + boost（與 run() 共用，行為一致）
+        self._finalize_load_levels(all_results)
 
         final_result = {
             "model": self.model_type,
             "lang": self.lang,
-            "high_load_words": [w['word'] for w in all_analysis if w['load_level'] == 'high'],
-            "word_analysis": all_analysis
+            "domain": active_domain,
+            "high_load_words": [r.word for r in all_results if r.load_level == 'high'],
+            "word_analysis": [asdict(r) for r in all_results]
         }
-        
+
         if output_path:
             with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(final_result, f, ensure_ascii=False, indent=2)
             print(f"[完成] 結果已存儲至: {output_path}")
-            
+
         return final_result
 
 if __name__ == "__main__":
