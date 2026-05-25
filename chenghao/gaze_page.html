@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UniGaze Personalization Collector</title>
+  <link rel="stylesheet" href="/gaze_static/styles.css">
+</head>
+<body>
+  <main id="stage">
+    <div id="target" aria-hidden="true"></div>
+    <div id="gaze-cursor" class="hidden" aria-hidden="true"></div>
+    <canvas id="heatmap-overlay" class="hidden"></canvas>
+
+    <div id="gaze-coordinates" class="gaze-hud hidden">
+      <span class="hud-label">GAZE</span>
+      <span id="hudCoords" class="hud-value">X: 0 px | Y: 0 px</span>
+    </div>
+
+    <div id="testControls" class="test-controls hidden">
+      <select id="testModeSelect" class="dock-select">
+        <option value="before">最原始模型 (Frozen Base)</option>
+      </select>
+      <label class="checkbox-container">
+        <input id="toggleAntiShake" type="checkbox" checked>
+        <span class="chk-lbl">防抖</span>
+      </label>
+      <label class="checkbox-container">
+        <input id="toggleCorridorLock" type="checkbox">
+        <span class="chk-lbl">橫向鎖定</span>
+      </label>
+      <label class="checkbox-container">
+        <input id="toggleHeatmap" type="checkbox">
+        <span class="chk-lbl">熱區圖</span>
+      </label>
+    </div>
+
+    <section id="bottomDock" class="bottom-dock" aria-label="eye tracking controls">
+      <div class="dock-left">
+        <div class="video-circle">
+          <video id="video" autoplay muted playsinline></video>
+        </div>
+        <div class="dock-status">
+          <div class="status-top">
+            <span id="health" class="health-dot"></span>
+            <span class="session-lbl"><strong>Session</strong></span>
+          </div>
+          <div id="session" class="session-lbl">連線檢查中</div>
+          <div class="status-bottom">
+            <span id="phase">待命</span>
+            <span class="divider">/</span>
+            <span id="progress">0 / 0</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="dock-center">
+        <button id="calibration" type="button" disabled>資料收集</button>
+        <button id="train" class="btn-inactive" type="button" disabled>訓練模型</button>
+        <button id="test" class="btn-inactive" type="button" disabled>測試模型</button>
+      </div>
+
+      <div class="dock-right">
+        <button id="toggle-settings" class="dock-icon-btn" type="button" title="模型中心">M</button>
+        <button id="toggle-logs" class="dock-icon-btn" type="button" title="顯示紀錄">L</button>
+        <a class="dock-icon-btn" href="/" title="返回文件工具">←</a>
+        <div id="logsTray" class="dock-tray hidden">
+          <h3>Logs</h3>
+          <pre id="log"></pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <canvas id="capture" hidden></canvas>
+
+  <div id="collectModal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>資料收集設定</h3>
+        <button id="closeCollect" class="modal-close" type="button" aria-label="close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label for="participantName">受試者 ID</label>
+          <input id="participantName" value="anonymous" autocomplete="off">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="repeatCount">重複次數</label>
+            <input id="repeatCount" type="number" min="1" max="8" value="2">
+          </div>
+          <div class="field">
+            <label for="delayTime">每點等待時間</label>
+            <input id="delayTime" type="number" min="300" max="5000" step="100" value="900">
+          </div>
+        </div>
+        <div class="field">
+          <label for="collectMode">收集模式</label>
+          <select id="collectMode" class="tray-select">
+            <option value="standard">13 點標準校正</option>
+            <option value="four_corners">四角快速校正</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnCancelCollect" class="btn-secondary" type="button">取消</button>
+        <button id="btnStartCollect" class="btn-primary" type="button">開始收集</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="trainModal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>訓練模型</h3>
+        <button id="closeTrain" class="modal-close" type="button" aria-label="close">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-sub">選擇剛收集的資料集，建立個人化 gaze calibration 模型。</p>
+        <div class="field">
+          <label for="selectDataset">資料集</label>
+          <select id="selectDataset" class="tray-select"></select>
+        </div>
+        <div class="field">
+          <label for="selectBaseModel">基礎模型</label>
+          <select id="selectBaseModel" class="tray-select"></select>
+        </div>
+        <div class="field">
+          <label for="outputModelName">輸出模型名稱</label>
+          <input id="outputModelName" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnCancelTrain" class="btn-secondary" type="button">取消</button>
+        <button id="btnStartTrain" class="btn-primary" type="button">開始訓練</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modelsModal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>模型中心</h3>
+        <button id="closeModels" class="modal-close" type="button" aria-label="close">×</button>
+      </div>
+      <div class="modal-body">
+        <div id="modelsList" class="models-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnCloseModels" class="btn-secondary" type="button">關閉</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/gaze_static/app.js"></script>
+  <script>
+    runPredictionLoop = async function () {
+      while (state.testing) {
+        try {
+          const response = await fetch("/api/predict", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              image_data: captureFrame(),
+              model_name: els.testModeSelect.value,
+              viewport_width: window.innerWidth,
+              viewport_height: window.innerHeight
+            })
+          });
+          const data = await response.json();
+          if (data.ok) {
+            const xy = data.screen_xy_px || [
+              ((data.screen_xy_norm[0] + 1) * 0.5) * window.innerWidth,
+              ((data.screen_xy_norm[1] + 1) * 0.5) * window.innerHeight
+            ];
+            let finalX = xy[0];
+            let finalY = xy[1];
+            if (els.toggleAntiShake.checked) {
+              const nowTs = performance.now();
+              finalX = filterX.filter(finalX, nowTs);
+              finalY = filterY.filter(finalY, nowTs);
+            }
+            els.gazeCursor.style.left = `${finalX}px`;
+            els.gazeCursor.style.top = `${finalY}px`;
+            els.hudCoords.textContent = `X: ${Math.round(finalX)} px | Y: ${Math.round(finalY)} px`;
+            if (els.toggleHeatmap.checked) {
+              gazePoints.push({ x: finalX, y: finalY, t: Date.now() });
+              drawHeatmap();
+            }
+          } else {
+            log(`Prediction failed: ${data.error}`);
+          }
+        } catch (error) {
+          log(`Prediction error: ${error.message}`);
+        }
+        await sleep(120);
+      }
+    };
+  </script>
+</body>
+</html>
