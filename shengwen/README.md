@@ -31,40 +31,23 @@ The adapter is intentionally tiny (162 trainable parameters) to avoid overfittin
 
 Follow these steps to set up the environment and install dependencies:
 
-### 1. Verify Python Version
-Before installing, check your system's Python version:
-```powershell
-python --version
-```
-If your version is lower than `3.10` (e.g., Python 3.9), please download and install **Python 3.10 or 3.11** from the [official Python website](https://www.python.org/downloads/) or the Microsoft Store.
-
-### 2. Create and Set Up the Virtual Environment
+### 1. Create and Set Up the Virtual Environment
 
 Create the virtual environment using Python 3.10+:
 ```powershell
-# If your default 'python' command is already Python 3.10 or 3.11:
-python -m venv .venv
-
-# OR, if you installed multiple versions and have the Python launcher (py) installed:
-py -3.10 -m venv .venv
-# or
-py -3.11 -m venv .venv
+conda create -n lexigaze python=3.11
+conda activate lexigaze
 ```
 
-### 3. Upgrade Pip & Install Dependencies
+### 2. Upgrade Pip & Install Dependencies
 
 To avoid errors caused by outdated `pip` versions, upgrade `pip`, `setuptools`, and `wheel` inside the virtual environment first, then install the package:
 ```powershell
-# Upgrade pip and key packaging utilities
-.venv\Scripts\python.exe -m pip install --upgrade pip setuptools wheel
-
-# Install the project in editable mode with all dependencies
-.venv\Scripts\python.exe -m pip install -e .
+pip install -e .
 ```
 
 ## Quick Start
 
 ```powershell
-.venv\Scripts\activate
 python -m src.unigaze_personalization.server
 ```
