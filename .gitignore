@@ -33,3 +33,6 @@ hub/
 
 # models
 models/
+
+# local gaze data
+gaze_data/
