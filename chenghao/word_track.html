@@ -155,6 +155,13 @@
 
     input[type="range"] { accent-color: var(--primary); flex: 1; cursor: pointer; }
 
+    select {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 5px; color: var(--text);
+      padding: .35rem .5rem; font-size: .82rem; width: 100%;
+    }
+    select:focus { outline: 1px solid var(--primary); }
+
     /* Buttons */
     .btn {
       border: none; border-radius: var(--radius); cursor: pointer;
@@ -171,6 +178,11 @@
     .btn-success:hover:not(:disabled),
     .btn-info:hover:not(:disabled)    { opacity: .85; }
     .btn-row { display: flex; gap: .5rem; }
+
+    .gaze-status {
+      font-size: .72rem; color: var(--text-muted);
+      line-height: 1.55; min-height: 2.2rem;
+    }
 
     /* Toggle switch button */
     .toggle-btn {
@@ -444,6 +456,57 @@
 
     <hr class="divider">
 
+    <!-- ══ GAZE SECTION ══ -->
+    <div>
+      <div class="section-label">眼動追蹤</div>
+      <div class="opts">
+        <button class="btn btn-primary" id="openGazePageBtn" type="button">前往眼動訓練</button>
+
+        <div>
+          <label style="font-size:.8rem;color:var(--text-muted);display:block;margin-bottom:.3rem">推論模型</label>
+          <select id="gazeModelSelect">
+            <option value="before">原始模型 / before</option>
+          </select>
+        </div>
+
+        <button class="toggle-btn" id="gazeToggle" type="button">
+          <div class="sw-track"></div>
+          <span id="gazeToggleLabel">啟用眼動推論（關閉）</span>
+        </button>
+
+        <div class="opt-row" style="flex-direction:column;align-items:flex-start;gap:.35rem">
+          <label>防抖動方法</label>
+          <select id="gazeDebounceMode">
+            <option value="none">無</option>
+            <option value="one-euro">OneEuro 平滑</option>
+            <option value="corridor">水平廊道鎖定</option>
+            <option value="one-euro-corridor">OneEuro + 廊道</option>
+            <option value="dwell">停留確認</option>
+          </select>
+        </div>
+
+        <div class="opt-row">
+          <label style="flex-shrink:0">平滑強度</label>
+          <input type="range" id="gazeSmoothSlider" min="0" max="100" value="45">
+          <span id="gazeSmoothValue" style="font-size:.72rem;color:var(--text-muted);width:34px;text-align:right">45</span>
+        </div>
+
+        <div class="opt-row">
+          <label>廊道高度</label>
+          <input type="number" id="gazeCorridorInput" value="35" min="8" max="120" step="1">
+        </div>
+
+        <div class="opt-row">
+          <label>停留時間</label>
+          <input type="number" id="gazeDwellInput" value="180" min="60" max="800" step="20">
+        </div>
+
+        <div class="gaze-status" id="gazeStatus">尚未啟用</div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
     <!-- ══ HISTORY SECTION ══ -->
     <div>
       <div class="section-label" style="display:flex;justify-content:space-between;align-items:center">
@@ -475,6 +538,12 @@
         <span id="overlayLabel">顯示座標框（關閉）</span>
       </button>
 
+      <!-- Gaze mapping toggle -->
+      <button class="toggle-btn" id="gazeMappingToggle">
+        <div class="sw-track"></div>
+        <span id="gazeMappingLabel">啟用 Gaze Mapping（關閉）</span>
+      </button>
+      
       <!-- Opacity -->
       <div class="opt-row">
         <label style="flex-shrink:0">框線透明度</label>
@@ -1529,5 +1598,6 @@ loadHistory();
 
 </script>
 <script src="mapping.js"></script>
+<script src="gaze_integration.js"></script>
 </body>
 </html>

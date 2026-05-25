@@ -1,10 +1,28 @@
 console.log("mapping.js loaded");
+let gazeMappingOn = false;
+const gazeMappingToggle = document.getElementById("gazeMappingToggle");
+const gazeMappingLabel = document.getElementById("gazeMappingLabel");
+
+gazeMappingToggle.addEventListener("click", () => {
+  gazeMappingOn = !gazeMappingOn;
+
+  gazeMappingToggle.classList.toggle("active", gazeMappingOn);
+  gazeMappingLabel.textContent = gazeMappingOn
+    ? "啟用 Gaze Mapping（開啟）"
+    : "啟用 Gaze Mapping（關閉）";
+
+  if (!gazeMappingOn) {
+    clearAllGazeHighlights();
+  }
+});
 
 document.addEventListener("mousemove", (e) => {
-    processGazeOnExtractedData(e.clientX, e.clientY);
+  processGazeOnExtractedData(e.clientX, e.clientY);
 });
 
 function processGazeOnExtractedData(gazeX, gazeY) {
+  if (!gazeMappingOn) return;
+
   const match = findNearestExtractedWord(gazeX, gazeY);
 
   console.log(match);
@@ -135,13 +153,6 @@ function highlightExtractedWord(match) {
   const { overlayCanvas, items } = pageData;
 
   overlayCanvas.style.display = "block";
-
-  function clearAllGazeHighlights() {
-  pageOverlayMap.forEach(({ overlayCanvas }) => {
-    const ctx = overlayCanvas.getContext("2d");
-    ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-  });
-}
   const ctx =
     overlayCanvas.getContext("2d");
 
@@ -181,4 +192,6 @@ function highlightExtractedWord(match) {
     match.item.text
   );
 }
+
+window.processGazeOnExtractedData = processGazeOnExtractedData;
 

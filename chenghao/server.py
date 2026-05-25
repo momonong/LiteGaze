@@ -6,16 +6,23 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
 
+from gaze_routes import gaze_bp
+
 ROOT     = Path(__file__).parent
 DATA_DIR = ROOT / 'data'
 DATA_DIR.mkdir(exist_ok=True)
 
 app = Flask(__name__, static_folder=None)
+app.register_blueprint(gaze_bp)
 
 # ── Static files ──────────────────────────────────────────────────────────────
 @app.route('/')
 def index():
     return send_from_directory(ROOT, 'word_track.html')
+
+@app.route('/gaze')
+def gaze_page():
+    return send_from_directory(ROOT, 'gaze_page.html')
 
 @app.route('/<path:filename>')
 def static_file(filename):
