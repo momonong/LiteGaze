@@ -1,0 +1,16 @@
+2026-05-04 14:57:39,387 [INFO] LexiGaze NeurIPS full pipeline 啟動 (seed=42)
+2026-05-04 14:57:39,388 [WARNING] 偵測到受試者人數為 2，預期為 37。請確認資料是否已完整匯出。
+2026-05-04 14:57:39,389 [INFO] 已完成受試者 (checkpoint): 0 / 2
+2026-05-04 14:57:40,043 [INFO] 完成受試者 L1|pp01 (lang=L1, trials_ok=1)
+2026-05-04 14:57:41,276 [INFO] 完成受試者 L2|pp01 (lang=L2, trials_ok=1)
+2026-05-04 14:57:41,286 [INFO] 已寫入最終結果: D:\projects\lexigaze\data\geco\benchmark\neurips_final_ablation_N37.csv
+2026-05-04 15:38:13,824 [INFO] LexiGaze NeurIPS full pipeline 啟動 (seed=42)
+2026-05-04 15:38:13,824 [WARNING] 偵測到受試者人數為 2，預期為 37。請確認資料是否已完整匯出。
+2026-05-04 15:38:13,825 [INFO] 已完成受試者 (checkpoint): 0 / 2
+2026-05-04 15:38:14,477 [INFO] 完成受試者 L1|pp01 (lang=L1, trials_ok=1)
+2026-05-04 15:38:15,734 [INFO] 完成受試者 L2|pp01 (lang=L2, trials_ok=1)
+2026-05-04 15:38:15,750 [INFO] 已寫入最終結果: D:\projects\lexigaze\data\geco\benchmark\neurips_final_ablation_N37.csv
+2026-05-04 15:43:32,967 [INFO] LexiGaze NeurIPS full pipeline 啟動 (seed=42)
+2026-05-04 15:43:32,968 [WARNING] 偵測到受試者人數為 2，預期為 37。請確認資料是否已完整匯出。
+2026-05-04 15:43:32,970 [INFO] 已完成受試者 (checkpoint): 2 / 2
+2026-05-04 15:43:32,980 [INFO] 已寫入最終結果: D:\projects\lexigaze\data\geco\benchmark\neurips_final_ablation_N37.csv

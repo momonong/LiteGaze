@@ -30,3 +30,6 @@ uv.lock
 
 # huggingface cache
 hub/
+
+# models
+models/
