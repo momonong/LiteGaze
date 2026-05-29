@@ -7,6 +7,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
 
+from cognitive_routes import cognitive_bp
 from gaze_routes import gaze_api_bp, gaze_bp
 
 ROOT     = Path(__file__).parent
@@ -16,8 +17,10 @@ DATA_DIR.mkdir(exist_ok=True)
 mimetypes.add_type('text/javascript', '.js')
 
 app = Flask(__name__, static_folder=None)
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB 上傳上限（PDF 分析用）
 app.register_blueprint(gaze_bp)
 app.register_blueprint(gaze_api_bp)
+app.register_blueprint(cognitive_bp)
 
 # ── Static files ──────────────────────────────────────────────────────────────
 @app.route('/')
@@ -107,6 +110,7 @@ if __name__ == '__main__':
     print(f'  網址  : {url}')
     print(f'  資料  : {DATA_DIR}')
     print(f'  API   : http://localhost:8080/api/sessions')
+    print(f'  認知負荷 : http://localhost:8080/api/cognitive/health')
     print(f'  停止  : Ctrl + C')
     print('=' * 48)
     webbrowser.open(url)

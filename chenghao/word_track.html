@@ -354,6 +354,45 @@
     .hist-card .hbtns .btn-sm { padding: .2rem .5rem; font-size: .72rem; }
     .btn-del { color: var(--danger) !important; }
 
+    /* ── Cognitive Load Section ── */
+    .cognitive-section { display: none; flex-direction: column; gap: .65rem; }
+    .cognitive-section.visible { display: flex; }
+
+    .cog-row { display: flex; gap: .4rem; align-items: center; }
+    .cog-row select { flex: 1; }
+
+    .cog-stats {
+      display: none; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: .55rem .75rem; font-size: .78rem;
+    }
+    .cog-stats.visible { display: block; }
+    .cog-stats .stat-row { padding: .2rem 0; }
+    .cog-stats .stat-val.cog-high  { color: var(--danger); }
+    .cog-stats .stat-val.cog-med   { color: var(--warn); }
+
+    .cog-list {
+      max-height: 160px; overflow-y: auto;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: .5rem;
+      display: none; flex-wrap: wrap; gap: .3rem;
+    }
+    .cog-list.visible { display: flex; }
+    .cog-chip {
+      background: rgba(224, 85, 85, .15);
+      color: #ffb4b4;
+      border: 1px solid rgba(224, 85, 85, .35);
+      border-radius: 4px;
+      padding: .15rem .45rem;
+      font-size: .72rem;
+      font-family: Consolas, monospace;
+      cursor: default;
+    }
+    .cog-empty {
+      font-size: .73rem; color: var(--text-muted);
+      padding: .3rem 0; text-align: center;
+    }
+
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -565,6 +604,8 @@
         <div class="chip"><div class="chip-dot" style="background:#4f7ef7"></div>一般</div>
         <div class="chip"><div class="chip-dot" style="background:#f5a623"></div>搜尋符合</div>
         <div class="chip"><div class="chip-dot" style="background:#3dba6e"></div>懸停</div>
+        <div class="chip"><div class="chip-dot" style="background:#e05555"></div>高負荷</div>
+        <div class="chip"><div class="chip-dot" style="background:#f5a623;opacity:.7"></div>中負荷</div>
       </div>
 
       <!-- External JSON load -->
@@ -583,6 +624,64 @@
       <div>
         <div class="section-label">懸停項目詳情</div>
         <div class="hover-info" id="hoverInfo">（開啟座標框後，移動滑鼠至頁面上方以顯示詳情）</div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- ══ COGNITIVE LOAD SECTION ══ -->
+    <div class="cognitive-section" id="cognitiveSection">
+      <div class="section-label">🧠 認知負荷分析</div>
+
+      <div class="cog-row">
+        <label style="font-size:.78rem;color:var(--text-muted);flex-shrink:0">語言</label>
+        <select id="cogLangSelect">
+          <option value="auto">自動</option>
+          <option value="en">英文 (GPT-2)</option>
+          <option value="zh">中文 (BERT)</option>
+        </select>
+      </div>
+
+      <div class="cog-row">
+        <label style="font-size:.78rem;color:var(--text-muted);flex-shrink:0">領域</label>
+        <select id="cogDomainSelect">
+          <option value="auto">自動偵測</option>
+          <option value="academic">學術文本</option>
+          <option value="general">一般文本</option>
+        </select>
+      </div>
+
+      <button class="btn btn-primary" id="cogAnalyzeBtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M12 2v20M2 12h20"/>
+        </svg>
+        開始分析認知負荷
+      </button>
+
+      <div class="progress-block" id="cogProgressBlock">
+        <div class="progress-bg"><div class="progress-fill" id="cogProgressFill"></div></div>
+        <div class="progress-txt" id="cogProgressTxt">分析中…</div>
+      </div>
+
+      <div class="cog-stats" id="cogStats">
+        <div class="stat-row"><span>模型 / 語言</span><span class="stat-val" id="cogModel">—</span></div>
+        <div class="stat-row"><span>領域</span><span class="stat-val" id="cogDomain">—</span></div>
+        <div class="stat-row"><span>總詞數</span><span class="stat-val" id="cogTotal">—</span></div>
+        <div class="stat-row"><span>高負荷詞</span><span class="stat-val cog-high" id="cogHighCount">—</span></div>
+        <div class="stat-row"><span>中負荷詞</span><span class="stat-val cog-med" id="cogMedCount">—</span></div>
+      </div>
+
+      <button class="toggle-btn" id="cogOverlayToggle">
+        <div class="sw-track"></div>
+        <span id="cogOverlayLabel">在文件上標示負荷（關閉）</span>
+      </button>
+
+      <div>
+        <label style="font-size:.78rem;color:var(--text-muted);display:block;margin-bottom:.3rem">
+          高負荷詞列表
+        </label>
+        <div class="cog-list" id="cogList"></div>
+        <div class="cog-empty" id="cogEmpty">尚未執行分析</div>
       </div>
     </div>
 
@@ -625,6 +724,9 @@ let currentFile     = null;
 let currentFileType = 'pdf';   // 'pdf' | 'html' | 'txt' | 'docx'
 let extractedData   = [];
 let overlayOn       = false;
+let cognitiveOn     = false;   // 是否在 overlay 中以認知負荷顏色標示
+let cognitiveResult = null;    // 後端回傳的完整分析結果
+const cogScoreMap   = new Map(); // text(小寫) → { score, level }
 
 // Map<pageNum, { overlayCanvas: HTMLCanvasElement, items: Array }>
 const pageOverlayMap = new Map();
@@ -664,6 +766,24 @@ const historyList       = document.getElementById('historyList');
 const historyCount      = document.getElementById('historyCount');
 const refreshHistoryBtn = document.getElementById('refreshHistoryBtn');
 const backendDot        = document.getElementById('backendDot');
+// cognitive load
+const cognitiveSection  = document.getElementById('cognitiveSection');
+const cogLangSelect     = document.getElementById('cogLangSelect');
+const cogDomainSelect   = document.getElementById('cogDomainSelect');
+const cogAnalyzeBtn     = document.getElementById('cogAnalyzeBtn');
+const cogProgressBlock  = document.getElementById('cogProgressBlock');
+const cogProgressFill   = document.getElementById('cogProgressFill');
+const cogProgressTxt    = document.getElementById('cogProgressTxt');
+const cogStats          = document.getElementById('cogStats');
+const cogModel          = document.getElementById('cogModel');
+const cogDomain         = document.getElementById('cogDomain');
+const cogTotal          = document.getElementById('cogTotal');
+const cogHighCount      = document.getElementById('cogHighCount');
+const cogMedCount       = document.getElementById('cogMedCount');
+const cogOverlayToggle  = document.getElementById('cogOverlayToggle');
+const cogOverlayLabel   = document.getElementById('cogOverlayLabel');
+const cogList           = document.getElementById('cogList');
+const cogEmpty          = document.getElementById('cogEmpty');
 
 // ── Logging ───────────────────────────────────────────────────────────────────
 function log(msg, cls = '') {
@@ -728,6 +848,7 @@ function loadFile(file) {
   exportJson.disabled = exportCsv.disabled = true;
   statsCard.classList.remove('visible');
   verifySection.classList.remove('visible');
+  resetCognitive();
   pageOverlayMap.clear();
   // Show/hide PDF-only scale option
   document.getElementById('scaleRow').style.display = currentFileType === 'pdf' ? '' : 'none';
@@ -756,6 +877,7 @@ parseBtn.addEventListener('click', async () => {
   progressBlock.classList.add('visible');
   statsCard.classList.remove('visible');
   verifySection.classList.remove('visible');
+  resetCognitive();
   [...previewArea.children].forEach(c => { if (c.id !== 'emptyState') c.remove(); });
   emptyState.style.display = 'none';
   log(`── 開始解析 [${currentFileType.toUpperCase()}] (unit=${granularity}) ──`, 'hi');
@@ -775,6 +897,7 @@ parseBtn.addEventListener('click', async () => {
     statsCard.classList.add('visible');
     exportJson.disabled = exportCsv.disabled = saveBtn.disabled = false;
     verifySection.classList.add('visible');
+    cognitiveSection.classList.add('visible');
     log(`完成！共擷取 ${extractedData.length} 個項目`, 'ok');
   } catch (err) {
     log(`錯誤：${err.message}`, 'err');
@@ -1239,27 +1362,53 @@ function drawOverlay(overlayCanvas, items, search, alpha, hoverItem = null) {
   items.forEach(item => {
     const isHover = hoverItem && item.index === hoverItem.index;
     const isMatch = search && item.text.includes(search);
+    const cog     = cognitiveOn ? lookupCognitive(item.text) : null;
+
+    let fillStyle = null;
 
     if (isHover) {
       ctx.strokeStyle = `rgba(61,186,110,${alpha})`;
-      ctx.fillStyle   = 'rgba(61,186,110,0.18)';
+      fillStyle       = 'rgba(61,186,110,0.18)';
       ctx.lineWidth   = 2;
     } else if (isMatch) {
       ctx.strokeStyle = `rgba(245,166,35,${alpha})`;
-      ctx.fillStyle   = 'rgba(245,166,35,0.15)';
+      fillStyle       = 'rgba(245,166,35,0.15)';
       ctx.lineWidth   = 1.5;
+    } else if (cog && cog.level === 'high') {
+      // 高負荷：紅色填充 + 紅色框
+      ctx.strokeStyle = `rgba(224,85,85,${alpha})`;
+      fillStyle       = `rgba(224,85,85,${0.18 + 0.32 * cog.score})`;
+      ctx.lineWidth   = 1.5;
+    } else if (cog && cog.level === 'medium') {
+      // 中負荷：橙色淡填充
+      ctx.strokeStyle = `rgba(245,166,35,${alpha * 0.7})`;
+      fillStyle       = `rgba(245,166,35,${0.10 + 0.15 * cog.score})`;
+      ctx.lineWidth   = 1;
+    } else if (cognitiveOn) {
+      // 認知 overlay 開啟但此詞為 low：完全不畫，讓文件清爽
+      return;
     } else {
       ctx.strokeStyle = `rgba(79,126,247,${Math.min(alpha, 0.65)})`;
-      ctx.fillStyle   = null;
       ctx.lineWidth   = 1;
     }
 
     const lw = ctx.lineWidth;
     ctx.strokeRect(item.left + lw/2, item.top + lw/2, item.width - lw, item.height - lw);
-    if ((isHover || isMatch) && ctx.fillStyle) {
+    if (fillStyle) {
+      ctx.fillStyle = fillStyle;
       ctx.fillRect(item.left, item.top, item.width, item.height);
     }
   });
+}
+
+// 認知負荷查表：英文不分大小寫；中文比對原字
+function lookupCognitive(text) {
+  if (!text || !cogScoreMap.size) return null;
+  const key = text.toLowerCase();
+  if (cogScoreMap.has(key)) return cogScoreMap.get(key);
+  // 中文等不轉小寫
+  if (cogScoreMap.has(text)) return cogScoreMap.get(text);
+  return null;
 }
 
 function redrawAllOverlays(hoverPageNum = null, hoverItem = null) {
@@ -1335,10 +1484,16 @@ function onPageMouseMove(e, wrap, pageNum) {
   drawOverlay(overlayCanvas, items, search, alpha, best);
 
   if (best) {
+    const cog = lookupCognitive(best.text);
+    const cogLine = cog
+      ? `Load   : ${cog.level} (${cog.score.toFixed(3)})\n`
+      : '';
+
     hoverInfo.textContent =
       `Page   : ${best.page}\n` +
       `Index  : ${best.index}\n` +
       `Text   : "${best.text}"\n` +
+      cogLine +
       `Top    : ${best.top}\n` +
       `Left   : ${best.left}\n` +
       `Right  : ${best.right}\n` +
@@ -1346,11 +1501,15 @@ function onPageMouseMove(e, wrap, pageNum) {
       `Width  : ${best.width}\n` +
       `Height : ${best.height}`;
 
+    const cogTip = cog
+      ? `<br><span style="color:${cog.level==='high'?'#ff8a8a':'#ffd680'}">load ${cog.level} (${cog.score.toFixed(3)})</span>`
+      : '';
     vTooltip.innerHTML =
       `<b style="color:#4f7ef7">"${escHtml(best.text)}"</b><br>` +
       `Page ${best.page} · #${best.index}<br>` +
       `(${best.left.toFixed(1)}, ${best.top.toFixed(1)})  ` +
-      `${best.width.toFixed(1)} × ${best.height.toFixed(1)} px`;
+      `${best.width.toFixed(1)} × ${best.height.toFixed(1)} px` +
+      cogTip;
     vTooltip.style.display = 'block';
     vTooltip.style.left    = `${e.clientX + 14}px`;
     vTooltip.style.top     = `${e.clientY - 10}px`;
@@ -1458,6 +1617,174 @@ exportCsv.addEventListener('click', () => {
   triggerDownload('﻿' + [header, ...rows].join('\r\n'), 'pdf_coordinates.csv', 'text/csv;charset=utf-8');
   log(`匯出 CSV：${extractedData.length} 筆`, 'ok');
 });
+
+// ── Cognitive Load Analysis ──────────────────────────────────────────────────
+// 將 extractedData 重組為純文字後送 /api/cognitive/analyze/text，後端回傳
+// word_analysis 後以 text → {score, level} map 對應回前端的每個 token。
+//
+// 中文用 jieba 分詞會合併連續字（例如「量子糾纏」），而前端是 char/word 切分，
+// 直接 text-based 對應雖然不是 100% 精準（同字會共享 load_score），但對視覺化
+// 「哪些詞認知負荷高」已足夠實用。
+function resetCognitive() {
+  cognitiveOn = false;
+  cognitiveResult = null;
+  cogScoreMap.clear();
+  cognitiveSection.classList.remove('visible');
+  cogStats.classList.remove('visible');
+  cogList.classList.remove('visible');
+  cogList.innerHTML = '';
+  cogEmpty.style.display = 'block';
+  cogEmpty.textContent = '尚未執行分析';
+  cogProgressBlock.classList.remove('visible');
+  cogOverlayToggle.classList.remove('active');
+  cogOverlayLabel.textContent = '在文件上標示負荷（關閉）';
+}
+
+function detectLang(text) {
+  // 任何中日韓字元就視為中文
+  return /[\u4e00-\u9fff]/.test(text) ? 'zh' : 'en';
+}
+
+function reconstructText(items, lang) {
+  // 英文用空白連接；中文直接連接（jieba 自己分詞）
+  if (!items.length) return '';
+  const joiner = (lang === 'zh') ? '' : ' ';
+  return items.map(d => d.text).join(joiner);
+}
+
+cogAnalyzeBtn.addEventListener('click', async () => {
+  if (!extractedData.length) {
+    log('請先完成檔案解析', 'err');
+    return;
+  }
+
+  let lang = cogLangSelect.value;
+  const sampleText = extractedData.slice(0, 200).map(d => d.text).join('');
+  if (lang === 'auto') lang = detectLang(sampleText);
+  const domain = cogDomainSelect.value;
+
+  const text = reconstructText(extractedData, lang);
+  if (!text.trim()) {
+    log('擷取結果為空，無法分析', 'err');
+    return;
+  }
+
+  cogAnalyzeBtn.disabled = true;
+  cogProgressBlock.classList.add('visible');
+  cogProgressFill.style.width = '15%';
+  cogProgressTxt.textContent = `送出分析請求（lang=${lang}）…`;
+  log(`── 認知負荷分析 [lang=${lang}, domain=${domain}, ${text.length} chars] ──`, 'hi');
+
+  try {
+    const res = await fetch('/api/cognitive/analyze/text', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, lang, domain }),
+    });
+    cogProgressFill.style.width = '75%';
+    cogProgressTxt.textContent = '解析回應…';
+
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      throw new Error(errBody.error || `HTTP ${res.status}`);
+    }
+    const result = await res.json();
+    cognitiveResult = result;
+
+    // 建立 text → {score, level} map
+    cogScoreMap.clear();
+    (result.word_analysis || []).forEach(w => {
+      const key = (w.word || '').toLowerCase();
+      if (!key) return;
+      const prev = cogScoreMap.get(key);
+      // 若同字出現多次，取最高分數（保守做法）
+      if (!prev || w.load_score > prev.score) {
+        cogScoreMap.set(key, { score: w.load_score, level: w.load_level });
+      }
+    });
+
+    cogProgressFill.style.width = '100%';
+    cogProgressTxt.textContent = `完成 (${result.process_time_ms ?? '?'} ms)`;
+    renderCognitiveResult(result);
+    log(`認知負荷分析完成：${(result.high_load_words || []).length} 個高負荷詞`, 'ok');
+
+    // 自動開啟認知負荷 overlay
+    if (!cognitiveOn) toggleCognitiveOverlay(true);
+  } catch (err) {
+    log(`認知負荷分析失敗：${err.message}`, 'err');
+    cogProgressTxt.textContent = '分析失敗';
+  } finally {
+    cogAnalyzeBtn.disabled = false;
+    setTimeout(() => cogProgressBlock.classList.remove('visible'), 1500);
+  }
+});
+
+function renderCognitiveResult(result) {
+  const words = result.word_analysis || [];
+  const high = words.filter(w => w.load_level === 'high');
+  const medium = words.filter(w => w.load_level === 'medium');
+
+  cogModel.textContent      = `${result.model || '?'} / ${result.lang || '?'}`;
+  cogDomain.textContent     = result.domain || '—';
+  cogTotal.textContent      = words.length.toLocaleString();
+  cogHighCount.textContent  = high.length.toLocaleString();
+  cogMedCount.textContent   = medium.length.toLocaleString();
+  cogStats.classList.add('visible');
+
+  // 高負荷詞 chip 列表（去重，依分數降序）
+  const uniq = new Map();
+  high.forEach(w => {
+    const key = w.word.toLowerCase();
+    if (!uniq.has(key) || uniq.get(key).load_score < w.load_score) {
+      uniq.set(key, w);
+    }
+  });
+  const sorted = [...uniq.values()].sort((a, b) => b.load_score - a.load_score);
+
+  cogList.innerHTML = '';
+  if (!sorted.length) {
+    cogList.classList.remove('visible');
+    cogEmpty.style.display = 'block';
+    cogEmpty.textContent = '沒有偵測到高負荷詞';
+    return;
+  }
+  cogEmpty.style.display = 'none';
+  cogList.classList.add('visible');
+  sorted.forEach(w => {
+    const chip = document.createElement('span');
+    chip.className = 'cog-chip';
+    chip.textContent = `${w.word} · ${w.load_score.toFixed(2)}`;
+    chip.title = `pos=${w.pos}  surprisal=${w.surprisal}  zipf=${w.zipf_score}`;
+    cogList.appendChild(chip);
+  });
+}
+
+function toggleCognitiveOverlay(forceState) {
+  const next = (typeof forceState === 'boolean') ? forceState : !cognitiveOn;
+  cognitiveOn = next;
+  cogOverlayToggle.classList.toggle('active', cognitiveOn);
+  cogOverlayLabel.textContent = cognitiveOn
+    ? '在文件上標示負荷（開啟）'
+    : '在文件上標示負荷（關閉）';
+
+  if (cognitiveOn && !cogScoreMap.size) {
+    log('請先執行認知負荷分析', 'err');
+    cognitiveOn = false;
+    cogOverlayToggle.classList.remove('active');
+    cogOverlayLabel.textContent = '在文件上標示負荷（關閉）';
+    return;
+  }
+
+  // 認知 overlay 與座標框 overlay 共用 canvas；開啟認知時自動開啟 overlay。
+  if (cognitiveOn && !overlayOn) {
+    overlayToggle.click();   // 開啟座標框 overlay（內部會 redraw）
+  } else {
+    if (overlayOn) redrawAllOverlays();
+  }
+  log(`認知負荷標示：${cognitiveOn ? '開啟' : '關閉'}`);
+}
+
+cogOverlayToggle.addEventListener('click', () => toggleCognitiveOverlay());
 
 // ── Backend: Save ─────────────────────────────────────────────────────────────
 saveBtn.addEventListener('click', async () => {
