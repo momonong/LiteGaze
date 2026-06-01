@@ -57,6 +57,8 @@ class WordResult:
     load_level: str
     load_score: float
     aoa_score: float = 0.0  # Kuperman Age-of-Acquisition（標準化至 0-1）
+    is_entity: bool = False  # spaCy NER 標記（人名、地名、組織名等專有實體）
+    ent_type: str = ""       # NER 類型字串（PERSON / GPE / ORG / ...；空字串代表非實體）
 
 class DocumentLoader:
     @staticmethod
@@ -191,9 +193,13 @@ class LanguageModelCalculator:
             entropies[target_w_idx] = ent
 
     def _compute_gpt(self, words: List[str]) -> Dict[str, List[float]]:
-        # GPT 是自回歸模型，計算 Surprisal 本來就比 BERT 快 (只需一次傳遞)
+        # GPT-2 position embedding 上限 1024；超長時分段推理再合併
+        _MAX_TOKENS = 1000
         encoding = self.tokenizer(words, is_split_into_words=True, return_tensors="pt").to(self.device)
         input_ids = encoding["input_ids"]
+        if input_ids.shape[1] > _MAX_TOKENS:
+            return self._compute_gpt_chunked(words, _MAX_TOKENS)
+
         word_ids = encoding.word_ids()
 
         outputs = self.model(input_ids)
@@ -216,6 +222,31 @@ class LanguageModelCalculator:
 
         return {"surprisals": surprisals, "entropies": entropies, "attentions": [0.5] * len(words)}
 
+    def _compute_gpt_chunked(self, words: List[str], max_tokens: int) -> Dict[str, List[float]]:
+        """將過長詞列切成多段 GPT 推理，surprisal/entropy 加總回對應詞索引。"""
+        surprisals = [0.0] * len(words)
+        entropies = [0.0] * len(words)
+        start = 0
+        while start < len(words):
+            # 二分搜尋每段可塞進多少詞（token 數非線性，保守從 200 試起）
+            lo, hi = 1, min(len(words) - start, 350)
+            best = 1
+            while lo <= hi:
+                mid = (lo + hi) // 2
+                n_tok = self.tokenizer(words[start:start + mid], is_split_into_words=True)["input_ids"]
+                if len(n_tok) <= max_tokens:
+                    best = mid
+                    lo = mid + 1
+                else:
+                    hi = mid - 1
+            chunk_words = words[start:start + best]
+            sub = self._compute_gpt(chunk_words)
+            for i, (s, e) in enumerate(zip(sub["surprisals"], sub["entropies"])):
+                surprisals[start + i] += s
+                entropies[start + i] += e
+            start += best
+        return {"surprisals": surprisals, "entropies": entropies, "attentions": [0.5] * len(words)}
+
 class CognitiveLoadPipeline:
     # 根據語言學研究調整的詞性權重
     POS_WEIGHTS = {
@@ -228,6 +259,10 @@ class CognitiveLoadPipeline:
     _AOA_RANGE = 13.0
     _AOA_DEFAULT = 10.0  # OOV（技術術語、專有名詞）預設中高難度
 
+    # high_load_words 輸出的絕對分數下限（疊加在相對 percentile 門檻之上，
+    # 保留 _finalize_load_levels 的相對排名邏輯，僅在輸出前再過濾一次絕對值）
+    _HIGH_LOAD_SCORE_MIN = 0.7
+
     def __init__(self, model_type: str = 'bert', lang: str = 'zh'):
         self.lang = lang
         self.model_type = model_type
@@ -235,8 +270,9 @@ class CognitiveLoadPipeline:
         self.nlp = None
         if lang == 'en' and spacy:
             try:
-                # v8 速度優化：只保留 POS（tagger）與依賴解析（parser），停用未使用的 lemmatizer/ner
-                self.nlp = spacy.load("en_core_web_sm", disable=["lemmatizer", "ner"])
+                # 啟用 NER 以過濾人名/地名/組織等專有實體（避免被誤判為高認知負荷詞）
+                # 仍停用 lemmatizer（pipeline 用不到，省時）
+                self.nlp = spacy.load("en_core_web_sm", disable=["lemmatizer"])
             except:
                 print("[警告] 未找到 en_core_web_sm，改用基本分詞")
 
@@ -340,7 +376,8 @@ class CognitiveLoadPipeline:
             joiner = ""
             def size(s): return len(s)
         else:
-            raw = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
+            # 不依賴「句點後大寫」；小說 PDF 常有 "word. she" 等格式
+            raw = re.split(r'(?<=[.!?])\s+', text)
             sentences = []
             for seg in raw:
                 lines = [l.strip() for l in seg.split('\n') if l.strip()]
@@ -348,21 +385,31 @@ class CognitiveLoadPipeline:
             joiner = " "
             def size(s): return len(s.split())
 
+        def _split_by_word_count(segment: str, limit: int) -> List[str]:
+            """單段超過 limit 時硬切（避免整章塞進一個 GPT chunk）。"""
+            if self.lang == 'zh':
+                return [segment[i:i + limit] for i in range(0, len(segment), limit)] or [segment]
+            words = segment.split()
+            if len(words) <= limit:
+                return [segment]
+            return [' '.join(words[i:i + limit]) for i in range(0, len(words), limit)]
+
         chunks: List[str] = []
         current: List[str] = []
         current_count = 0
         for s in sentences:
-            sc = size(s)
-            if current_count + sc > max_words and current:
-                chunks.append(joiner.join(current))
-                current = [s]
-                current_count = sc
-            else:
-                current.append(s)
-                current_count += sc
+            for piece in _split_by_word_count(s, max_words):
+                sc = size(piece)
+                if current_count + sc > max_words and current:
+                    chunks.append(joiner.join(current))
+                    current = [piece]
+                    current_count = sc
+                else:
+                    current.append(piece)
+                    current_count += sc
         if current:
             chunks.append(joiner.join(current))
-        return chunks if chunks else [text]
+        return chunks if chunks else _split_by_word_count(text, max_words)
 
     def _score_chunk(self, text: str, cognitive_memory: List[float]) -> Tuple[List[WordResult], List[str], List[str]]:
         """執行 spaCy + GPT/BERT 推理 + 啟發式評分 + 連字號合併（per-chunk）。
@@ -372,6 +419,10 @@ class CognitiveLoadPipeline:
         if self.lang == 'zh':
             pairs = list(pseg.cut(text))
             words, pos_tags = [p.word for p in pairs], [p.flag for p in pairs]
+            # 中文使用 jieba，目前沒接 NER；用 jieba 詞性 'nr'（人名）/'ns'（地名）/'nt'（機構）
+            # 作為近似 NER 標記，避免人名/地名類似的高頻問題
+            _JIEBA_ENT_TAGS = {'nr', 'ns', 'nt', 'nrt', 'nrfg', 'nz'}
+            ent_types = [pos if pos in _JIEBA_ENT_TAGS else "" for pos in pos_tags]
             dep_loads, tree_depths, last_v = [], [], -1
             for idx, pos in enumerate(pos_tags):
                 dist = (idx - last_v) if last_v != -1 else 5
@@ -383,6 +434,8 @@ class CognitiveLoadPipeline:
             if doc:
                 words = [t.text for t in doc]
                 pos_tags = [t.pos_ for t in doc]
+                # NER：保留 spaCy 細分類字串，下游可用以決定要不要丟掉某類實體
+                ent_types = [t.ent_type_ for t in doc]
                 dep_loads = [
                     min(len(list(t.children)) * 0.15, 1.0) if t.dep_ == 'ROOT'
                     else min(abs(t.i - t.head.i) * 0.15, 1.0)
@@ -398,6 +451,7 @@ class CognitiveLoadPipeline:
             else:
                 words = re.findall(r"\w+(?:'\w+)?|[^\w\s]", text)
                 pos_tags = ["NOUN"] * len(words)
+                ent_types = [""] * len(words)
                 dep_loads = [0.1] * len(words)
                 tree_depths = [0.2] * len(words)
 
@@ -412,16 +466,18 @@ class CognitiveLoadPipeline:
         max_ent = max(entropies + [1.0])
 
         for i, (word, surp, ent, attn, pos, dl, td) in enumerate(zip(words, surprisals, entropies, attentions, pos_tags, dep_loads, tree_depths)):
+            ent_type = ent_types[i] if i < len(ent_types) else ""
+            is_entity = bool(ent_type)
             if not re.search(r'[一-鿿\d\w]', word):
-                results.append(WordResult(word, pos, i, 0, 0, 0, 0, len(word), 0, "low", 0.0))
+                results.append(WordResult(word, pos, i, 0, 0, 0, 0, len(word), 0, "low", 0.0, 0.0, is_entity, ent_type))
                 continue
             # English mode: skip tokens containing Chinese chars (PDF contamination)
             if self.lang == 'en' and re.search(r'[一-鿿＀-￯]', word):
-                results.append(WordResult(word, pos, i, 0, 0, 0, 0, len(word), 0, "low", 0.0))
+                results.append(WordResult(word, pos, i, 0, 0, 0, 0, len(word), 0, "low", 0.0, 0.0, is_entity, ent_type))
                 continue
             # English mode: filter all-caps short acronyms (AI, NLP, GPU)
             if self.lang == 'en' and word.isupper() and word.isalpha() and len(word) <= 5:
-                results.append(WordResult(word, pos, i, 0, 0, 0, 0, len(word), 0, "low", 0.0))
+                results.append(WordResult(word, pos, i, 0, 0, 0, 0, len(word), 0, "low", 0.0, 0.0, is_entity, ent_type))
                 continue
 
             zipf_val = zipf_frequency(word, self.lang)
@@ -448,7 +504,7 @@ class CognitiveLoadPipeline:
             results.append(WordResult(
                 word, pos, i, round(surp, 3), round(ent, 3), round(dl, 3),
                 round(zipf_val, 2), len(word), round(p_score, 2), "low", final_score,
-                round(a_score, 3)
+                round(a_score, 3), is_entity, ent_type
             ))
 
         # 4. 合併連字號複合詞（英文專屬）
@@ -515,7 +571,12 @@ class CognitiveLoadPipeline:
             "lang": self.lang,
             "domain": active_domain,
             "process_time_ms": int(process_time * 1000),
-            "high_load_words": [r.word for r in results if r.load_level == "high"],
+            "high_load_words": [
+                r.word for r in results
+                if r.load_level == "high"
+                and r.load_score >= self._HIGH_LOAD_SCORE_MIN
+                and not r.is_entity
+            ],
             "word_analysis": [asdict(r) for r in results]
         }
 
@@ -545,6 +606,8 @@ class CognitiveLoadPipeline:
                     load_level='low',
                     load_score=max(r.load_score, r2.load_score),
                     aoa_score=max(r.aoa_score, r2.aoa_score),
+                    is_entity=r.is_entity or r2.is_entity,
+                    ent_type=r.ent_type or r2.ent_type,
                 ))
                 i += 3
             else:
@@ -590,7 +653,12 @@ class CognitiveLoadPipeline:
             "model": self.model_type,
             "lang": self.lang,
             "domain": active_domain,
-            "high_load_words": [r.word for r in all_results if r.load_level == 'high'],
+            "high_load_words": [
+                r.word for r in all_results
+                if r.load_level == 'high'
+                and r.load_score >= self._HIGH_LOAD_SCORE_MIN
+                and not r.is_entity
+            ],
             "word_analysis": [asdict(r) for r in all_results]
         }
 

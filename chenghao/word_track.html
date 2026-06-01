@@ -604,8 +604,7 @@
         <div class="chip"><div class="chip-dot" style="background:#4f7ef7"></div>一般</div>
         <div class="chip"><div class="chip-dot" style="background:#f5a623"></div>搜尋符合</div>
         <div class="chip"><div class="chip-dot" style="background:#3dba6e"></div>懸停</div>
-        <div class="chip"><div class="chip-dot" style="background:#e05555"></div>高負荷</div>
-        <div class="chip"><div class="chip-dot" style="background:#f5a623;opacity:.7"></div>中負荷</div>
+        <div class="chip"><div class="chip-dot" style="background:#e05555"></div>深難字 (≥0.70)</div>
       </div>
 
       <!-- External JSON load -->
@@ -667,8 +666,8 @@
         <div class="stat-row"><span>模型 / 語言</span><span class="stat-val" id="cogModel">—</span></div>
         <div class="stat-row"><span>領域</span><span class="stat-val" id="cogDomain">—</span></div>
         <div class="stat-row"><span>總詞數</span><span class="stat-val" id="cogTotal">—</span></div>
-        <div class="stat-row"><span>高負荷詞</span><span class="stat-val cog-high" id="cogHighCount">—</span></div>
-        <div class="stat-row"><span>中負荷詞</span><span class="stat-val cog-med" id="cogMedCount">—</span></div>
+        <div class="stat-row"><span>深難字數</span><span class="stat-val cog-high" id="cogHighCount">—</span></div>
+        <div class="stat-row"><span>分數門檻</span><span class="stat-val cog-med" id="cogMedCount">—</span></div>
       </div>
 
       <button class="toggle-btn" id="cogOverlayToggle">
@@ -676,9 +675,31 @@
         <span id="cogOverlayLabel">在文件上標示負荷（關閉）</span>
       </button>
 
+      <!-- 視覺化模式切換：精確框 vs 等高線熱力圖 -->
+      <div class="cog-row">
+        <label style="font-size:.78rem;color:var(--text-muted);flex-shrink:0">顯示模式</label>
+        <select id="cogVizModeSelect">
+          <option value="box">精確矩形框</option>
+          <option value="heatmap" selected>等高線熱力圖</option>
+        </select>
+      </div>
+
+      <!-- µ 與 σ 拉桿（僅熱力圖模式有效） -->
+      <div class="opt-row" id="cogMuRow">
+        <label style="flex-shrink:0">負荷門檻 µ</label>
+        <input type="range" id="cogMuSlider" min="0" max="1" step="0.02" value="0.50">
+        <span id="cogMuValue" style="font-size:.72rem;color:var(--text-muted);width:38px;text-align:right">0.50</span>
+      </div>
+
+      <div class="opt-row" id="cogSigmaRow">
+        <label style="flex-shrink:0">擴散範圍 σ</label>
+        <input type="range" id="cogSigmaSlider" min="10" max="120" step="2" value="40">
+        <span id="cogSigmaValue" style="font-size:.72rem;color:var(--text-muted);width:38px;text-align:right">40 px</span>
+      </div>
+
       <div>
         <label style="font-size:.78rem;color:var(--text-muted);display:block;margin-bottom:.3rem">
-          高負荷詞列表
+          深難字列表（分數 ≥ 0.70）
         </label>
         <div class="cog-list" id="cogList"></div>
         <div class="cog-empty" id="cogEmpty">尚未執行分析</div>
@@ -727,6 +748,12 @@ let overlayOn       = false;
 let cognitiveOn     = false;   // 是否在 overlay 中以認知負荷顏色標示
 let cognitiveResult = null;    // 後端回傳的完整分析結果
 const cogScoreMap   = new Map(); // text(小寫) → { score, level }
+// 只顯示分數 >= 此門檻的深難字（覆蓋後端的 high/medium/low 分級）
+const COG_MIN_SCORE = 0.70;
+// 熱力圖模式參數（兩個拉桿即時調整）
+let cogVizMode = 'heatmap';    // 'box' | 'heatmap'
+let cogMu      = 0.50;         // 高斯門檻：分數 >= µ 才會貢獻熱度
+let cogSigma   = 40;           // 高斯擴散半徑（pixel）
 
 // Map<pageNum, { overlayCanvas: HTMLCanvasElement, items: Array }>
 const pageOverlayMap = new Map();
@@ -784,6 +811,13 @@ const cogOverlayToggle  = document.getElementById('cogOverlayToggle');
 const cogOverlayLabel   = document.getElementById('cogOverlayLabel');
 const cogList           = document.getElementById('cogList');
 const cogEmpty          = document.getElementById('cogEmpty');
+const cogVizModeSelect  = document.getElementById('cogVizModeSelect');
+const cogMuSlider       = document.getElementById('cogMuSlider');
+const cogMuValue        = document.getElementById('cogMuValue');
+const cogSigmaSlider    = document.getElementById('cogSigmaSlider');
+const cogSigmaValue     = document.getElementById('cogSigmaValue');
+const cogMuRow          = document.getElementById('cogMuRow');
+const cogSigmaRow       = document.getElementById('cogSigmaRow');
 
 // ── Logging ───────────────────────────────────────────────────────────────────
 function log(msg, cls = '') {
@@ -1150,36 +1184,53 @@ function extractCoordsFromDOM(rootEl, pageNum, pageRect, startIdx, granularity) 
       const re = /\S+/g;
       let m;
       while ((m = re.exec(text)) !== null) {
-        const c = getRangeRect(node, m.index, m.index + m[0].length, pageRect);
-        if (c) results.push({ page: pageNum, index: idx++, text: m[0], ...c });
+        // 跨行單字會回傳多個 client rect，每行各自加為一筆（共用 text）
+        const cs = getRangeRects(node, m.index, m.index + m[0].length, pageRect);
+        for (const c of cs) {
+          results.push({ page: pageNum, index: idx++, text: m[0], ...c });
+        }
       }
     } else {
       for (let i = 0; i < text.length; i++) {
         if (/\s/.test(text[i])) continue;
-        const c = getRangeRect(node, i, i + 1, pageRect);
-        if (c) results.push({ page: pageNum, index: idx++, text: text[i], ...c });
+        const cs = getRangeRects(node, i, i + 1, pageRect);
+        for (const c of cs) {
+          results.push({ page: pageNum, index: idx++, text: text[i], ...c });
+        }
       }
     }
   }
   return results;
 }
 
-function getRangeRect(textNode, start, end, pageRect) {
+// 對 textNode 的 [start, end) 取所有 client rect（跨行詞會回傳多個）；
+// 過濾掉 0×0 的 rect，並轉成相對於 pageRect 的座標
+function getRangeRects(textNode, start, end, pageRect) {
   try {
     const range = document.createRange();
     range.setStart(textNode, start);
     range.setEnd(textNode, end);
-    const r = range.getBoundingClientRect();
-    if (r.width === 0 && r.height === 0) return null;
-    return {
-      top:    round4(r.top    - pageRect.top),
-      left:   round4(r.left   - pageRect.left),
-      right:  round4(r.right  - pageRect.left),
-      bottom: round4(r.bottom - pageRect.top),
-      width:  round4(r.width),
-      height: round4(r.height),
-    };
-  } catch { return null; }
+    const rects = range.getClientRects();
+    const out = [];
+    for (const r of rects) {
+      if (r.width < 0.5 || r.height < 0.5) continue;
+      out.push({
+        top:    round4(r.top    - pageRect.top),
+        left:   round4(r.left   - pageRect.left),
+        right:  round4(r.right  - pageRect.left),
+        bottom: round4(r.bottom - pageRect.top),
+        width:  round4(r.width),
+        height: round4(r.height),
+      });
+    }
+    return out;
+  } catch { return []; }
+}
+
+// Backward-compat for older callers that expected a single rect
+function getRangeRect(textNode, start, end, pageRect) {
+  const cs = getRangeRects(textNode, start, end, pageRect);
+  return cs.length ? cs[0] : null;
 }
 
 // ── HTML sanitizer ────────────────────────────────────────────────────────────
@@ -1261,10 +1312,12 @@ async function processPage(pdf, pageNum, scale, granularity, globalIdx) {
 
   await waitFrames(2);
 
-  // Extract coordinates directly from PDF text content data.
-  // viewport.convertToViewportPoint() uses the same math PDF.js uses to position
-  // the text layer spans, so coordinates are exact by definition.
-  const items   = extractCoords(textContent, viewport, pageNum, globalIdx, granularity);
+  // 直接從 PDF.js textContent + viewport.convertToViewportPoint 取座標。
+  // 這是 PDF.js 自己用於定位 text layer span 的數學，所以位置與畫面渲染一致；
+  // 同一 item 內多個詞的邊界僅以 canvas measureText 比例估算，個別詞框可能
+  // 偏移 1~3 px，但整體位置不會跑版（這比 text-layer span 的 transform 取值
+  // 穩定得多 — 某些 PDF.js 渲染模式會讓 getBoundingClientRect 失準）
+  const items = extractCoords(textContent, viewport, pageNum, globalIdx, granularity);
   addNormCoords(items, viewport.width, viewport.height);
   const nextIdx = globalIdx + items.length;
 
@@ -1278,11 +1331,81 @@ async function processPage(pdf, pageNum, scale, granularity, globalIdx) {
   return { items, nextIdx };
 }
 
-// ── Coordinate extraction ─────────────────────────────────────────────────────
+// ── (Disabled) Text-layer-based PDF coordinate extraction ────────────────────
+// Kept as reference / future fallback. In PDF.js v3 the text layer <span>
+// elements are positioned via CSS transform with transform-origin: 0% 0%,
+// and getBoundingClientRect() returns inconsistent results on some PDFs
+// (boxes collapse near 0,0). processPage() now uses extractCoords() instead,
+// which uses PDF.js's own viewport.convertToViewportPoint() math — slightly
+// less accurate for within-item word splitting but never drifts globally.
+function extractCoordsFromTextLayer(textLayerDiv, wrap, pageNum, startIdx, granularity) {
+  const wrapRect = wrap.getBoundingClientRect();
+  const results = [];
+  let idx = startIdx;
+
+  // PDF.js 每個 <span> 對應一個文字區塊；用 span 的 getBoundingClientRect()
+  // 比 Range API 更穩（部分 PDF 的 transform 會讓 Range 回傳 0×0）
+  const mc = document.createElement('canvas').getContext('2d');
+  mc.font = '1000px sans-serif';
+
+  const spans = textLayerDiv.querySelectorAll('span');
+  for (const span of spans) {
+    const str = span.textContent;
+    if (!str || !str.trim()) continue;
+    const sr = span.getBoundingClientRect();
+    if (sr.width < 0.3 && sr.height < 0.3) continue;
+
+    const vTop = sr.top - wrapRect.top;
+    const vLeft = sr.left - wrapRect.left;
+    const vpW = sr.width;
+    const vH = sr.height;
+
+    if (granularity === 'word') {
+      const totalMW = mc.measureText(str).width || 1;
+      const re = /\S+/g;
+      let m;
+      while ((m = re.exec(str)) !== null) {
+        const preW = mc.measureText(str.slice(0, m.index)).width;
+        const chW  = mc.measureText(m[0]).width;
+        const wLeft  = vLeft + (preW / totalMW) * vpW;
+        const wWidth = (chW / totalMW) * vpW;
+        if (wWidth < 0.3) continue;
+        results.push({
+          page: pageNum, index: idx++, text: m[0],
+          top: round4(vTop), left: round4(wLeft),
+          right: round4(wLeft + wWidth), bottom: round4(vTop + vH),
+          width: round4(wWidth), height: round4(vH),
+        });
+      }
+    } else {
+      const totalMW = mc.measureText(str).width || 1;
+      for (let i = 0; i < str.length; i++) {
+        if (/\s/.test(str[i])) continue;
+        const preW = mc.measureText(str.slice(0, i)).width;
+        const chW  = mc.measureText(str[i]).width;
+        const wLeft  = vLeft + (preW / totalMW) * vpW;
+        const wWidth = (chW / totalMW) * vpW;
+        if (wWidth < 0.3) continue;
+        results.push({
+          page: pageNum, index: idx++, text: str[i],
+          top: round4(vTop), left: round4(wLeft),
+          right: round4(wLeft + wWidth), bottom: round4(vTop + vH),
+          width: round4(wWidth), height: round4(vH),
+        });
+      }
+    }
+  }
+  return results;
+}
+
+// ── (Legacy) Coordinate extraction from raw PDF.js textContent ───────────────
+// Kept for reference / fallback only. Currently NOT used by processPage()
+// because text-layer-based extraction is more accurate (see comment above
+// extractCoordsFromTextLayer).
+//
 // Uses PDF.js text content data + viewport.convertToViewportPoint() for exact
-// coordinate conversion — the same math PDF.js uses to position text layer spans.
-// canvas.measureText() is used only for proportional word splitting within each
-// text item (the only remaining approximation).
+// per-item position, then canvas.measureText() ratios to split each item into
+// words/chars.
 function extractCoords(textContent, viewport, pageNum, startIdx, granularity) {
   const results = [];
   let   idx     = startIdx;
@@ -1355,9 +1478,19 @@ function extractCoords(textContent, viewport, pageNum, startIdx, granularity) {
 function round4(n) { return Math.round(n * 10000) / 10000; }
 
 // ── Overlay drawing ───────────────────────────────────────────────────────────
+// 雙模式：
+//   1. box 模式：原本的逐字精確矩形框（紅色填充 = 深難字）
+//   2. heatmap 模式：對每個分數 >= µ 的詞畫高斯 kernel 圓，用 lighter blend
+//      累加重疊區域 → 視覺上像等高線/壓力分佈圖
+// 兩種模式都仍然支援 hover 高亮與 search match
 function drawOverlay(overlayCanvas, items, search, alpha, hoverItem = null) {
   const ctx = overlayCanvas.getContext('2d');
   ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+  // 熱力圖底層先畫（在所有框框之下）
+  if (cognitiveOn && cogVizMode === 'heatmap') {
+    drawCognitiveHeatmap(ctx, items);
+  }
 
   items.forEach(item => {
     const isHover = hoverItem && item.index === hoverItem.index;
@@ -1374,18 +1507,13 @@ function drawOverlay(overlayCanvas, items, search, alpha, hoverItem = null) {
       ctx.strokeStyle = `rgba(245,166,35,${alpha})`;
       fillStyle       = 'rgba(245,166,35,0.15)';
       ctx.lineWidth   = 1.5;
-    } else if (cog && cog.level === 'high') {
-      // 高負荷：紅色填充 + 紅色框
+    } else if (cognitiveOn && cogVizMode === 'box' && cog && cog.score >= COG_MIN_SCORE) {
+      // 分數 >= 門檻：標示為深難字（紅色填充 + 紅色框）
       ctx.strokeStyle = `rgba(224,85,85,${alpha})`;
       fillStyle       = `rgba(224,85,85,${0.18 + 0.32 * cog.score})`;
       ctx.lineWidth   = 1.5;
-    } else if (cog && cog.level === 'medium') {
-      // 中負荷：橙色淡填充
-      ctx.strokeStyle = `rgba(245,166,35,${alpha * 0.7})`;
-      fillStyle       = `rgba(245,166,35,${0.10 + 0.15 * cog.score})`;
-      ctx.lineWidth   = 1;
     } else if (cognitiveOn) {
-      // 認知 overlay 開啟但此詞為 low：完全不畫，讓文件清爽
+      // 熱力圖模式下，非 hover/search 的詞不再畫框（熱力圖自己會顯示）
       return;
     } else {
       ctx.strokeStyle = `rgba(79,126,247,${Math.min(alpha, 0.65)})`;
@@ -1399,6 +1527,62 @@ function drawOverlay(overlayCanvas, items, search, alpha, hoverItem = null) {
       ctx.fillRect(item.left, item.top, item.width, item.height);
     }
   });
+}
+
+// ── Heatmap (等高線) 繪製 ─────────────────────────────────────────────────────
+// KDE 視覺化：每個 score >= µ 的詞當作一個高斯 kernel（中心在詞的位置，σ 由
+// 拉桿控制）。多個 kernel 用 'lighter' blend 累加 → 重疊區域顏色變亮，
+// 自然形成「壓力高低」的等高線錯覺。
+// 之後再用 'source-over' 描上幾條同心等密度線，讓 contour 形狀更明確。
+function drawCognitiveHeatmap(ctx, items) {
+  // 預先收集所有要繪製的 kernel，避免 cogScoreMap 多次查詢
+  const kernels = [];
+  items.forEach(item => {
+    const cog = lookupCognitive(item.text);
+    if (!cog || cog.score < cogMu) return;
+    // 歸一化強度：μ → 0，1.0 → 1.0
+    const intensity = Math.max(0, Math.min(1, (cog.score - cogMu) / Math.max(1 - cogMu, 0.01)));
+    kernels.push({
+      cx: item.left + item.width / 2,
+      cy: item.top + item.height / 2,
+      intensity,
+      score: cog.score,
+    });
+  });
+  if (!kernels.length) return;
+
+  // Pass 1: heatmap fill（lighter blend，累加重疊）
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const k of kernels) {
+    const grad = ctx.createRadialGradient(k.cx, k.cy, 0, k.cx, k.cy, cogSigma);
+    const a0 = 0.55 * k.intensity;       // 中心 alpha
+    const a1 = 0.18 * k.intensity;       // 中段 alpha
+    grad.addColorStop(0,   `rgba(224, 85, 85, ${a0})`);
+    grad.addColorStop(0.55, `rgba(224, 85, 85, ${a1})`);
+    grad.addColorStop(1,   'rgba(224, 85, 85, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(k.cx, k.cy, cogSigma, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Pass 2: contour lines（同心等密度環，視覺上像等高線）
+  ctx.save();
+  ctx.lineWidth = 0.8;
+  for (const k of kernels) {
+    // 透明度跟強度走，越深的詞等高線越明顯
+    const lineAlpha = 0.35 + 0.45 * k.intensity;
+    ctx.strokeStyle = `rgba(170, 40, 40, ${lineAlpha})`;
+    // 三圈等密度線：0.35σ / 0.7σ / 1.0σ
+    for (const t of [0.35, 0.7, 1.0]) {
+      ctx.beginPath();
+      ctx.arc(k.cx, k.cy, cogSigma * t, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
 }
 
 // 認知負荷查表：英文不分大小寫；中文比對原字
@@ -1652,18 +1836,46 @@ function reconstructText(items, lang) {
   return items.map(d => d.text).join(joiner);
 }
 
-cogAnalyzeBtn.addEventListener('click', async () => {
-  if (!extractedData.length) {
-    log('請先完成檔案解析', 'err');
-    return;
+/** 座標擷取為 0 時，從已渲染的 text layer / doc-page 收集純文字供認知分析 */
+function collectTextFromPreview() {
+  const parts = [];
+  previewArea.querySelectorAll('.textLayer').forEach(layer => {
+    const t = layer.textContent.replace(/\s+/g, ' ').trim();
+    if (t) parts.push(t);
+  });
+  if (!parts.length) {
+    previewArea.querySelectorAll('.doc-page').forEach(page => {
+      const t = page.innerText.replace(/\s+/g, ' ').trim();
+      if (t) parts.push(t);
+    });
   }
+  return parts.join('\n\n');
+}
 
+cogAnalyzeBtn.addEventListener('click', async () => {
   let lang = cogLangSelect.value;
-  const sampleText = extractedData.slice(0, 200).map(d => d.text).join('');
-  if (lang === 'auto') lang = detectLang(sampleText);
   const domain = cogDomainSelect.value;
 
-  const text = reconstructText(extractedData, lang);
+  let text = '';
+  let coordCount = extractedData.length;
+
+  if (coordCount > 0) {
+    text = reconstructText(extractedData, lang);
+  } else {
+    const previewText = collectTextFromPreview();
+    if (!previewText.trim()) {
+      log('請先上傳檔案並點擊「開始解析」', 'err');
+      return;
+    }
+    text = previewText;
+    log('座標為 0，改以頁面文字進行認知分析（無法在文件上標示）', 'hi');
+  }
+
+  if (lang === 'auto') {
+    const sample = text.slice(0, 2000);
+    lang = detectLang(sample);
+  }
+
   if (!text.trim()) {
     log('擷取結果為空，無法分析', 'err');
     return;
@@ -1692,21 +1904,30 @@ cogAnalyzeBtn.addEventListener('click', async () => {
     cognitiveResult = result;
 
     // 建立 text → {score, level} map
+    // 跳過 spaCy NER 標記的專有實體（人名 / 地名 / 組織等）
     cogScoreMap.clear();
     (result.word_analysis || []).forEach(w => {
+      if (w.is_entity) return;
       const key = (w.word || '').toLowerCase();
       if (!key) return;
       const prev = cogScoreMap.get(key);
-      // 若同字出現多次，取最高分數（保守做法）
       if (!prev || w.load_score > prev.score) {
-        cogScoreMap.set(key, { score: w.load_score, level: w.load_level });
+        cogScoreMap.set(key, {
+          score: w.load_score,
+          level: w.load_level,
+          ent_type: w.ent_type || '',
+        });
       }
     });
 
     cogProgressFill.style.width = '100%';
     cogProgressTxt.textContent = `完成 (${result.process_time_ms ?? '?'} ms)`;
     renderCognitiveResult(result);
-    log(`認知負荷分析完成：${(result.high_load_words || []).length} 個高負荷詞`, 'ok');
+    const allHard = (result.word_analysis || [])
+      .filter(w => w.load_score >= COG_MIN_SCORE);
+    const filtered = allHard.filter(w => !w.is_entity);
+    const skipped = allHard.length - filtered.length;
+    log(`認知負荷分析完成：${filtered.length} 個深難字（已過濾 ${skipped} 個命名實體）`, 'ok');
 
     // 自動開啟認知負荷 overlay
     if (!cognitiveOn) toggleCognitiveOverlay(true);
@@ -1721,19 +1942,21 @@ cogAnalyzeBtn.addEventListener('click', async () => {
 
 function renderCognitiveResult(result) {
   const words = result.word_analysis || [];
-  const high = words.filter(w => w.load_level === 'high');
-  const medium = words.filter(w => w.load_level === 'medium');
+  // 只保留 load_score >= COG_MIN_SCORE 且非命名實體的深難字
+  const hardWords = words.filter(w =>
+    w.load_score >= COG_MIN_SCORE && !w.is_entity
+  );
 
   cogModel.textContent      = `${result.model || '?'} / ${result.lang || '?'}`;
   cogDomain.textContent     = result.domain || '—';
   cogTotal.textContent      = words.length.toLocaleString();
-  cogHighCount.textContent  = high.length.toLocaleString();
-  cogMedCount.textContent   = medium.length.toLocaleString();
+  cogHighCount.textContent  = hardWords.length.toLocaleString();
+  cogMedCount.textContent   = `≥ ${COG_MIN_SCORE.toFixed(2)}`;
   cogStats.classList.add('visible');
 
-  // 高負荷詞 chip 列表（去重，依分數降序）
+  // 深難字 chip 列表（去重，依分數降序）
   const uniq = new Map();
-  high.forEach(w => {
+  hardWords.forEach(w => {
     const key = w.word.toLowerCase();
     if (!uniq.has(key) || uniq.get(key).load_score < w.load_score) {
       uniq.set(key, w);
@@ -1745,7 +1968,7 @@ function renderCognitiveResult(result) {
   if (!sorted.length) {
     cogList.classList.remove('visible');
     cogEmpty.style.display = 'block';
-    cogEmpty.textContent = '沒有偵測到高負荷詞';
+    cogEmpty.textContent = `沒有分數 ≥ ${COG_MIN_SCORE} 的深難字`;
     return;
   }
   cogEmpty.style.display = 'none';
@@ -1785,6 +2008,33 @@ function toggleCognitiveOverlay(forceState) {
 }
 
 cogOverlayToggle.addEventListener('click', () => toggleCognitiveOverlay());
+
+// ── 熱力圖控制：模式切換 + µ / σ 拉桿 ──────────────────────────────────────
+function updateCogControlsVisibility() {
+  // 模式為 box 時，隱藏 µ/σ 拉桿（沒有意義）
+  const show = (cogVizMode === 'heatmap');
+  cogMuRow.style.display    = show ? '' : 'none';
+  cogSigmaRow.style.display = show ? '' : 'none';
+}
+updateCogControlsVisibility();
+
+cogVizModeSelect.addEventListener('change', () => {
+  cogVizMode = cogVizModeSelect.value;
+  updateCogControlsVisibility();
+  if (cognitiveOn && overlayOn) redrawAllOverlays();
+});
+
+cogMuSlider.addEventListener('input', () => {
+  cogMu = parseFloat(cogMuSlider.value);
+  cogMuValue.textContent = cogMu.toFixed(2);
+  if (cognitiveOn && overlayOn) redrawAllOverlays();
+});
+
+cogSigmaSlider.addEventListener('input', () => {
+  cogSigma = parseFloat(cogSigmaSlider.value);
+  cogSigmaValue.textContent = `${cogSigma} px`;
+  if (cognitiveOn && overlayOn) redrawAllOverlays();
+});
 
 // ── Backend: Save ─────────────────────────────────────────────────────────────
 saveBtn.addEventListener('click', async () => {
