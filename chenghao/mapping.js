@@ -3,13 +3,18 @@ let gazeMappingOn = false;
 const gazeMappingToggle = document.getElementById("gazeMappingToggle");
 const gazeMappingLabel = document.getElementById("gazeMappingLabel");
 
+let mouseMatch = null;
+let gazeMatch = null;
+
 gazeMappingToggle.addEventListener("click", () => {
   gazeMappingOn = !gazeMappingOn;
+  mouseMatch = null;
+  gazeMatch = null;
 
   gazeMappingToggle.classList.toggle("active", gazeMappingOn);
   gazeMappingLabel.textContent = gazeMappingOn
-    ? "啟用 Gaze Mapping（開啟）"
-    : "啟用 Gaze Mapping（關閉）";
+    ? "啟用 Gaze Mapping(開啟）"
+    : "啟用 Gaze Mapping(關閉）";
 
   if (!gazeMappingOn) {
     clearAllGazeHighlights();
@@ -17,22 +22,25 @@ gazeMappingToggle.addEventListener("click", () => {
 });
 
 document.addEventListener("mousemove", (e) => {
-  processGazeOnExtractedData(e.clientX, e.clientY);
+  processMouseGroundTruth(e.clientX, e.clientY);
 });
 
-function processGazeOnExtractedData(gazeX, gazeY) {
+function processMouseGroundTruth(mouseX, mouseY) {
+
   if (!gazeMappingOn) return;
 
-  const match = findNearestExtractedWord(gazeX, gazeY);
+  mouseMatch = findNearestExtractedWord(mouseX,mouseY);
 
-  console.log(match);
+  drawHighlights();
+}
 
-  if (!match) {
-    clearAllGazeHighlights();
-    return;
-  }
+function processGazeOnExtractedData(gazeX, gazeY) {
 
-  highlightExtractedWord(match);
+  if (!gazeMappingOn) return;
+
+  gazeMatch = findNearestExtractedWord(gazeX,gazeY);
+
+  drawHighlights();
 }
 
 function distanceToExtractedRect(x, y, item) {
@@ -136,6 +144,24 @@ function findNearestExtractedWord(gazeX, gazeY) {
   return best;
 }
 
+function drawHighlights() {
+
+  clearAllGazeHighlights();
+
+  if (mouseMatch && gazeMatch && mouseMatch.pageNum === gazeMatch.pageNum && mouseMatch.item === gazeMatch.item) {
+    highlightExtractedWord(mouseMatch,"correct");
+    return;
+  }
+
+  if (mouseMatch) {
+    highlightExtractedWord(mouseMatch,"mouse");
+  }
+
+  if (gazeMatch) {
+    highlightExtractedWord(gazeMatch, "gaze");
+  }
+}
+
 function clearAllGazeHighlights() {
   pageOverlayMap.forEach(({ overlayCanvas }) => {
     const ctx = overlayCanvas.getContext("2d");
@@ -143,8 +169,7 @@ function clearAllGazeHighlights() {
   });
 }
 
-function highlightExtractedWord(match) {
-  clearAllGazeHighlights();
+function highlightExtractedWord(match, type) {
   const pageData =
     pageOverlayMap.get(match.pageNum);
 
@@ -156,20 +181,34 @@ function highlightExtractedWord(match) {
   const ctx =
     overlayCanvas.getContext("2d");
 
-  ctx.clearRect(
-    0,
-    0,
-    overlayCanvas.width,
-    overlayCanvas.height
-  );
 
   //highlight
+  if (type === "correct") {
 
-  ctx.fillStyle =
-    "rgba(255, 220, 80, 0.45)";
+    ctx.fillStyle =
+      "rgba(0,255,0,0.45)";
 
-  ctx.strokeStyle =
-    "rgba(255, 180, 0, 0.9)";
+    ctx.strokeStyle =
+      "rgba(0,200,0,1)";
+  }
+  else if (type === "mouse") {
+
+    ctx.fillStyle =
+      "rgba(80, 180, 255, 0.45)";
+
+    ctx.strokeStyle =
+      "rgba(0, 120, 255, 0.9)";
+
+  }
+  else {
+
+    ctx.fillStyle =
+      "rgba(255, 220, 80, 0.45)";
+
+    ctx.strokeStyle =
+      "rgba(255, 180, 0, 0.9)";
+
+}
 
   ctx.lineWidth = 2;
 
