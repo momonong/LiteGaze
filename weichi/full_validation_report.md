@@ -1,8 +1,10 @@
 # Full GECO Validation Report — Pipeline v9 (Paper-Level)
 
-> Training: 600 sentences  |  XGB internal val: 100  |  Held-out test: 1000 sentences
-> Test content words (≥3 readers): **4571**
+> Training: 2000 sentences  |  XGB internal val: 100  |  Held-out test: 1000 sentences
+> Test content words (≥3 readers): **4882**
 > All test sentences completely unseen during training.
+> OLS controls: word length, Zipf frequency, sentence position,
+>   prev-word surprisal (spillover), prev-word length (spillover).
 
 ---
 
@@ -10,12 +12,12 @@
 
 | Metric | Value | Sig. |
 |--------|-------|------|
-| Spearman ρ (TRT) | 0.393 | *** |
-| Spearman ρ (GD)  | 0.362  | *** |
-| Held-out R² (log TRT) | 0.1069 | — |
-| OLS β(xgb_load) | 0.7657 | *** |
-| OLS ΔR² | 0.0227 | — |
-| OLS ΔAIC | 127.6 | — |
+| Spearman ρ (TRT) | 0.437 | *** |
+| Spearman ρ (GD)  | 0.388  | *** |
+| Held-out R² (log TRT) | 0.1891 | — |
+| OLS β(xgb_load) | 0.6622 | *** |
+| OLS ΔR² | 0.0174 | — |
+| OLS ΔAIC | 104.1 | — |
 
 ---
 
@@ -34,7 +36,7 @@
 ## Comparison to SOTA
 | System | ρ (TRT/GD) | Notes |
 |--------|-----------|-------|
-| **Pipeline v9 (this work)** | 0.393 / 0.362 | Held-out |
+| **Pipeline v9 (this work)** | 0.437 / 0.388 | Held-out |
 | Pipeline v8 (GPT-2+Ridge) | 0.420 / 0.375 | 150 sent. |
 | GPT-2 surprisal only | ~0.35-0.40 | Literature |
 | SOTA ceiling (ISC) | ~0.50-0.60 | Human upper bound |
@@ -43,8 +45,8 @@
 
 ## Paper-Ready Quote
 > "The cognitive load pipeline (GPT-2 surprisal, Rényi entropy, AoA, syntactic
-> dependency load, XGBoost) predicted mean TRT with Spearman ρ = 0.393
-> (GD: ρ = 0.362, both p < .001) on 4571 content words
+> dependency load, XGBoost) predicted mean TRT with Spearman ρ = 0.437
+> (GD: ρ = 0.388, both p < .001) on 4882 content words
 > from 1000 held-out GECO sentences. The load_score independently predicted
-> TRT (OLS β = 0.766, p < .001, ΔR² = 0.0227)
+> TRT (OLS β = 0.662, p < .001, ΔR² = 0.0174)
 > after controlling for word frequency, length, and sentence position."

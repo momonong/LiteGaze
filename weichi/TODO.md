@@ -60,24 +60,32 @@ Pipeline 已整合以下特徵（符合文獻建議）：
 | LMM β(load_z) = 0.045 | p < 0.001 ****** | 🔥 從 n.s. 變顯著 |
 | LMM ΔAIC | +30.5 | 舊：-0.6 |
 
-#### ✅ 論文等級完整驗證（`full_validation.py`，完全 held-out）
-- XGBoost 訓練：600 句（n ≈ 4,200 content words）
-- **Held-out 測試：1000 句，n = 4,571 content words（完全 unseen）**
+#### ✅ 論文等級完整驗證 v1（舊，`full_validation.py`，600 句訓練）
+- 訓練：600 句，測試：1000 句（sentences 701-1700），n = 4,571 content words
+- ρ(TRT)=0.393, ρ(GD)=0.362, R²=0.107, OLS β=0.766 ***, ΔAIC=+127.6
+- ⚠️ word_length 特徵當時全為 0（欄位對應 bug）
 
-| 分析 | 結果 | 說明 |
-|------|------|------|
-| Spearman ρ (TRT) | **0.393 *** **| SOTA 範圍 0.35–0.45 ✅ |
-| Spearman ρ (GD) | **0.362 *** **| 穩定 |
-| Held-out R² | 0.107 | 泛化能力 |
-| OLS β(load) = 0.766 | **p < 0.001 *** **| 高度顯著 |
-| OLS ΔAIC | **+127.6** | 極大改善 |
+#### ✅ 論文等級完整驗證 v2（最新，2000 句訓練 + spillover + word_length 修正）
+- XGBoost 訓練：2000 句（n = 9,793 content words）
+- **Held-out 測試：1000 句（sentences 2101-3100），n = 4,882 content words（完全 unseen）**
+- 新增 OLS 控制：prev_surprisal + prev_word_length（spillover effect）
+- word_length 特徵 bug 已修正（WORD_LENGTH 正確對應）
+
+| 分析 | 結果 | vs 舊版 |
+|------|------|---------|
+| Spearman ρ (TRT) | **0.437 *** **| +0.044 ↑↑（SOTA 頂端）|
+| Spearman ρ (GD) | **0.388 *** **| +0.026 ↑ |
+| Held-out R² | **0.189** | +0.082（幾乎翻倍）|
+| OLS β(load) = 0.662 | **p < 0.001 *** **| 仍高度顯著 |
+| OLS ΔAIC | **+104.1** | 控制更多後仍強勁 |
 
 > **Paper-ready quote**：
 > "The pipeline (GPT-2 surprisal, Rényi entropy α=0.5, AoA, POS-gated dependency load,
-> XGBoost) predicted TRT with Spearman ρ = 0.393 (GD: ρ = 0.362, both p < .001)
-> on 4,571 content words from 1,000 completely held-out GECO sentences.
-> After controlling for word frequency, length, and sentence position, the load_score
-> independently predicted TRT (OLS β = 0.766, p < .001, ΔAIC = +127.6)."
+> XGBoost) predicted TRT with Spearman ρ = 0.437 (GD: ρ = 0.388, both p < .001)
+> on 4,882 content words from 1,000 completely held-out GECO sentences (sentences 2101–3100).
+> After controlling for word frequency, length, sentence position, and spillover from the
+> preceding word, the pipeline load score independently predicted TRT
+> (OLS β = 0.662, p < .001, ΔAIC = +104.1, ΔR² = 0.017)."
 
 > ⚠️ OLS/LMM 不顯著是正常的：`load_score` 本身含頻率成分，和控制變數 `zipf_score` 共線。
 > 需要做**成分分解回歸**（surprisal、AoA、dep_load 分開測）才能看到各成分的獨立貢獻。

@@ -26,16 +26,19 @@ from validate_geco import (
 
 XGB_FEATS   = ["surprisal", "renyi_entropy", "aoa_score",
                "word_length", "zipf_score", "pos_score", "dependency_load"]
-TRAIN_N     = 600
+TRAIN_N     = 2000   # expanded from 600
 VAL_N       = 100    # XGBoost internal validation
 HOLDOUT_N   = 1000   # completely unseen test set
 TRAIN_START = 0
-TEST_START  = TRAIN_N + VAL_N   # sentence 701 onwards
+TEST_START  = TRAIN_N + VAL_N   # sentence 2101 onwards
 XGB_PATH    = os.path.join(OUT_DIR, "xgb_model.json")
 
 
 def build_df(content_df: pd.DataFrame) -> pd.DataFrame:
     df = content_df.copy()
+    # GECO stores word length as WORD_LENGTH (uppercase); map to XGB feature name
+    if "word_length" not in df.columns and "WORD_LENGTH" in df.columns:
+        df["word_length"] = df["WORD_LENGTH"]
     for col in XGB_FEATS:
         if col not in df.columns:
             df[col] = 0.0
@@ -80,18 +83,33 @@ def evaluate(booster, test_df):
     test_df["xgb_load"] = (trt_preds - mn) / max(mx - mn, 1e-8)
     test_df["log_trt"]  = np.log(test_df["mean_trt"].clip(lower=1))
 
-    # OLS: load_score ~ WORD_LENGTH + zipf_score + sent_position
-    m_base = smf.ols("log_trt ~ WORD_LENGTH + zipf_score + sent_position",
-                     data=test_df).fit()
-    m_full = smf.ols("log_trt ~ xgb_load + WORD_LENGTH + zipf_score + sent_position",
-                     data=test_df).fit()
+    # Spillover: n-1 word features (difficulty of previous word carries over)
+    test_df = test_df.sort_values(["SENTENCE_ID", "sent_position"])
+    test_df["prev_surprisal"] = (
+        test_df.groupby("SENTENCE_ID")["surprisal"]
+        .shift(1).fillna(test_df["surprisal"].mean())
+    )
+    test_df["prev_word_length"] = (
+        test_df.groupby("SENTENCE_ID")["WORD_LENGTH"]
+        .shift(1).fillna(test_df["WORD_LENGTH"].mean())
+    )
+
+    # OLS with spillover control
+    m_base = smf.ols(
+        "log_trt ~ WORD_LENGTH + zipf_score + sent_position"
+        " + prev_surprisal + prev_word_length",
+        data=test_df).fit()
+    m_full = smf.ols(
+        "log_trt ~ xgb_load + WORD_LENGTH + zipf_score + sent_position"
+        " + prev_surprisal + prev_word_length",
+        data=test_df).fit()
     delta_r2  = m_full.rsquared - m_base.rsquared
     delta_aic = m_base.aic - m_full.aic   # positive = full model better
 
     beta_load  = m_full.params.get("xgb_load", float("nan"))
     p_load     = m_full.pvalues.get("xgb_load", float("nan"))
 
-    # LMM (subject random intercepts) if per-reader data available
+    # LMM placeholder (subject random intercepts)
     lmm_beta, lmm_p, lrt_chi2, lmm_daic = [float("nan")] * 4
 
     return {
@@ -112,6 +130,8 @@ def write_report(res, train_n, val_n, holdout_n):
         f"  Held-out test: {holdout_n} sentences",
         f"> Test content words (≥3 readers): **{res['n_words']}**",
         f"> All test sentences completely unseen during training.",
+        f"> OLS controls: word length, Zipf frequency, sentence position,",
+        f">   prev-word surprisal (spillover), prev-word length (spillover).",
         "",
         "---", "",
         "## Key Results", "",

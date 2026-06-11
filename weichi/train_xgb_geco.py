@@ -30,7 +30,9 @@ XGB_FEATS = ["surprisal", "renyi_entropy", "aoa_score",
 def build_dataset(eye_merged: pd.DataFrame) -> pd.DataFrame:
     """Add log_trt and ensure all XGB feature columns exist."""
     df = eye_merged.copy()
-    # dependency_load is already POS-gated inside the updated pipeline
+    # GECO stores word length as WORD_LENGTH (uppercase); map to XGB feature name
+    if "word_length" not in df.columns and "WORD_LENGTH" in df.columns:
+        df["word_length"] = df["WORD_LENGTH"]
     for col in XGB_FEATS:
         if col not in df.columns:
             df[col] = 0.0
