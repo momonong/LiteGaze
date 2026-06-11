@@ -87,6 +87,21 @@ Pipeline 已整合以下特徵（符合文獻建議）：
 > preceding word, the pipeline load score independently predicted TRT
 > (OLS β = 0.662, p < .001, ΔAIC = +104.1, ΔR² = 0.017)."
 
+#### ✅ 全語料跨章節穩定性驗證（`validate_remaining_geco.py`）
+- 測試：sentences 2101–5284（3,183 句，16,318 content words，涵蓋小說後半部）
+- 訓練範圍（sentences 1–2100）之外的所有資料
+
+| 指標 | 2101–3100（1000句）| **2101–5284（3183句）** |
+|------|--------------------|------------------------|
+| Spearman ρ (TRT) | 0.437 *** | **0.440 *** **|
+| Spearman ρ (GD) | 0.388 *** | **0.400 *** **|
+| Held-out R² | 0.189 | **0.203** |
+| OLS β(load) | 0.662 *** | **0.707 *** **|
+| OLS ΔAIC | +104.1 | **+342.8** |
+
+> **結論**：ρ 在 16,318 words 上仍為 0.440，pipeline 跨章節完全穩定。
+> 下一步需要跨語料（PROVO / CELER）驗證以確認泛化到不同文類。
+
 > ⚠️ OLS/LMM 不顯著是正常的：`load_score` 本身含頻率成分，和控制變數 `zipf_score` 共線。
 > 需要做**成分分解回歸**（surprisal、AoA、dep_load 分開測）才能看到各成分的獨立貢獻。
 
