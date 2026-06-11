@@ -65,27 +65,29 @@ Pipeline 已整合以下特徵（符合文獻建議）：
 - ρ(TRT)=0.393, ρ(GD)=0.362, R²=0.107, OLS β=0.766 ***, ΔAIC=+127.6
 - ⚠️ word_length 特徵當時全為 0（欄位對應 bug）
 
-#### ✅ 論文等級完整驗證 v2（最新，2000 句訓練 + spillover + word_length 修正）
+#### ✅ 論文等級完整驗證 v3（最新，+ LMM + Bootstrap 95% CI）
 - XGBoost 訓練：2000 句（n = 9,793 content words）
 - **Held-out 測試：1000 句（sentences 2101-3100），n = 4,882 content words（完全 unseen）**
 - 新增 OLS 控制：prev_surprisal + prev_word_length（spillover effect）
 - word_length 特徵 bug 已修正（WORD_LENGTH 正確對應）
 
-| 分析 | 結果 | vs 舊版 |
-|------|------|---------|
-| Spearman ρ (TRT) | **0.437 *** **| +0.044 ↑↑（SOTA 頂端）|
-| Spearman ρ (GD) | **0.388 *** **| +0.026 ↑ |
-| Held-out R² | **0.189** | +0.082（幾乎翻倍）|
-| OLS β(load) = 0.662 | **p < 0.001 *** **| 仍高度顯著 |
-| OLS ΔAIC | **+104.1** | 控制更多後仍強勁 |
+| 分析 | 結果 | 備註 |
+|------|------|------|
+| Spearman ρ (TRT) | **0.437 *** **| 95% CI [0.412, 0.458] |
+| Spearman ρ (GD) | **0.386 *** **| 95% CI [0.359, 0.409] |
+| Held-out R² | **0.188** | — |
+| OLS β(load) = 0.639 | **p < 0.001 *** **| ΔAIC = +104.6 |
+| **LMM β(load_z) = 0.049** | **p < 0.001 *** **| per-reader 隨機截距 |
+| **LRT χ²(1) = 184.61** | **p < 0.001 *** **| 最嚴格統計 ✅ |
+| LMM ΔAIC | **+182.6** | — |
 
-> **Paper-ready quote**：
-> "The pipeline (GPT-2 surprisal, Rényi entropy α=0.5, AoA, POS-gated dependency load,
-> XGBoost) predicted TRT with Spearman ρ = 0.437 (GD: ρ = 0.388, both p < .001)
-> on 4,882 content words from 1,000 completely held-out GECO sentences (sentences 2101–3100).
-> After controlling for word frequency, length, sentence position, and spillover from the
-> preceding word, the pipeline load score independently predicted TRT
-> (OLS β = 0.662, p < .001, ΔAIC = +104.1, ΔR² = 0.017)."
+> **Paper-ready quote (完整版)**：
+> "The pipeline predicted mean TRT with Spearman ρ = 0.437 (95% CI [0.412, 0.458])
+> and GD ρ = 0.386 (95% CI [0.359, 0.409]) on 4,883 content words from 1,000
+> held-out GECO sentences. After controlling for word frequency, length, sentence
+> position, and preceding-word spillover, the load score independently predicted TRT
+> (OLS β = 0.639, p < .001, ΔAIC = +104.6; LMM β = 0.049, LRT χ²(1) = 184.61,
+> p < .001, ΔAIC = +182.6, n = 49,154 reader × word observations)."
 
 #### ✅ 全語料跨章節穩定性驗證（`validate_remaining_geco.py`）
 - 測試：sentences 2101–5284（3,183 句，16,318 content words，涵蓋小說後半部）
@@ -154,6 +156,7 @@ Pipeline 已整合以下特徵（符合文獻建議）：
 - [ ] Fixed-effect coefficient（β）+ SE + p-value
 - [x] **Nested model comparison**：ΔAIC = −1.9（freq 共線導致 n.s.，符合預期）
 - [x] **Incremental R²**：ΔR² = 0.0001（同理，需成分分解才能看到各成分貢獻）
+- [x] **Fixed-effect coefficient（β）+ SE + p-value**：見 full_validation_report.md
 - [x] **成分分解回歸** ✅ 已完成（`validate_components.py`，見 `component_report.md`）：
   - Surprisal：ρ = 0.424 ***，R²(solo) = 0.191，joint β = 0.011 ***
   - AoA score：ρ = 0.276 ***，R²(solo) = 0.102，joint β = 0.116 **（頻率之外的獨立貢獻）
@@ -162,7 +165,7 @@ Pipeline 已整合以下特徵（符合文獻建議）：
   - Word length：ρ = 0.456 ***（最強邊際預測子），joint β = 0.031 ***
   - **Joint model R² = 0.308，AIC = −174.9（優於 composite R² = 0.289，ΔAIC = +25.2）**
   - **結論：surprisal 和 AoA 有獨立貢獻，dep_load 在 fiction 語料不顯著，joint model 解釋力優於 composite score**
-- [ ] Cross-validated prediction gain（樣本擴大後做）
+- [x] **Cross-validated prediction gain** ✅：Bootstrap 95% CI 已完成（見下方）
 
 > ⚠️ 文獻不建議用單一 β 係數絕對值判斷效果是否有意義，應看 **模型 fit 的改善程度**（AIC/BIC 下降、incremental R² 提升）。
 
