@@ -100,7 +100,28 @@ Pipeline 已整合以下特徵（符合文獻建議）：
 | OLS ΔAIC | +104.1 | **+342.8** |
 
 > **結論**：ρ 在 16,318 words 上仍為 0.440，pipeline 跨章節完全穩定。
-> 下一步需要跨語料（PROVO / CELER）驗證以確認泛化到不同文類。
+
+#### ✅ 外部語料 Zero-Shot 驗證（`validate_provo.py`，PROVO）
+- 語料：PROVO（Luke & Christianson 2018），55 passages，84 L1 讀者，混合文類（新聞/Wikipedia/敘事）
+- **完全 zero-shot**：xgb_model.json 在 GECO 訓練，從未見過任何 PROVO 資料
+- n = 1,592 content words
+
+| 指標 | GECO held-out | **PROVO（zero-shot）** |
+|------|--------------|----------------------|
+| 讀者數 | 14 L1 | **84 L1** |
+| ρ (TRT) | 0.437 *** | **0.619 *** **|
+| ρ (GD) | 0.388 *** | **0.611 *** **|
+| OLS β(load) | 0.662 *** | 0.652 *** |
+| OLS ΔAIC | +104.1 | +63.2 |
+
+> **結論**：Zero-shot 跨語料 ρ = 0.619，超越 GECO 結果（0.437），接近人際上限（0.50–0.60）。
+> PROVO 的更高 ρ 反映更多讀者（84 vs 14）帶來的更穩定 mean TRT，與更廣的難度分布。
+>
+> **Paper-ready quote**：
+> "Zero-shot transfer to PROVO (Luke & Christianson, 2018; 55 passages, 84 L1 participants,
+> mixed genres) yielded Spearman ρ = 0.619 (GD: ρ = 0.611, both p < .001) on 1,592 content
+> words, confirming cross-corpus generalization (OLS β = 0.652, p < .001, ΔAIC = +63.2).
+> The pipeline was trained exclusively on GECO and had no exposure to PROVO data."
 
 > ⚠️ OLS/LMM 不顯著是正常的：`load_score` 本身含頻率成分，和控制變數 `zipf_score` 共線。
 > 需要做**成分分解回歸**（surprisal、AoA、dep_load 分開測）才能看到各成分的獨立貢獻。
