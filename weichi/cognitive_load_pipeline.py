@@ -56,7 +56,8 @@ class WordResult:
     pos_score: float
     load_level: str
     load_score: float
-    aoa_score: float = 0.0  # Kuperman Age-of-Acquisition（標準化至 0-1）
+    aoa_score: float = 0.0      # Kuperman Age-of-Acquisition（標準化至 0-1）
+    renyi_entropy: float = 0.0  # Rényi entropy α=0.5（Pimentel et al. 2023）
 
 class DocumentLoader:
     @staticmethod
@@ -169,7 +170,8 @@ class LanguageModelCalculator:
             if indices:
                 attentions[w_idx] = sum(centrality[i] for i in indices) / len(indices)
 
-        return {"surprisals": surprisals, "entropies": entropies, "attentions": attentions}
+        return {"surprisals": surprisals, "entropies": entropies,
+                "attentions": attentions, "renyi_entropies": [0.0] * len(words)}
 
     def _run_bert_batch(self, batch_inputs, batch_targets, batch_w_idxs, surprisals, entropies):
         inputs_tensor = torch.stack(batch_inputs).to(self.device)
@@ -203,18 +205,23 @@ class LanguageModelCalculator:
         lps = F.log_softmax(shift_logits, dim=-1)
         probs = F.softmax(shift_logits, dim=-1)
         token_ents = -(probs * lps).sum(dim=-1)
+        # Rényi entropy α=0.5: H_0.5 = 2·log(Σ√P)  (Pimentel et al. 2023)
+        token_renyi = 2.0 * torch.log(probs.sqrt().sum(dim=-1).clamp(min=1e-10))
         target_lps = lps.gather(-1, shift_labels.unsqueeze(-1)).squeeze(-1)
 
         surprisals = [0.0] * len(words)
         entropies = [0.0] * len(words)
+        renyi_entropies = [0.0] * len(words)
 
         for i in range(target_lps.size(1)):
             w_idx = word_ids[i+1]
             if w_idx is not None:
                 surprisals[w_idx] += -target_lps[0, i].item()
                 entropies[w_idx] += token_ents[0, i].item()
+                renyi_entropies[w_idx] += token_renyi[0, i].item()
 
-        return {"surprisals": surprisals, "entropies": entropies, "attentions": [0.5] * len(words)}
+        return {"surprisals": surprisals, "entropies": entropies,
+                "attentions": [0.5] * len(words), "renyi_entropies": renyi_entropies}
 
 class CognitiveLoadPipeline:
     # 根據語言學研究調整的詞性權重
@@ -242,8 +249,9 @@ class CognitiveLoadPipeline:
 
         # Kuperman AoA 詞典（英文用；中文忽略）
         self.aoa_dict = self._load_aoa() if lang == 'en' else {}
-        # Ridge Regression 模型（v6；若檔案不存在則跳回手動計分）
-        self._ridge = self._load_ridge_model()
+        # 評分後端：優先 XGBoost（Opt3），fallback Ridge
+        self._ridge     = self._load_ridge_model()
+        self._xgb_model = self._load_xgb_model() if lang == 'en' else None
 
         # 領域詞庫增強 (中文)
         if lang == 'zh':
@@ -284,6 +292,43 @@ class CognitiveLoadPipeline:
         print(f"[Ridge v6] 載入模型（Val R²={m.get('r2_val', '?'):.3f}，α={m.get('alpha','?')}）")
         return m
 
+    def _load_xgb_model(self):
+        """載入 xgb_model.json（若存在）。"""
+        try:
+            import xgboost as xgb
+            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "xgb_model.json")
+            if not os.path.exists(path):
+                return None
+            booster = xgb.Booster()
+            booster.load_model(path)
+            print("[XGBoost] 載入模型（Opt3）")
+            return booster
+        except Exception:
+            return None
+
+    def _apply_model(self, results: list) -> None:
+        """XGBoost（優先）或 Ridge 重算 load_score，再 min-max 正規化至 0-1。"""
+        if self._xgb_model is not None:
+            self._apply_xgb(results)
+        elif self._ridge:
+            self._apply_ridge(results)
+
+    def _apply_xgb(self, results: list) -> None:
+        import xgboost as xgb
+        XGB_FEATS = ["surprisal", "renyi_entropy", "aoa_score",
+                     "word_length", "zipf_score", "pos_score", "dependency_load"]
+        rows = []
+        for r in results:
+            rows.append([r.surprisal, r.renyi_entropy, r.aoa_score,
+                         r.word_length, r.zipf_score, r.pos_score, r.dependency_load])
+        dm = xgb.DMatrix(np.array(rows, dtype=float), feature_names=XGB_FEATS)
+        raw_preds = self._xgb_model.predict(dm).tolist()
+        mn, mx = min(raw_preds), max(raw_preds)
+        span = mx - mn if mx > mn else 1.0
+        for r, p in zip(results, raw_preds):
+            scaled = (p - mn) / span
+            r.load_score = round(min(scaled * r.pos_score + (1 - r.pos_score) * 0.0, 1.0), 4)
+
     def _apply_ridge(self, results: list) -> None:
         """用 ridge model 重算每個詞的 load_score（預測 TRT，再 min-max 正規化到 0-1）。"""
         raw_preds = []
@@ -295,11 +340,9 @@ class CognitiveLoadPipeline:
             feat_s = (feat - self._ridge_mu) / self._ridge_std
             pred   = float(np.dot(self._ridge_coef, feat_s) + self._ridge_icept)
             raw_preds.append(pred)
-        # 正規化至 [0, 1]，讓下游 percentile 門檻可正常運作
         mn, mx = min(raw_preds), max(raw_preds)
         span = mx - mn if mx > mn else 1.0
         for r, p in zip(results, raw_preds):
-            # 虛詞 / 標點的 pos_score 很低，保持壓低效果
             scaled = (p - mn) / span
             r.load_score = round(min(scaled * r.pos_score + (1 - r.pos_score) * 0.0, 1.0), 4)
 
@@ -403,15 +446,21 @@ class CognitiveLoadPipeline:
 
         # 2. 深度學習模型推理
         metrics = self.calculator.compute(words)
-        surprisals, entropies, attentions = metrics["surprisals"], metrics["entropies"], metrics["attentions"]
+        surprisals = metrics["surprisals"]
+        entropies  = metrics["entropies"]
+        attentions = metrics["attentions"]
+        renyi_entropies = metrics.get("renyi_entropies", [0.0] * len(words))
 
         # 3. 啟發式計分
         results: List[WordResult] = []
         mem_n1, mem_n2 = cognitive_memory
-        max_surp = max([min(s, 15.0) for s in surprisals] + [5.0])
-        max_ent = max(entropies + [1.0])
+        max_surp  = max([min(s, 15.0) for s in surprisals] + [5.0])
+        max_ent   = max(entropies + [1.0])
+        max_renyi = max(renyi_entropies + [1.0])
 
-        for i, (word, surp, ent, attn, pos, dl, td) in enumerate(zip(words, surprisals, entropies, attentions, pos_tags, dep_loads, tree_depths)):
+        for i, (word, surp, ent, re_ent, _, pos, dl, td) in enumerate(
+            zip(words, surprisals, entropies, renyi_entropies, attentions, pos_tags, dep_loads, tree_depths)
+        ):
             if not re.search(r'[一-鿿\d\w]', word):
                 results.append(WordResult(word, pos, i, 0, 0, 0, 0, len(word), 0, "low", 0.0))
                 continue
@@ -425,20 +474,25 @@ class CognitiveLoadPipeline:
                 continue
 
             zipf_val = zipf_frequency(word, self.lang)
-            s_score = min(surp, 15.0) / max_surp
-            e_score = ent / max_ent
-            f_score = max(0, (7.0 - zipf_val) / 7.0)
-            p_score = self.POS_WEIGHTS.get(pos, 0.5)
-            a_score = self._aoa_score(word)
+            s_score  = min(surp, 15.0) / max_surp
+            e_score  = ent / max_ent
+            re_score = re_ent / max_renyi
+            f_score  = max(0, (7.0 - zipf_val) / 7.0)
+            p_score  = self.POS_WEIGHTS.get(pos, 0.5)
+            a_score  = self._aoa_score(word)
             interaction = s_score * f_score
 
-            # v8: 動態權重分配（ADJ/ADV branch 降低 surprisal、提升 interaction 與 AoA）
-            if pos in ['NOUN', 'VERB', 'PROPN', 'n', 'v']:
-                w = [0.22, 0.06, 0.18, 0.10, 0.10, 0.20, 0.14]
-            else:
-                w = [0.25, 0.10, 0.15, 0.03, 0.03, 0.25, 0.19]
+            # Opt1: POS-gate dep_load (Rathi 2021 — integration cost significant only for NOUN/VERB)
+            dl_gated = dl if pos in ['NOUN', 'VERB', 'PROPN', 'n', 'v'] else 0.0
 
-            raw_total = sum(wi * si for wi, si in zip(w, [s_score, e_score, interaction, dl, td, a_score, f_score]))
+            # Opt2: Rényi entropy added to weight mix; dep_load uses POS-gated value
+            # features: [s_score, e_score, re_score, interaction, dl_gated, td, a_score, f_score]
+            if pos in ['NOUN', 'VERB', 'PROPN', 'n', 'v']:
+                w = [0.20, 0.04, 0.05, 0.16, 0.09, 0.07, 0.20, 0.19]
+            else:
+                w = [0.22, 0.05, 0.05, 0.13, 0.00, 0.02, 0.24, 0.29]
+
+            raw_total = sum(wi * si for wi, si in zip(w, [s_score, e_score, re_score, interaction, dl_gated, td, a_score, f_score]))
             base_total = p_score * raw_total
             final_score = base_total + (0.12 * mem_n1) + (0.05 * mem_n2)
             final_score = round(min(final_score, 1.0), 4)
@@ -446,9 +500,9 @@ class CognitiveLoadPipeline:
             mem_n1 = final_score
 
             results.append(WordResult(
-                word, pos, i, round(surp, 3), round(ent, 3), round(dl, 3),
+                word, pos, i, round(surp, 3), round(ent, 3), round(dl_gated, 3),
                 round(zipf_val, 2), len(word), round(p_score, 2), "low", final_score,
-                round(a_score, 3)
+                round(a_score, 3), round(re_ent, 3)
             ))
 
         # 4. 合併連字號複合詞（英文專屬）
@@ -505,7 +559,7 @@ class CognitiveLoadPipeline:
         if self.lang == 'en' and self._ridge:
             active_domain = self._resolve_domain(words, pos_tags, domain)
             if active_domain != "academic":
-                self._apply_ridge(results)
+                self._apply_model(results)
 
         self._finalize_load_levels(results)
 
