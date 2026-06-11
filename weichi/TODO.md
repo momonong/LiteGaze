@@ -171,9 +171,15 @@ Pipeline 已整合以下特徵（符合文獻建議）：
 
 ### 小樣本處理策略（~20–40 受試者）
 
-- [ ] **Leave-one-subject-out (LOSO)**：關心預測能否推廣到新受試者
-- [ ] **Leave-one-item-out**：關心預測能否推廣到新詞彙
-- [ ] **Bootstrap resampling**：估計效果對樣本組成的敏感度，產出 95% CI
+- [x] **Bootstrap resampling** ✅（`robustness_analysis.py`）
+  - ρ(TRT) = 0.437，95% CI [0.413, 0.459]
+  - ρ(GD)  = 0.386，95% CI [0.360, 0.410]
+  - 輸出：`bootstrap_ci_plot.png`
+- [x] **Leave-one-subject-out (LOSO)** ✅（`robustness_analysis.py`）
+  - **14/14 讀者全部 p < .001**
+  - Mean ρ = 0.215 ± 0.044  [0.135, 0.291]
+  - 輸出：`loso_plot.png`，報告：`robustness_report.md`
+- [ ] **Leave-one-item-out**：關心預測能否推廣到新詞彙（可選）
 - 注意：surprisal 效果對 **item 數量** 比 subject 數量更敏感；item 要夠多
 
 ### GECO 語料使用流程
