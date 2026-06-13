@@ -3,305 +3,779 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>文件座標擷取工具</title>
+  <title>文件座標擷取與眼動分析工具</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <!-- Core PDF / Conversion Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <!-- mammoth.js for DOCX → HTML conversion -->
   <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
-  <!-- marked.js for Markdown → HTML conversion -->
   <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+  
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
-      --primary: #4f7ef7;
-      --primary-dark: #3a63d8;
-      --bg: #11131a;
-      --surface: #191c27;
-      --surface2: #21263a;
-      --surface3: #2a3050;
-      --text: #dde2f0;
-      --text-muted: #7a82a8;
-      --success: #3dba6e;
-      --warn: #f5a623;
-      --info: #2196f3;
-      --danger: #e05555;
-      --border: #2d3355;
-      --radius: 8px;
+      --bg-base: #ffffff;
+      --bg-elevated: #fafafa;
+      --bg-highest: #f4f4f5;
+      --ink-primary: #09090b;
+      --ink-secondary: #52525b;
+      --ink-muted: #a1a1aa;
+      --line: rgba(0, 0, 0, 0.06);
+      --line-strong: #e4e4e7;
+
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --accent-soft: #eff6ff;
+      --accent-2: #3b82f6;
+      --accent-2-hover: #2563eb;
+      --accent-2-soft: #f0f5ff;
+
+      --success: #10b981;
+      --success-soft: #ecfdf5;
+      --danger: #ef4444;
+      --danger-soft: #fef2f2;
+      --warning: #f59e0b;
+      --warning-soft: #fffbeb;
+
+      --radius-sm: 4px;
+      --radius-md: 6px;
+      --radius-lg: 8px;
+      --shadow-sm: none;
+      --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.02);
+      --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.06);
+      
+      --z-sidebar: 100;
+      --z-header: 101;
+      --z-tooltip: 20000;
     }
 
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      background: var(--bg); color: var(--text);
-      height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg-elevated);
+      color: var(--ink-primary);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
 
     /* ── Header ── */
     header {
-      display: flex; align-items: center; gap: .75rem;
-      padding: .75rem 1.5rem;
-      background: var(--surface); border-bottom: 1px solid var(--border);
-      flex-shrink: 0; z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 1.5rem;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--line);
+      flex-shrink: 0;
+      z-index: var(--z-header);
+      box-shadow: var(--shadow-sm);
     }
-    header svg { color: var(--primary); flex-shrink: 0; }
-    header h1 { font-size: 1.1rem; font-weight: 700; }
-    header .subtitle { font-size: .72rem; color: var(--text-muted); margin-top: 1px; }
+    
+    .header-title {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .header-title svg {
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+    .header-title h1 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .header-title .subtitle {
+      font-size: 0.72rem;
+      color: var(--ink-secondary);
+      margin-top: 1px;
+    }
 
-    .layout { display: flex; flex: 1; overflow: hidden; }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
 
-    /* ── Sidebar ── */
+    /* Mobile toggle button */
+    .mobile-menu-btn {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: transparent;
+      cursor: pointer;
+      color: var(--ink-secondary);
+    }
+    .mobile-menu-btn:hover {
+      background: var(--bg-highest);
+      color: var(--ink-primary);
+    }
+
+    /* ── Layout ── */
+    .layout {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* ── Sidebar (VS Code Style) ── */
     .sidebar {
-      width: 300px; flex-shrink: 0;
-      background: var(--surface); border-right: 1px solid var(--border);
-      display: flex; flex-direction: column;
-      overflow-y: auto; padding: 1rem; gap: 1.25rem;
+      display: flex;
+      width: 280px;
+      flex-shrink: 0;
+      background: var(--bg-base);
+      border-right: 1px solid var(--line);
+      overflow: hidden;
+      transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: var(--z-sidebar);
+    }
+    .sidebar.collapsed {
+      width: 48px;
+    }
+    .sidebar.collapsed .sidebar-panel {
+      display: none !important;
+    }
+    .sidebar.collapsed .icon-bar-btn.active::before {
+      display: none;
     }
 
-    .section-label {
-      font-size: .65rem; font-weight: 700; text-transform: uppercase;
-      letter-spacing: .12em; color: var(--text-muted); margin-bottom: .5rem;
+    /* Icon Bar */
+    .icon-bar {
+      width: 48px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0.75rem 0;
+      background: var(--bg-elevated);
+      border-right: 1px solid var(--line);
+      gap: 6px;
+    }
+    .icon-bar-btn {
+      width: 40px;
+      height: 40px;
+      border: none;
+      border-radius: var(--radius-md);
+      background: transparent;
+      color: var(--ink-secondary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      transition: all 0.15s ease;
+    }
+    .icon-bar-btn svg {
+      width: 20px;
+      height: 20px;
+    }
+    .icon-bar-btn:hover {
+      background: var(--bg-highest);
+      color: var(--ink-primary);
+    }
+    .icon-bar-btn:hover::after {
+      content: attr(title);
+      position: absolute;
+      left: calc(100% + 8px);
+      top: 50%;
+      transform: translateY(-50%);
+      background: var(--ink-primary);
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 500;
+      white-space: nowrap;
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      pointer-events: none;
+      z-index: var(--z-tooltip);
+      box-shadow: var(--shadow-md);
+    }
+    .icon-bar-btn.active {
+      background: var(--bg-highest);
+      color: var(--accent);
+    }
+    .icon-bar-btn.active::before {
+      content: '';
+      position: absolute;
+      left: -4px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 20px;
+      background: var(--accent);
+      border-radius: 0 3px 3px 0;
+    }
+    .icon-bar-spacer {
+      flex: 1;
     }
 
-    /* divider */
-    .divider {
-      border: none; border-top: 1px solid var(--border); margin: .1rem 0;
+    /* Sidebar Panels */
+    .sidebar-panel {
+      width: 232px;
+      flex-shrink: 0;
+      display: none;
+      overflow-y: auto;
+      padding: 0.75rem;
+      background: var(--bg-base);
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .sidebar-panel.active {
+      display: flex;
     }
 
-    /* Upload zone */
-    .upload-zone {
-      border: 2px dashed var(--border); border-radius: var(--radius);
-      padding: 1.5rem 1rem; text-align: center; cursor: pointer;
-      transition: border-color .2s, background .2s;
+    /* Panel sections */
+    .panel-section {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
     }
-    .upload-zone:hover, .upload-zone.drag-over {
-      border-color: var(--primary); background: rgba(79,126,247,.06);
+    .panel-section-title {
+      font-size: 0.6rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      color: var(--ink-secondary);
+      text-transform: uppercase;
     }
-    .upload-zone input[type="file"] { display: none; }
-    .upload-icon { font-size: 2rem; line-height: 1; margin-bottom: .4rem; }
-    .upload-zone p { font-size: .8rem; color: var(--text-muted); }
-    .upload-zone p strong { color: var(--text); }
 
-    /* File badge */
+    /* Visual Cards */
+    .card {
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      padding: 0.25rem 0;
+      box-shadow: none;
+    }
+
+    /* File detail card */
     .file-badge {
-      display: none; align-items: center; gap: .6rem;
-      background: var(--surface2); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: .6rem .75rem; font-size: .8rem;
+      display: none;
+      align-items: center;
+      gap: 0.6rem;
     }
-    .file-badge.visible { display: flex; }
+    .file-badge.visible {
+      display: flex;
+    }
+    .file-card-icon {
+      font-size: 1.5rem;
+      flex-shrink: 0;
+    }
+    .file-card-details {
+      min-width: 0;
+      flex: 1;
+    }
     .file-badge .fname {
-      font-weight: 600; color: var(--primary); flex: 1;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      font-weight: 600;
+      color: var(--ink-primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 0.82rem;
     }
-    .file-badge .fsize { color: var(--text-muted); flex-shrink: 0; font-size: .72rem; }
-    .ftype-tag {
-      background: var(--primary); color: #fff;
-      font-size: .62rem; font-weight: 700; letter-spacing: .04em;
-      padding: .12rem .4rem; border-radius: 3px; flex-shrink: 0;
-    }
-
-    /* Document page (non-PDF rendering) */
-    .doc-page {
-      background: #fff; color: #1a1a1a;
-      padding: 60px 72px;
-      font-family: Georgia, 'Times New Roman', serif;
-      font-size: 14px; line-height: 1.75;
-      word-break: break-word; overflow-wrap: break-word;
-    }
-    .doc-page h1,.doc-page h2,.doc-page h3,
-    .doc-page h4,.doc-page h5,.doc-page h6 {
-      font-family: Arial, Helvetica, sans-serif; margin: 1em 0 .4em;
-    }
-    .doc-page p  { margin: 0 0 .7em; }
-    .doc-page ul,.doc-page ol { margin: 0 0 .7em 1.5em; }
-    .doc-page table { border-collapse: collapse; width: 100%; margin-bottom: .7em; }
-    .doc-page td,.doc-page th { border: 1px solid #ccc; padding: .3em .5em; }
-    .doc-page pre { font-family: Consolas, monospace; font-size: 12px;
-                    background: #f5f5f5; padding: .8em; border-radius: 4px;
-                    white-space: pre-wrap; word-break: break-all; }
-
-    /* Options */
-    .opts { display: flex; flex-direction: column; gap: .6rem; }
-    .opt-row {
-      display: flex; align-items: center;
-      justify-content: space-between; gap: .5rem; font-size: .82rem;
-    }
-    .opt-row label { color: var(--text-muted); }
-
-    .radio-group {
-      display: flex; gap: .75rem; background: var(--surface2);
-      border-radius: 6px; padding: .2rem;
-    }
-    .radio-group label {
-      display: flex; align-items: center; gap: .35rem;
-      font-size: .8rem; padding: .3rem .6rem; border-radius: 5px;
-      cursor: pointer; transition: background .15s; color: var(--text-muted);
-    }
-    .radio-group input[type="radio"] { accent-color: var(--primary); }
-    .radio-group label:has(input:checked) { background: var(--surface3); color: var(--text); }
-
-    input[type="number"] {
-      background: var(--surface2); border: 1px solid var(--border);
-      border-radius: 5px; color: var(--text);
-      padding: .3rem .5rem; font-size: .82rem; width: 72px; text-align: center;
-    }
-    input[type="number"]:focus { outline: 1px solid var(--primary); }
-
-    input[type="text"] {
-      background: var(--surface2); border: 1px solid var(--border);
-      border-radius: 5px; color: var(--text);
-      padding: .3rem .5rem; font-size: .82rem; width: 100%;
-    }
-    input[type="text"]::placeholder { color: var(--text-muted); }
-    input[type="text"]:focus { outline: 1px solid var(--primary); }
-
-    input[type="range"] { accent-color: var(--primary); flex: 1; cursor: pointer; }
-
-    select {
-      background: var(--surface2); border: 1px solid var(--border);
-      border-radius: 5px; color: var(--text);
-      padding: .35rem .5rem; font-size: .82rem; width: 100%;
-    }
-    select:focus { outline: 1px solid var(--primary); }
-
-    /* Buttons */
-    .btn {
-      border: none; border-radius: var(--radius); cursor: pointer;
-      font-size: .85rem; font-weight: 600; padding: .55rem 1rem;
-      transition: opacity .15s, transform .1s;
-      display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
-    }
-    .btn:active:not(:disabled) { transform: scale(.96); }
-    .btn:disabled { opacity: .35; cursor: not-allowed; }
-    .btn-primary { background: var(--primary); color: #fff; width: 100%; }
-    .btn-primary:hover:not(:disabled) { background: var(--primary-dark); }
-    .btn-success { background: var(--success); color: #fff; flex: 1; }
-    .btn-info    { background: var(--info);    color: #fff; flex: 1; }
-    .btn-success:hover:not(:disabled),
-    .btn-info:hover:not(:disabled)    { opacity: .85; }
-    .btn-row { display: flex; gap: .5rem; }
-
-    .gaze-status {
-      font-size: .72rem; color: var(--text-muted);
-      line-height: 1.55; min-height: 2.2rem;
+    .file-card-details .fmeta {
+      color: var(--ink-secondary);
+      font-size: 0.68rem;
+      margin-top: 1px;
     }
 
-    /* Toggle switch button */
+    /* Stats Dashboard */
+    .stats-card {
+      display: none;
+      background: var(--bg-elevated);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 0.75rem;
+      box-shadow: var(--shadow-sm);
+    }
+    .stats-card.visible {
+      display: block;
+    }
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+    }
+    .stat-box {
+      background: var(--bg-base);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 0.4rem;
+      text-align: center;
+    }
+    .stat-lbl {
+      display: block;
+      font-size: 0.65rem;
+      color: var(--ink-secondary);
+      margin-bottom: 2px;
+    }
+    .stat-val {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75rem;
+      color: var(--ink-secondary);
+    }
+
+    /* iOS Style Switch Rows */
+    .switch-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      padding: 0.4rem 0;
+    }
+    .switch-info {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      min-width: 0;
+      flex: 1;
+      padding-right: 0.5rem;
+    }
+    .switch-lbl {
+      font-size: 0.8rem;
+      font-weight: 550;
+      color: var(--ink-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .switch-desc {
+      font-size: 0.68rem;
+      color: var(--ink-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     .toggle-btn {
-      display: flex; align-items: center; gap: .6rem;
-      background: var(--surface2); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: .45rem .75rem;
-      cursor: pointer; font-size: .82rem; color: var(--text-muted);
-      transition: border-color .15s, background .15s, color .15s; width: 100%;
+      display: flex;
+      align-items: center;
+      background: transparent;
+      border: none;
+      padding: 0;
+      min-height: auto;
+      cursor: pointer;
+      width: auto;
+      outline: none;
     }
-    .toggle-btn.active {
-      border-color: var(--primary); color: var(--text);
-      background: rgba(79,126,247,.1);
+    .toggle-btn:hover {
+      transform: none;
+      background: transparent;
     }
     .sw-track {
-      width: 28px; height: 16px; border-radius: 8px;
-      background: var(--border); position: relative; flex-shrink: 0;
-      transition: background .2s;
+      width: 34px;
+      height: 18px;
+      border-radius: 9px;
+      background: var(--line-strong);
+      position: relative;
+      transition: background 0.2s ease;
     }
-    .toggle-btn.active .sw-track { background: var(--primary); }
+    .toggle-btn.active .sw-track {
+      background: var(--ink-primary);
+    }
     .sw-track::after {
-      content: ''; width: 12px; height: 12px; border-radius: 50%;
-      background: #fff; position: absolute; top: 2px; left: 2px;
-      transition: transform .2s;
+      content: '';
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #fff;
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      transition: transform 0.2s cubic-bezier(0.25, 1, 0.5, 1);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
     }
-    .toggle-btn.active .sw-track::after { transform: translateX(12px); }
+    .toggle-btn.active .sw-track::after {
+      transform: translateX(16px);
+    }
 
-    /* Small upload button */
-    .btn-sm {
-      border: none; border-radius: 6px; cursor: pointer;
-      font-size: .78rem; font-weight: 600; padding: .35rem .7rem;
-      background: var(--surface3); color: var(--text-muted);
-      transition: color .15s, background .15s;
-    }
-    .btn-sm:hover { background: var(--primary); color: #fff; }
-    .btn-sm input[type="file"] { display: none; }
-
-    /* Progress */
-    .progress-block { display: none; }
-    .progress-block.visible { display: block; }
-    .progress-bg {
-      background: var(--surface2); border-radius: 4px;
-      height: 7px; overflow: hidden; margin-top: .4rem;
-    }
-    .progress-fill {
+    /* Main Workspace */
+    .main-workspace {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
       height: 100%;
-      background: linear-gradient(90deg, var(--primary), #7ba7ff);
-      border-radius: 4px; transition: width .25s ease; width: 0%;
+      position: relative;
+      z-index: 80;
     }
-    .progress-txt { font-size: .72rem; color: var(--text-muted); margin-top: .3rem; }
-
-    /* Stats card */
-    .stats-card {
-      display: none; background: var(--surface2);
-      border: 1px solid var(--border); border-radius: var(--radius); padding: .75rem;
-    }
-    .stats-card.visible { display: block; }
-    .stat-row {
-      display: flex; justify-content: space-between; align-items: center;
-      font-size: .8rem; padding: .25rem 0; border-bottom: 1px solid var(--border);
-    }
-    .stat-row:last-child { border-bottom: none; }
-    .stat-val { font-weight: 700; color: var(--primary); }
-
-    /* Verify section */
-    .verify-section { display: none; flex-direction: column; gap: .65rem; }
-    .verify-section.visible { display: flex; }
-
-    /* Color legend */
-    .legend { display: flex; gap: .75rem; flex-wrap: wrap; }
-    .chip {
-      display: inline-flex; align-items: center; gap: .3rem;
-      font-size: .7rem; color: var(--text-muted);
-    }
-    .chip-dot { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
-
-    /* Hover info panel */
-    .hover-info {
-      background: var(--surface2); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: .6rem .75rem;
-      font-family: 'Cascadia Code', Consolas, monospace;
-      font-size: .7rem; color: var(--text-muted);
-      min-height: 5.5rem; white-space: pre-wrap; line-height: 1.6;
-    }
-
-    /* Log */
-    .log-box {
-      background: var(--surface2); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: .6rem .75rem;
-      font-family: 'Cascadia Code', Consolas, monospace;
-      font-size: .7rem; max-height: 130px; overflow-y: auto;
-      color: var(--text-muted); flex-shrink: 0;
-    }
-    .log-line { padding: 1px 0; line-height: 1.5; }
-    .log-line.ok  { color: var(--success); }
-    .log-line.err { color: var(--danger); }
-    .log-line.hi  { color: var(--primary); }
 
     /* ── Preview area ── */
     .preview-area {
-      flex: 1; overflow-y: auto; background: #0a0c12;
-      display: flex; flex-direction: column;
-      align-items: center; padding: 2rem; gap: 2rem;
+      flex: 1;
+      overflow-y: auto;
+      background: var(--bg-highest);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem;
+      gap: 2rem;
     }
 
+    /* ── Bottom Logs Drawer ── */
+    .logs-drawer {
+      border-top: 1px solid var(--line);
+      background: var(--bg-base);
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 85;
+    }
+    .logs-drawer-header {
+      padding: 0.5rem 1.2rem;
+      background: var(--bg-elevated);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: var(--ink-secondary);
+      user-select: none;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--line);
+    }
+    .logs-drawer-header:hover {
+      background: var(--bg-highest);
+      color: var(--ink-primary);
+    }
+    .logs-drawer-content {
+      padding: 0.5rem 1.2rem 1.2rem 1.2rem;
+      display: flex;
+      flex-direction: column;
+      height: 140px;
+    }
+    .logs-drawer.collapsed .logs-drawer-content {
+      display: none;
+    }
+    .drawer-chevron {
+      transition: transform 0.2s ease;
+    }
+    .logs-drawer.collapsed .drawer-chevron {
+      transform: rotate(180deg);
+    }
+    .log-box {
+      background: var(--ink-primary);
+      border-radius: var(--radius-sm);
+      padding: 0.5rem 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      flex: 1;
+      overflow-y: auto;
+      color: #9cdcfe;
+    }
+    .log-line { padding: 1px 0; }
+    .log-line.ok { color: var(--success); }
+    .log-line.err { color: var(--danger); }
+    .log-line.hi { color: var(--accent); }
+
+    /* ── Settings Modal Styles ── */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.35);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .modal-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .modal-card {
+      width: 100%;
+      max-width: 520px;
+      max-height: 82vh;
+      background: rgba(255, 255, 255, 0.98);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transform: scale(0.95) translateY(10px);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .modal-backdrop.open .modal-card {
+      transform: scale(1) translateY(0);
+    }
+    .modal-header {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+      background: var(--bg-elevated);
+    }
+    .modal-header h3 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--ink-primary);
+    }
+    .modal-close-btn {
+      background: transparent;
+      border: none;
+      color: var(--ink-secondary);
+      cursor: pointer;
+      padding: 4px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .modal-close-btn:hover {
+      background: var(--bg-highest);
+      color: var(--ink-primary);
+    }
+    .modal-content {
+      padding: 1.25rem 1.5rem 1.5rem 1.5rem;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1.2rem;
+    }
+    
+    /* Settings groups */
+    .settings-group {
+      background: var(--bg-elevated);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 0.85rem 1.1rem;
+    }
+    .group-title {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--ink-secondary);
+      margin-bottom: 0.8rem;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 0.3rem;
+    }
+    .group-body {
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+
+    /* Form Fields */
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .field label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--ink-secondary);
+    }
+    .field-label-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .field-val {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--accent);
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .field-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+
+    /* Segmented Control for Word/Char */
+    .segmented-control {
+      display: flex;
+      background: var(--bg-highest);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 2px;
+    }
+    .segment-item {
+      flex: 1;
+      text-align: center;
+      position: relative;
+      cursor: pointer;
+    }
+    .segment-item input {
+      position: absolute;
+      opacity: 0;
+      cursor: pointer;
+      width: 0;
+      height: 0;
+    }
+    .segment-item span {
+      display: block;
+      padding: 0.4rem;
+      font-size: 0.78rem;
+      color: var(--ink-secondary);
+      font-weight: 550;
+      border-radius: var(--radius-sm);
+      transition: all 150ms ease;
+    }
+    .segment-item input:checked + span {
+      background: var(--bg-base);
+      color: var(--ink-primary);
+      box-shadow: var(--shadow-sm);
+      font-weight: 600;
+    }
+
+    input[type="number"], select, input[type="text"] {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 6px 10px;
+      font-size: 0.8rem;
+      color: var(--ink-primary);
+      background: var(--bg-base);
+      outline: none;
+      transition: all 150ms ease;
+    }
+    input[type="number"]:focus, select:focus, input[type="text"]:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+    input[type="range"] {
+      accent-color: var(--accent);
+      flex: 1;
+      cursor: pointer;
+      height: 6px;
+      border-radius: 3px;
+      outline: none;
+    }
+
+    /* Buttons */
+    .btn {
+      border: 1px solid transparent;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 500;
+      min-height: 36px;
+      padding: 6px 14px;
+      transition: all 150ms ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+    
+    .btn-success { background: var(--success); color: #fff; border: none; }
+    .btn-success:hover:not(:disabled) { background: #059669; }
+    
+    .btn-info { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); }
+    .btn-info:hover:not(:disabled) { background: #dbeafe; }
+    
+    .btn-secondary { background: #ffffff; color: var(--ink-primary); border: 1px solid var(--line-strong); }
+    .btn-secondary:hover:not(:disabled) { background: var(--bg-highest); }
+
+    .btn-row { display: flex; gap: 0.5rem; }
+    .btn-row .btn { flex: 1; }
+
+    /* Upload zone - beautiful center card before upload */
     .empty-state {
-      display: flex; flex-direction: column; align-items: center;
-      gap: 1rem; margin-top: 6rem; color: var(--text-muted); text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
     }
-    .empty-state svg { opacity: .2; }
-    .empty-state p { font-size: .85rem; }
+    .upload-zone {
+      width: 100%;
+      max-width: 480px;
+      background: var(--bg-base);
+      border: 2px dashed var(--line-strong);
+      border-radius: var(--radius-lg);
+      padding: 3rem 2rem;
+      text-align: center;
+      cursor: pointer;
+      box-shadow: var(--shadow-md);
+      transition: all 0.25s ease;
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      transform: translateY(-2px);
+    }
+    .upload-zone input[type="file"] { display: none; }
+    .upload-icon {
+      margin-bottom: 1rem;
+      display: flex;
+      justify-content: center;
+    }
+    .upload-zone h3 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+    .upload-zone p {
+      font-size: 0.88rem;
+      color: var(--ink-secondary);
+      margin-bottom: 1rem;
+    }
+    .upload-formats {
+      font-size: 0.72rem;
+      color: var(--ink-muted);
+      border-top: 1px solid var(--line);
+      padding-top: 0.75rem;
+    }
 
-    /* Page wrapper */
-    .page-block { display: flex; flex-direction: column; align-items: center; gap: .4rem; }
-    .page-wrap  {
-      position: relative; display: inline-block;
-      box-shadow: 0 8px 32px rgba(0,0,0,.6); border-radius: 2px;
+    /* Page Renderings */
+    .page-block {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
     }
-    .page-wrap canvas { display: block; }
-    .page-lbl { font-size: .7rem; color: var(--text-muted); }
+    .page-wrap {
+      position: relative;
+      display: inline-block;
+      box-shadow: var(--shadow-lg);
+      border-radius: var(--radius-sm);
+      background: #fff;
+    }
+    .page-wrap canvas { display: block; border-radius: var(--radius-sm); }
+    .page-lbl { font-size: 0.7rem; color: var(--ink-secondary); font-weight: 500; }
 
     /* PDF.js text layer */
     .textLayer {
@@ -309,1895 +783,2003 @@
       width: 100%; height: 100%; overflow: hidden;
       line-height: 1; opacity: 1; pointer-events: none;
     }
-    .textLayer span, .textLayer br {
+    .textLayer span {
       color: transparent; position: absolute;
       white-space: pre; cursor: text; transform-origin: 0% 0%;
     }
 
-    /* Overlay canvas (sits on top of PDF + text layer) */
+    /* Overlay verifier canvas (absolutely on top) */
     .overlay-canvas {
       position: absolute; top: 0; left: 0;
       pointer-events: none; display: none;
     }
     .overlay-canvas.visible { display: block; }
 
-    /* Hit-test div (captures mouse for the page) */
+    /* Hit-test overlay */
     .hit-div {
       position: absolute; inset: 0;
       z-index: 10; cursor: default;
     }
     .hit-div.active { cursor: crosshair; }
 
+    /* Gaze Status text */
+    .gaze-status {
+      font-size: 0.72rem;
+      color: var(--ink-secondary);
+      line-height: 1.4;
+      background: var(--bg-highest);
+      padding: 0.4rem 0.6rem;
+      border-radius: var(--radius-sm);
+      border-left: 3px solid var(--accent);
+      min-height: 2rem;
+    }
+
     /* Tooltip */
     #vTooltip {
-      position: fixed; z-index: 9999;
-      background: #1e2235; border: 1px solid var(--primary);
-      border-radius: 6px; padding: .4rem .65rem;
-      font-size: .74rem; font-family: Consolas, monospace;
-      color: var(--text); pointer-events: none; display: none;
-      max-width: 260px; line-height: 1.5;
-      box-shadow: 0 4px 16px rgba(0,0,0,.6);
+      position: fixed;
+      z-index: var(--z-tooltip);
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--accent);
+      border-radius: var(--radius-md);
+      padding: 0.5rem 0.75rem;
+      font-size: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--ink-primary);
+      pointer-events: none;
+      display: none;
+      max-width: 250px;
+      line-height: 1.5;
+      box-shadow: var(--shadow-md);
     }
 
-    /* History cards */
+    /* History Cards */
     .hist-card {
-      background: var(--surface2); border: 1px solid var(--border);
-      border-radius: 6px; padding: .5rem .65rem;
-      font-size: .75rem; margin-bottom: .4rem;
+      background: var(--bg-base);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 0.5rem 0.6rem;
+      font-size: 0.75rem;
+      box-shadow: var(--shadow-sm);
     }
     .hist-card .hname {
-      font-weight: 600; color: var(--primary);
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      font-weight: 600;
+      color: var(--ink-primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
-    .hist-card .hmeta { color: var(--text-muted); font-size: .68rem; margin: .1rem 0 .35rem; }
-    .hist-card .hbtns { display: flex; gap: .3rem; }
-    .hist-card .hbtns .btn-sm { padding: .2rem .5rem; font-size: .72rem; }
-    .btn-del { color: var(--danger) !important; }
-
-    /* ── Cognitive Load Section ── */
-    .cognitive-section { display: none; flex-direction: column; gap: .65rem; }
-    .cognitive-section.visible { display: flex; }
-
-    .cog-row { display: flex; gap: .4rem; align-items: center; }
-    .cog-row select { flex: 1; }
-
-    .cog-stats {
-      display: none; background: var(--surface2);
-      border: 1px solid var(--border); border-radius: var(--radius);
-      padding: .55rem .75rem; font-size: .78rem;
+    .hist-card .hmeta { color: var(--ink-secondary); font-size: 0.68rem; margin: 0.15rem 0 0.35rem; }
+    .hist-card .hbtns { display: flex; gap: 0.25rem; }
+    .hist-card .hbtns .btn-sm {
+      padding: 0.25rem 0.45rem;
+      font-size: 0.7rem;
+      border: 1px solid var(--line-strong);
+      border-radius: 4px;
+      background: var(--bg-elevated);
+      cursor: pointer;
     }
-    .cog-stats.visible { display: block; }
-    .cog-stats .stat-row { padding: .2rem 0; }
-    .cog-stats .stat-val.cog-high  { color: var(--danger); }
-    .cog-stats .stat-val.cog-med   { color: var(--warn); }
+    .hist-card .hbtns .btn-sm:hover {
+      background: var(--bg-highest);
+    }
+    .hist-card .hbtns .btn-del { color: var(--danger); }
+    .hist-card .hbtns .btn-del:hover { background: var(--danger-soft); }
 
+    /* Cognitive list */
     .cog-list {
-      max-height: 160px; overflow-y: auto;
-      background: var(--surface2); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: .5rem;
-      display: none; flex-wrap: wrap; gap: .3rem;
+      max-height: 120px;
+      overflow-y: auto;
+      background: var(--bg-base);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 0.5rem;
+      display: none;
+      flex-wrap: wrap;
+      gap: 0.25rem;
     }
     .cog-list.visible { display: flex; }
     .cog-chip {
-      background: rgba(224, 85, 85, .15);
-      color: #ffb4b4;
-      border: 1px solid rgba(224, 85, 85, .35);
+      background: var(--danger-soft);
+      color: var(--danger);
+      border: 1px solid rgba(239, 68, 68, 0.25);
       border-radius: 4px;
-      padding: .15rem .45rem;
-      font-size: .72rem;
-      font-family: Consolas, monospace;
+      padding: 0.15rem 0.35rem;
+      font-size: 0.7rem;
+      font-family: 'JetBrains Mono', monospace;
       cursor: default;
     }
-    .cog-empty {
-      font-size: .73rem; color: var(--text-muted);
-      padding: .3rem 0; text-align: center;
+    .cog-empty { font-size: 0.72rem; color: var(--ink-secondary); text-align: center; }
+
+    /* Legends */
+    .legend { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.68rem;
+      color: var(--ink-secondary);
+    }
+    .chip-dot { width: 8px; height: 8px; border-radius: 2px; }
+
+    /* Details panel */
+    .hover-info {
+      background: var(--bg-base);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 0.5rem 0.6rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--ink-secondary);
+      min-height: 5rem;
+      white-space: pre-wrap;
+      line-height: 1.5;
     }
 
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+    /* Document rendering adjustments */
+    .doc-page {
+      background: #fff;
+      color: #2c3e50;
+      padding: 40px 52px;
+      font-family: Georgia, serif;
+      font-size: 14px;
+      line-height: 1.7;
+      word-break: break-word;
+    }
+    .doc-page h1, .doc-page h2 { font-family: 'Inter', sans-serif; margin: 0.8em 0 0.4em; }
+    .doc-page p { margin-bottom: 0.8em; }
+
+    /* Progress block */
+    .progress-block { display: none; }
+    .progress-block.visible { display: block; }
+    .progress-bg {
+      background: var(--bg-highest);
+      border-radius: 4px;
+      height: 6px;
+      overflow: hidden;
+      margin-top: 0.4rem;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 4px;
+      transition: width 0.2s ease;
+      width: 0%;
+    }
+    .progress-txt { font-size: 0.7rem; color: var(--ink-secondary); margin-top: 0.25rem; }
+
+    /* Mobile Backdrop Overlay */
+    .sidebar-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+      z-index: 99;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+    }
+    .sidebar-backdrop.visible {
+      display: block;
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* ── Mobile Responsive (RWD) ── */
+    @media (max-width: 768px) {
+      header {
+        padding: 0.5rem 1rem;
+      }
+      .header-title .subtitle {
+        display: none;
+      }
+      .mobile-menu-btn {
+        display: flex;
+      }
+      .layout {
+        flex-direction: column;
+      }
+      /* Sidebar transforms to Mobile Bottom Sheet */
+      .sidebar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100% !important;
+        height: 85vh;
+        border-right: none;
+        border-top: 1px solid var(--line);
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        z-index: var(--z-sidebar);
+        transform: translateY(100%);
+        transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.15);
+        display: flex !important;
+        margin-left: 0 !important;
+        flex-direction: column;
+      }
+      .sidebar.mobile-open {
+        transform: translateY(0);
+      }
+      .sidebar.collapsed {
+        width: 100% !important;
+      }
+      .sidebar.collapsed .sidebar-panel {
+        display: flex !important;
+      }
+      /* Drag handle bar at top of bottom sheet */
+      .sidebar::before {
+        content: '';
+        display: block;
+        width: 40px;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--line-strong);
+        position: absolute;
+        top: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1;
+      }
+      /* Mobile: icon bar horizontal on top */
+      .icon-bar {
+        width: 100%;
+        flex-direction: row;
+        border-right: none;
+        border-bottom: 1px solid var(--line);
+        padding: 0.5rem 0.75rem;
+        flex-shrink: 0;
+        gap: 8px;
+        padding-top: 18px;
+      }
+      .icon-bar-btn {
+        width: 40px;
+        height: 40px;
+      }
+      .icon-bar-btn:hover::after {
+        display: none;
+      }
+      .icon-bar-btn.active::before {
+        left: 50%;
+        top: auto;
+        bottom: -2px;
+        transform: translateX(-50%);
+        width: 20px;
+        height: 3px;
+        border-radius: 3px 3px 0 0;
+      }
+      .icon-bar-spacer {
+        flex: 0;
+      }
+      #mobileCloseBtn {
+        display: flex !important;
+      }
+      .sidebar-panel {
+        width: 100%;
+        flex: 1;
+        overflow-y: auto;
+        padding-bottom: env(safe-area-inset-bottom, 16px);
+      }
+      .main-workspace {
+        width: 100vw;
+        height: calc(100vh - 57px);
+      }
+      .preview-area {
+        padding: 1rem 0.5rem;
+      }
+      .upload-zone {
+        margin: 1rem;
+        padding: 2rem 1rem;
+      }
+      .page-wrap {
+        max-width: 100%;
+      }
+      .page-wrap canvas {
+        max-width: 100%;
+        height: auto !important;
+      }
+      .page-block {
+        width: 100%;
+      }
+      .modal-card {
+        max-height: 90vh;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        position: fixed;
+        bottom: 0;
+      }
+      .modal-backdrop {
+        align-items: flex-end;
+      }
+      .sidebar-panel :is(.segmented-control, .field-row, div[style*="display:flex"][style*="gap"]) {
+        flex-direction: column;
+      }
+      .sidebar-panel .field-row .field,
+      .sidebar-panel div[style*="display:flex"][style*="gap"] > .field {
+        flex: none !important;
+        width: 100%;
+      }
+      .sidebar-panel input:not([type="radio"]),
+      .sidebar-panel select {
+        width: 100%;
+      }
+    }
   </style>
 </head>
 <body>
 
-<!-- ══ HEADER ══ -->
-<header>
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-    <polyline points="14 2 14 8 20 8"/>
-    <line x1="16" y1="13" x2="8" y2="13"/>
-    <line x1="16" y1="17" x2="8" y2="17"/>
-    <line x1="10" y1="9" x2="8" y2="9"/>
-  </svg>
-  <div>
-    <h1>PDF 座標擷取工具</h1>
-    <div class="subtitle">PDF Word / Character Coordinate Extractor + Verifier</div>
-  </div>
-</header>
-
-<div class="layout">
-
-  <!-- ══ SIDEBAR ══ -->
-  <div class="sidebar">
-
-    <!-- Upload -->
-    <div>
-      <div class="section-label">上傳 PDF 檔案</div>
-      <div class="upload-zone" id="uploadZone">
-        <input type="file" id="fileInput" accept=".pdf,.html,.htm,.txt,.docx,.md,.markdown">
-        <div class="upload-icon">📂</div>
-        <p><strong>點擊選擇</strong> 或拖曳檔案至此</p>
-        <p style="margin-top:4px;font-size:.72rem">PDF · HTML · TXT · DOCX · MD</p>
-      </div>
-      <div class="file-badge" id="fileBadge" style="margin-top:.5rem">
-        <span id="fileIcon">📄</span>
-        <span class="fname" id="fileName"></span>
-        <span class="ftype-tag" id="fileTypeTag"></span>
-        <span class="fsize" id="fileSize"></span>
-      </div>
-    </div>
-
-    <!-- Parse options -->
-    <div>
-      <div class="section-label">解析設定</div>
-      <div class="opts">
-        <div class="opt-row" style="flex-direction:column;align-items:flex-start;gap:.4rem">
-          <label>擷取單位</label>
-          <div class="radio-group">
-            <label><input type="radio" name="granularity" value="word" checked> 單字 (Word)</label>
-            <label><input type="radio" name="granularity" value="char"> 字元 (Char)</label>
-          </div>
-        </div>
-        <div class="opt-row" id="scaleRow">
-          <label>渲染縮放比 (Scale)</label>
-          <input type="number" id="scaleInput" value="1.5" min="0.5" max="3" step="0.5">
-        </div>
-      </div>
-    </div>
-
-    <!-- Parse button -->
-    <button class="btn btn-primary" id="parseBtn" disabled>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <polygon points="5 3 19 12 5 21 5 3"/>
-      </svg>
-      開始解析
-    </button>
-
-    <!-- Progress -->
-    <div class="progress-block" id="progressBlock">
-      <div class="section-label">解析進度</div>
-      <div class="progress-bg"><div class="progress-fill" id="progressFill"></div></div>
-      <div class="progress-txt" id="progressTxt">準備中…</div>
-    </div>
-
-    <!-- Stats -->
-    <div class="stats-card" id="statsCard">
-      <div class="section-label" style="margin-bottom:.4rem">解析結果</div>
-      <div class="stat-row"><span>總頁數</span><span class="stat-val" id="sPages">—</span></div>
-      <div class="stat-row"><span>擷取項目數</span><span class="stat-val" id="sItems">—</span></div>
-      <div class="stat-row"><span>擷取單位</span><span class="stat-val" id="sUnit">—</span></div>
-      <div class="stat-row"><span>渲染縮放</span><span class="stat-val" id="sScale">—</span></div>
-    </div>
-
-    <!-- Export -->
-    <div>
-      <div class="section-label">匯出資料</div>
-      <div class="btn-row">
-        <button class="btn btn-success" id="exportJson" disabled>⬇ JSON</button>
-        <button class="btn btn-info"    id="exportCsv"  disabled>⬇ CSV</button>
-      </div>
-      <button class="btn" id="saveBtn" disabled
-        style="margin-top:.5rem;width:100%;background:#7c5cdb;color:#fff">
-        ☁ 儲存到後端
-      </button>
-    </div>
-
-    <hr class="divider">
-
-    <!-- ══ GAZE SECTION ══ -->
-    <div>
-      <div class="section-label">眼動追蹤</div>
-      <div class="opts">
-        <button class="btn btn-primary" id="openGazePageBtn" type="button">前往眼動訓練</button>
-
-        <div>
-          <label style="font-size:.8rem;color:var(--text-muted);display:block;margin-bottom:.3rem">推論模型</label>
-          <select id="gazeModelSelect">
-            <option value="before">原始模型 / before</option>
-          </select>
-        </div>
-
-        <button class="toggle-btn" id="gazeToggle" type="button">
-          <div class="sw-track"></div>
-          <span id="gazeToggleLabel">啟用眼動推論（關閉）</span>
-        </button>
-
-        <div class="opt-row" style="flex-direction:column;align-items:flex-start;gap:.35rem">
-          <label>防抖動方法</label>
-          <select id="gazeDebounceMode">
-            <option value="none">無</option>
-            <option value="one-euro">OneEuro 平滑</option>
-            <option value="corridor">水平廊道鎖定</option>
-            <option value="one-euro-corridor">OneEuro + 廊道</option>
-            <option value="dwell">停留確認</option>
-          </select>
-        </div>
-
-        <div class="opt-row">
-          <label style="flex-shrink:0">平滑強度</label>
-          <input type="range" id="gazeSmoothSlider" min="0" max="100" value="45">
-          <span id="gazeSmoothValue" style="font-size:.72rem;color:var(--text-muted);width:34px;text-align:right">45</span>
-        </div>
-
-        <div class="opt-row">
-          <label>廊道高度</label>
-          <input type="number" id="gazeCorridorInput" value="35" min="8" max="120" step="1">
-        </div>
-
-        <div class="opt-row">
-          <label>停留時間</label>
-          <input type="number" id="gazeDwellInput" value="180" min="60" max="800" step="20">
-        </div>
-
-        <div class="gaze-status" id="gazeStatus">尚未啟用</div>
-      </div>
-    </div>
-
-    <hr class="divider">
-
-    <!-- ══ HISTORY SECTION ══ -->
-    <div>
-      <div class="section-label" style="display:flex;justify-content:space-between;align-items:center">
-        <span>
-          歷史紀錄
-          <span id="backendDot" title="檢查中…" style="
-            display:inline-block;width:8px;height:8px;border-radius:50%;
-            background:var(--border);margin-left:.35rem;vertical-align:middle;
-            transition:background .3s"></span>
-        </span>
-        <span id="historyCount" style="font-weight:400;color:var(--text-muted)"></span>
-      </div>
-      <div id="historyList">
-        <div id="historyEmpty" style="font-size:.75rem;color:var(--text-muted)">尚無儲存紀錄</div>
-      </div>
-      <button class="btn-sm" id="refreshHistoryBtn"
-        style="margin-top:.5rem;width:100%;text-align:center">↻ 重新整理</button>
-    </div>
-
-    <hr class="divider">
-
-    <!-- ══ VERIFY SECTION ══ -->
-    <div class="verify-section" id="verifySection">
-      <div class="section-label">🔍 座標驗證工具</div>
-
-      <!-- Overlay toggle -->
-      <button class="toggle-btn" id="overlayToggle">
-        <div class="sw-track"></div>
-        <span id="overlayLabel">顯示座標框（關閉）</span>
-      </button>
-
-      <!-- Gaze mapping toggle -->
-      <button class="toggle-btn" id="gazeMappingToggle">
-        <div class="sw-track"></div>
-        <span id="gazeMappingLabel">啟用 Gaze Mapping (關閉)</span>
-      </button>
-      
-      <!-- Opacity -->
-      <div class="opt-row">
-        <label style="flex-shrink:0">框線透明度</label>
-        <input type="range" id="alphaSlider" min="10" max="100" value="70">
-        <span id="alphaDisplay" style="font-size:.72rem;color:var(--text-muted);width:30px;text-align:right">70%</span>
-      </div>
-
-      <!-- Search -->
-      <div>
-        <label style="font-size:.8rem;color:var(--text-muted);display:block;margin-bottom:.3rem">
-          搜尋文字高亮
-          <span id="matchCount" style="color:var(--warn);margin-left:.4rem"></span>
-        </label>
-        <input type="text" id="searchInput" placeholder="輸入關鍵字…">
-      </div>
-
-      <!-- Color legend -->
-      <div class="legend">
-        <div class="chip"><div class="chip-dot" style="background:#4f7ef7"></div>一般</div>
-        <div class="chip"><div class="chip-dot" style="background:#f5a623"></div>搜尋符合</div>
-        <div class="chip"><div class="chip-dot" style="background:#3dba6e"></div>懸停</div>
-        <div class="chip"><div class="chip-dot" style="background:#e05555"></div>深難字 (≥0.70)</div>
-      </div>
-
-      <!-- External JSON load -->
-      <div>
-        <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:.35rem">
-          或載入外部 JSON 覆蓋
-        </div>
-        <label class="btn-sm">
-          📂 選擇 JSON 檔案
-          <input type="file" id="extJsonInput" accept=".json">
-        </label>
-        <span id="extJsonName" style="font-size:.72rem;color:var(--text-muted);margin-left:.5rem"></span>
-      </div>
-
-      <!-- Hover info -->
-      <div>
-        <div class="section-label">懸停項目詳情</div>
-        <div class="hover-info" id="hoverInfo">（開啟座標框後，移動滑鼠至頁面上方以顯示詳情）</div>
-      </div>
-    </div>
-
-    <hr class="divider">
-
-    <!-- ══ COGNITIVE LOAD SECTION ══ -->
-    <div class="cognitive-section" id="cognitiveSection">
-      <div class="section-label">🧠 認知負荷分析</div>
-
-      <div class="cog-row">
-        <label style="font-size:.78rem;color:var(--text-muted);flex-shrink:0">語言</label>
-        <select id="cogLangSelect">
-          <option value="auto">自動</option>
-          <option value="en">英文 (GPT-2)</option>
-          <option value="zh">中文 (BERT)</option>
-        </select>
-      </div>
-
-      <div class="cog-row">
-        <label style="font-size:.78rem;color:var(--text-muted);flex-shrink:0">領域</label>
-        <select id="cogDomainSelect">
-          <option value="auto">自動偵測</option>
-          <option value="academic">學術文本</option>
-          <option value="general">一般文本</option>
-        </select>
-      </div>
-
-      <button class="btn btn-primary" id="cogAnalyzeBtn">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <path d="M12 2v20M2 12h20"/>
-        </svg>
-        開始分析認知負荷
-      </button>
-
-      <div class="progress-block" id="cogProgressBlock">
-        <div class="progress-bg"><div class="progress-fill" id="cogProgressFill"></div></div>
-        <div class="progress-txt" id="cogProgressTxt">分析中…</div>
-      </div>
-
-      <div class="cog-stats" id="cogStats">
-        <div class="stat-row"><span>模型 / 語言</span><span class="stat-val" id="cogModel">—</span></div>
-        <div class="stat-row"><span>領域</span><span class="stat-val" id="cogDomain">—</span></div>
-        <div class="stat-row"><span>總詞數</span><span class="stat-val" id="cogTotal">—</span></div>
-        <div class="stat-row"><span>深難字數</span><span class="stat-val cog-high" id="cogHighCount">—</span></div>
-        <div class="stat-row"><span>分數門檻</span><span class="stat-val cog-med" id="cogMedCount">—</span></div>
-      </div>
-
-      <button class="toggle-btn" id="cogOverlayToggle">
-        <div class="sw-track"></div>
-        <span id="cogOverlayLabel">在文件上標示負荷（關閉）</span>
-      </button>
-
-      <!-- 視覺化模式切換：精確框 vs 等高線熱力圖 -->
-      <div class="cog-row">
-        <label style="font-size:.78rem;color:var(--text-muted);flex-shrink:0">顯示模式</label>
-        <select id="cogVizModeSelect">
-          <option value="box">精確矩形框</option>
-          <option value="heatmap" selected>等高線熱力圖</option>
-        </select>
-      </div>
-
-      <!-- µ 與 σ 拉桿（僅熱力圖模式有效） -->
-      <div class="opt-row" id="cogMuRow">
-        <label style="flex-shrink:0">負荷門檻 µ</label>
-        <input type="range" id="cogMuSlider" min="0" max="1" step="0.02" value="0.50">
-        <span id="cogMuValue" style="font-size:.72rem;color:var(--text-muted);width:38px;text-align:right">0.50</span>
-      </div>
-
-      <div class="opt-row" id="cogSigmaRow">
-        <label style="flex-shrink:0">擴散範圍 σ</label>
-        <input type="range" id="cogSigmaSlider" min="10" max="120" step="2" value="40">
-        <span id="cogSigmaValue" style="font-size:.72rem;color:var(--text-muted);width:38px;text-align:right">40 px</span>
-      </div>
-
-      <div>
-        <label style="font-size:.78rem;color:var(--text-muted);display:block;margin-bottom:.3rem">
-          深難字列表（分數 ≥ 0.70）
-        </label>
-        <div class="cog-list" id="cogList"></div>
-        <div class="cog-empty" id="cogEmpty">尚未執行分析</div>
-      </div>
-    </div>
-
-    <!-- Log -->
-    <div style="flex:1;display:flex;flex-direction:column;gap:.4rem;min-height:0">
-      <div class="section-label">執行紀錄</div>
-      <div class="log-box" id="logBox"></div>
-    </div>
-
-  </div><!-- /sidebar -->
-
-  <!-- ══ PREVIEW ══ -->
-  <div class="preview-area" id="previewArea">
-    <div class="empty-state" id="emptyState">
-      <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+  <!-- ══ HEADER ══ -->
+  <header>
+    <div class="header-title">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
         <polyline points="14 2 14 8 20 8"/>
         <line x1="16" y1="13" x2="8" y2="13"/>
         <line x1="16" y1="17" x2="8" y2="17"/>
-        <line x1="10" y1="9" x2="8" y2="9"/>
       </svg>
-      <p>上傳檔案並點擊「開始解析」以顯示預覽<br><span style="font-size:.75rem;opacity:.7">支援 PDF · HTML · TXT · DOCX</span></p>
+      <div>
+        <h1>文件眼動分析系統</h1>
+        <div class="subtitle">PDF Coordinate Extractor & Eye Gaze Analytics</div>
+      </div>
     </div>
-  </div>
+    
+    <div class="header-actions">
+      <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="開啟選單">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+  </header>
 
-</div><!-- /layout -->
+  <div class="layout">
+    
+    <!-- ══ SIDEBAR (VS Code Style) ══ -->
+    <div class="sidebar" id="sidebar">
+      
+      <!-- Icon Bar -->
+      <div class="icon-bar">
+        <button class="icon-bar-btn active" data-panel="file" title="文件與分析">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+        </button>
+        <button class="icon-bar-btn" data-panel="gaze" title="眼動追蹤">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
+        <button class="icon-bar-btn" data-panel="cognitive" title="認知負荷評估">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 0 1 7.07 17.07A10 10 0 0 1 4.93 4.93 10 10 0 0 1 12 2z"/><path d="M12 6v6l4 2"/></svg>
+          </button>
+          <div class="icon-bar-spacer"></div>
+          <button class="icon-bar-btn" id="mobileCloseBtn" title="關閉選單" style="display:none">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
 
-<!-- Tooltip (shared across all pages) -->
-<div id="vTooltip"></div>
+      <!-- Panel: File -->
+      <div class="sidebar-panel active" id="panel-file">
+        <div class="panel-section-title">文件</div>
+        
+        <div class="file-badge card visible" id="fileInfoCard">
+          <div class="file-card-details">
+            <div class="fname" id="fileCardName">未載入檔案</div>
+            <div class="fmeta" id="fileCardMeta">請選擇或拖放檔案</div>
+          </div>
+        </div>
+        
+        <div class="stats-card" id="statsCard">
+          <div class="stat-grid">
+            <div class="stat-box">
+              <span class="stat-lbl">總頁數</span>
+              <span class="stat-val" id="sPages">—</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-lbl">項目總數</span>
+              <span class="stat-val" id="sItems">—</span>
+            </div>
+          </div>
+          <div class="stat-row" style="margin-top:0.4rem; padding-top:0.3rem; border-top:1px solid var(--line)">
+            <span>格式 / 比例</span>
+            <span class="stat-val" id="sUnit">—</span>
+          </div>
+        </div>
 
-<!-- ══ SCRIPT ══ -->
-<script>
-'use strict';
+        <!-- Parsing Settings -->
+        <hr style="border:none; border-top:1px solid var(--line); margin:0.25rem 0">
+        <div class="panel-section-title">解析設定</div>
+        <div class="field">
+          <label>擷取單位</label>
+          <div class="segmented-control">
+            <label class="segment-item">
+              <input type="radio" name="granularity" value="word" checked>
+              <span>單字</span>
+            </label>
+            <label class="segment-item">
+              <input type="radio" name="granularity" value="char">
+              <span>字元</span>
+            </label>
+          </div>
+        </div>
+        <div class="field" id="scaleRow">
+          <label>渲染縮放比</label>
+          <input type="number" id="scaleInput" value="1.5" min="0.5" max="3" step="0.1">
+        </div>
+        <button class="btn btn-primary" id="parseBtn" disabled style="width:100%">套用並重新解析</button>
+        <div class="progress-block" id="progressBlock">
+          <div class="progress-bg"><div class="progress-fill" id="progressFill"></div></div>
+          <div class="progress-txt" id="progressTxt">準備中…</div>
+        </div>
 
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        <hr style="border:none; border-top:1px solid var(--line); margin:0.25rem 0">
+        <div style="display:flex; gap:4px">
+          <button class="btn btn-success" id="exportJson" disabled style="flex:1">JSON</button>
+          <button class="btn btn-info" id="exportCsv" disabled style="flex:1">CSV</button>
+        </div>
+        <button class="btn btn-primary" id="saveBtn" disabled style="width:100%">儲存至伺服器</button>
 
-// ── State ─────────────────────────────────────────────────────────────────────
-let currentFile     = null;
-let currentFileType = 'pdf';   // 'pdf' | 'html' | 'txt' | 'docx'
-let extractedData   = [];
-let overlayOn       = false;
-let cognitiveOn     = false;   // 是否在 overlay 中以認知負荷顏色標示
-let cognitiveResult = null;    // 後端回傳的完整分析結果
-const cogScoreMap   = new Map(); // text(小寫) → { score, level }
-// 只顯示分數 >= 此門檻的深難字（覆蓋後端的 high/medium/low 分級）
-const COG_MIN_SCORE = 0.70;
-// 熱力圖模式參數（兩個拉桿即時調整）
-let cogVizMode = 'heatmap';    // 'box' | 'heatmap'
-let cogMu      = 0.50;         // 高斯門檻：分數 >= µ 才會貢獻熱度
-let cogSigma   = 40;           // 高斯擴散半徑（pixel）
+        <hr style="border:none; border-top:1px solid var(--line); margin:0.25rem 0">
 
-// Map<pageNum, { overlayCanvas: HTMLCanvasElement, items: Array }>
-const pageOverlayMap = new Map();
+        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.7rem; color:var(--ink-secondary)">
+          <span>歷史紀錄 <span id="historyCount"></span></span>
+          <span id="backendDot" style="width:8px; height:8px; border-radius:50%; background:var(--ink-muted); display:inline-block" title="檢查連線..."></span>
+        </div>
+        <div id="historyList" style="display:flex; flex-direction:column; gap:0.4rem; max-height:160px; overflow-y:auto; font-size:0.75rem">
+          <div id="historyEmpty" style="color:var(--ink-secondary)">尚無紀錄</div>
+        </div>
+        <button class="btn btn-secondary" id="refreshHistoryBtn" style="font-size:0.7rem; min-height:28px; padding:3px; width:100%">重新整理</button>
+      </div>
 
-// ── DOM refs ──────────────────────────────────────────────────────────────────
-const uploadZone    = document.getElementById('uploadZone');
-const fileInput     = document.getElementById('fileInput');
-const fileBadge     = document.getElementById('fileBadge');
-const fileName      = document.getElementById('fileName');
-const fileSize      = document.getElementById('fileSize');
-const parseBtn      = document.getElementById('parseBtn');
-const exportJson    = document.getElementById('exportJson');
-const exportCsv     = document.getElementById('exportCsv');
-const previewArea   = document.getElementById('previewArea');
-const emptyState    = document.getElementById('emptyState');
-const progressBlock = document.getElementById('progressBlock');
-const progressFill  = document.getElementById('progressFill');
-const progressTxt   = document.getElementById('progressTxt');
-const statsCard     = document.getElementById('statsCard');
-const logBox        = document.getElementById('logBox');
-const scaleInput    = document.getElementById('scaleInput');
-// verify
-const verifySection = document.getElementById('verifySection');
-const overlayToggle = document.getElementById('overlayToggle');
-const overlayLabel  = document.getElementById('overlayLabel');
-const alphaSlider   = document.getElementById('alphaSlider');
-const alphaDisplay  = document.getElementById('alphaDisplay');
-const searchInput   = document.getElementById('searchInput');
-const matchCount    = document.getElementById('matchCount');
-const hoverInfo     = document.getElementById('hoverInfo');
-const extJsonInput  = document.getElementById('extJsonInput');
-const extJsonName   = document.getElementById('extJsonName');
-const vTooltip      = document.getElementById('vTooltip');
-// history
-const saveBtn           = document.getElementById('saveBtn');
-const historyList       = document.getElementById('historyList');
-const historyCount      = document.getElementById('historyCount');
-const refreshHistoryBtn = document.getElementById('refreshHistoryBtn');
-const backendDot        = document.getElementById('backendDot');
-// cognitive load
-const cognitiveSection  = document.getElementById('cognitiveSection');
-const cogLangSelect     = document.getElementById('cogLangSelect');
-const cogDomainSelect   = document.getElementById('cogDomainSelect');
-const cogAnalyzeBtn     = document.getElementById('cogAnalyzeBtn');
-const cogProgressBlock  = document.getElementById('cogProgressBlock');
-const cogProgressFill   = document.getElementById('cogProgressFill');
-const cogProgressTxt    = document.getElementById('cogProgressTxt');
-const cogStats          = document.getElementById('cogStats');
-const cogModel          = document.getElementById('cogModel');
-const cogDomain         = document.getElementById('cogDomain');
-const cogTotal          = document.getElementById('cogTotal');
-const cogHighCount      = document.getElementById('cogHighCount');
-const cogMedCount       = document.getElementById('cogMedCount');
-const cogOverlayToggle  = document.getElementById('cogOverlayToggle');
-const cogOverlayLabel   = document.getElementById('cogOverlayLabel');
-const cogList           = document.getElementById('cogList');
-const cogEmpty          = document.getElementById('cogEmpty');
-const cogVizModeSelect  = document.getElementById('cogVizModeSelect');
-const cogMuSlider       = document.getElementById('cogMuSlider');
-const cogMuValue        = document.getElementById('cogMuValue');
-const cogSigmaSlider    = document.getElementById('cogSigmaSlider');
-const cogSigmaValue     = document.getElementById('cogSigmaValue');
-const cogMuRow          = document.getElementById('cogMuRow');
-const cogSigmaRow       = document.getElementById('cogSigmaRow');
+      <!-- Panel: Eye Tracking -->
+      <div class="sidebar-panel" id="panel-gaze">
+        <div class="panel-section-title">眼動追蹤</div>
+        
+        <div class="switch-row">
+          <div class="switch-info">
+            <div class="switch-lbl">啟用眼動推論</div>
+            <div class="switch-desc">開啟視訊鏡頭與推論模型</div>
+          </div>
+          <button class="toggle-btn" id="gazeToggle" type="button">
+            <div class="sw-track"></div>
+            <span id="gazeToggleLabel" style="display:none">啟用眼動推論（關閉）</span>
+          </button>
+        </div>
 
-// ── Logging ───────────────────────────────────────────────────────────────────
-function log(msg, cls = '') {
-  const el = document.createElement('div');
-  el.className = 'log-line' + (cls ? ' ' + cls : '');
-  const ts = new Date().toLocaleTimeString('zh-TW', { hour12: false });
-  el.textContent = `[${ts}] ${msg}`;
-  logBox.appendChild(el);
-  logBox.scrollTop = logBox.scrollHeight;
-}
+        <div class="switch-row">
+          <div class="switch-info">
+            <div class="switch-lbl">Gaze Mapping</div>
+            <div class="switch-desc">比對注視點與滑鼠</div>
+          </div>
+          <button class="toggle-btn" id="gazeMappingToggle" type="button">
+            <div class="sw-track"></div>
+            <span id="gazeMappingLabel" style="display:none">啟用 Gaze Mapping（關閉）</span>
+          </button>
+        </div>
+        
+        <button class="btn btn-secondary" id="openGazePageBtn" type="button" style="width:100%">
+          相機校正與訓練 ↗
+        </button>
+        
+        <div class="gaze-status" id="gazeStatus">尚未啟用</div>
 
-function setProgress(pct, msg) {
-  progressFill.style.width = `${Math.min(100, pct)}%`;
-  progressTxt.textContent  = msg;
-}
+        <!-- Gaze Filter Settings -->
+        <hr style="border:none; border-top:1px solid var(--line); margin:0.25rem 0">
+        <div class="panel-section-title">濾波設定</div>
+        <div class="field">
+          <label>推論模型</label>
+          <select id="gazeModelSelect">
+            <option value="before">原始 / before</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>防抖模式</label>
+          <select id="gazeDebounceMode">
+            <option value="none">無</option>
+            <option value="one-euro" selected>OneEuro 平滑</option>
+            <option value="corridor">廊道鎖定</option>
+            <option value="one-euro-corridor">OneEuro + 廊道</option>
+            <option value="dwell">停留凝視</option>
+          </select>
+        </div>
+        <div class="field">
+          <div class="field-label-row">
+            <label>平滑敏感度</label>
+            <span id="gazeSmoothValue" class="field-val">45</span>
+          </div>
+          <input type="range" id="gazeSmoothSlider" min="0" max="100" value="45">
+        </div>
+        <div style="display:flex; gap:4px">
+          <div class="field" style="flex:1">
+            <label>廊道 (px)</label>
+            <input type="number" id="gazeCorridorInput" value="35" min="8" max="120" step="1">
+          </div>
+          <div class="field" style="flex:1">
+            <label>停留 (ms)</label>
+            <input type="number" id="gazeDwellInput" value="180" min="60" max="800" step="20">
+          </div>
+        </div>
+      </div>
 
-// ── File upload ───────────────────────────────────────────────────────────────
-uploadZone.addEventListener('click', () => fileInput.click());
-uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
-uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
-uploadZone.addEventListener('drop', e => {
-  e.preventDefault(); uploadZone.classList.remove('drag-over');
-  const f = e.dataTransfer.files[0];
-  if (f) {
-    if (detectFileType(f) !== 'unknown') loadFile(f);
-    else log('不支援的檔案類型，請上傳 PDF / HTML / TXT / DOCX', 'err');
-  }
-});
-fileInput.addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+      <!-- Panel: Cognitive Load -->
+      <div class="sidebar-panel" id="panel-cognitive">
+        <div class="panel-section-title">認知負荷評估</div>
+        
+        <button class="btn btn-primary" id="cogAnalyzeBtn" style="width:100%">分析認知負荷</button>
 
-const FILE_META = {
-  pdf:  { icon: '📄', label: 'PDF',  tag: 'PDF'  },
-  html: { icon: '🌐', label: 'HTML', tag: 'HTML' },
-  txt:  { icon: '📝', label: 'TXT',  tag: 'TXT'  },
-  docx: { icon: '📘', label: 'DOCX', tag: 'DOCX' },
-  md:   { icon: '📋', label: 'MD',   tag: 'MD'   },
-};
+        <div class="stats-card" id="cogStats">
+          <div class="stat-grid">
+            <div class="stat-box">
+              <span class="stat-lbl">模型 / 語言</span>
+              <span class="stat-val" id="cogModel">—</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-lbl">領域</span>
+              <span class="stat-val" id="cogDomain">—</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-lbl">詞彙總數</span>
+              <span class="stat-val" id="cogTotal">—</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-lbl">高負荷詞數</span>
+              <span class="stat-val" id="cogHighCount">—</span>
+            </div>
+          </div>
+          <div class="stat-row" style="margin-top:0.4rem; padding-top:0.3rem; border-top:1px solid var(--line)">
+            <span>閾值</span>
+            <span class="stat-val" id="cogMedCount">≥ 0.70</span>
+          </div>
+        </div>
+        
+        <div class="progress-block" id="cogProgressBlock">
+          <div class="progress-bg"><div class="progress-fill" id="cogProgressFill"></div></div>
+          <div class="progress-txt" id="cogProgressTxt">分析中…</div>
+        </div>
 
-function detectFileType(file) {
-  const n = file.name.toLowerCase();
-  const m = file.type;
-  if (m === 'application/pdf'  || n.endsWith('.pdf'))  return 'pdf';
-  if (m === 'text/html'        || n.endsWith('.html') || n.endsWith('.htm')) return 'html';
-  if (n.endsWith('.md') || n.endsWith('.markdown'))    return 'md';
-  if (m === 'text/plain'       || n.endsWith('.txt'))  return 'txt';
-  if (n.endsWith('.docx') || m.includes('wordprocessingml')) return 'docx';
-  return 'unknown';
-}
+        <!-- Cognitive Parameters -->
+        <hr style="border:none; border-top:1px solid var(--line); margin:0.25rem 0">
+        <div class="panel-section-title">參數設定</div>
+        <div style="display:flex; gap:4px">
+          <div class="field" style="flex:1">
+            <label>語言</label>
+            <select id="cogLangSelect">
+              <option value="auto">自動</option>
+              <option value="en">英文</option>
+              <option value="zh">中文</option>
+            </select>
+          </div>
+          <div class="field" style="flex:1">
+            <label>領域</label>
+            <select id="cogDomainSelect">
+              <option value="auto">自動</option>
+              <option value="academic">學術</option>
+              <option value="general">一般</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>標記模式</label>
+          <select id="cogVizModeSelect">
+            <option value="box">矩形邊框</option>
+            <option value="heatmap" selected>熱力圖</option>
+          </select>
+        </div>
+        <div class="field" id="cogMuRow">
+          <div class="field-label-row">
+            <label>臨界值 µ</label>
+            <span id="cogMuValue" class="field-val">0.50</span>
+          </div>
+          <input type="range" id="cogMuSlider" min="0" max="1" step="0.02" value="0.50">
+        </div>
+        <div class="field" id="cogSigmaRow">
+          <div class="field-label-row">
+            <label>擴散半徑 σ</label>
+            <span id="cogSigmaValue" class="field-val">40 px</span>
+          </div>
+          <input type="range" id="cogSigmaSlider" min="10" max="120" step="2" value="40">
+        </div>
+        <div class="field">
+          <label>高負荷詞彙</label>
+          <div class="cog-list" id="cogList"></div>
+          <div class="cog-empty" id="cogEmpty">尚未分析</div>
+        </div>
 
-function loadFile(file) {
-  currentFile     = file;
-  currentFileType = detectFileType(file);
-  const meta      = FILE_META[currentFileType] || FILE_META.pdf;
+        <div class="switch-row" id="cogOverlaySec">
+          <div class="switch-info">
+            <div class="switch-lbl">在文件上標示負荷</div>
+            <div class="switch-desc">視覺化高認知負擔詞彙</div>
+          </div>
+          <button class="toggle-btn" id="cogOverlayToggle" type="button">
+            <div class="sw-track"></div>
+            <span id="cogOverlayLabel" style="display:none">在文件上標示負荷（關閉）</span>
+          </button>
+        </div>
 
-  document.getElementById('fileIcon').textContent    = meta.icon;
-  document.getElementById('fileTypeTag').textContent = meta.tag;
-  fileName.textContent = file.name;
-  fileSize.textContent = formatBytes(file.size);
-  fileBadge.classList.add('visible');
-  parseBtn.disabled = false;
-  extractedData = [];
-  exportJson.disabled = exportCsv.disabled = true;
-  statsCard.classList.remove('visible');
-  verifySection.classList.remove('visible');
-  resetCognitive();
-  pageOverlayMap.clear();
-  // Show/hide PDF-only scale option
-  document.getElementById('scaleRow').style.display = currentFileType === 'pdf' ? '' : 'none';
-  log(`已載入: ${file.name}  [${meta.tag}]  (${formatBytes(file.size)})`, 'hi');
-}
+        <div class="switch-row">
+          <div class="switch-info">
+            <div class="switch-lbl">顯示座標框</div>
+            <div class="switch-desc">文字熱區邊界</div>
+          </div>
+          <button class="toggle-btn" id="overlayToggle" type="button">
+            <div class="sw-track"></div>
+            <span id="overlayLabel" style="display:none">顯示座標框（關閉）</span>
+          </button>
+        </div>
 
-function formatBytes(b) {
-  if (b < 1024)    return `${b} B`;
-  if (b < 1048576) return `${(b/1024).toFixed(1)} KB`;
-  return `${(b/1048576).toFixed(2)} MB`;
-}
+        <div class="field">
+          <input type="text" id="searchInput" placeholder="搜尋項目...">
+          <span id="matchCount" style="font-size:0.65rem; color:var(--ink-secondary); margin-top:0.2rem; display:block; text-align:right"></span>
+        </div>
 
-// ── Parse ─────────────────────────────────────────────────────────────────────
-parseBtn.addEventListener('click', async () => {
-  if (!currentFile) return;
+        <!-- Overlay Display Settings -->
+        <hr style="border:none; border-top:1px solid var(--line); margin:0.25rem 0">
+        <div class="panel-section-title">覆蓋顯示</div>
+        <div class="field">
+          <div class="field-label-row">
+            <label>不透明度</label>
+            <span id="alphaDisplay" class="field-val">70%</span>
+          </div>
+          <input type="range" id="alphaSlider" min="10" max="100" value="70">
+        </div>
+        <div class="field">
+          <label>外部 JSON 覆蓋</label>
+          <input type="file" id="extJsonInput" accept=".json" style="display:none">
+          <button class="btn btn-secondary" onclick="document.getElementById('extJsonInput').click()" style="width:100%">選擇檔案</button>
+          <span id="extJsonName" style="font-size:0.65rem; color:var(--ink-secondary); display:block; text-align:center; margin-top:0.2rem"></span>
+        </div>
+        <div class="legend">
+          <div class="chip"><div class="chip-dot" style="background:#3b82f6"></div>一般</div>
+          <div class="chip"><div class="chip-dot" style="background:#f59e0b"></div>搜尋</div>
+          <div class="chip"><div class="chip-dot" style="background:#10b981"></div>懸停</div>
+          <div class="chip"><div class="chip-dot" style="background:#ef4444"></div>難字</div>
+        </div>
+        <div class="field">
+          <label>懸停詳情</label>
+          <div class="hover-info" id="hoverInfo">移動滑鼠至頁面顯示</div>
+        </div>
+      </div>
 
-  const scale       = Math.max(0.5, Math.min(3, parseFloat(scaleInput.value) || 1.5));
-  const granularity = document.querySelector('input[name="granularity"]:checked').value;
+    </div><!-- /sidebar -->
 
-  parseBtn.disabled = exportJson.disabled = exportCsv.disabled = saveBtn.disabled = true;
-  extractedData = [];
-  pageOverlayMap.clear();
-  overlayOn = false;
-  overlayToggle.classList.remove('active');
-  overlayLabel.textContent = '顯示座標框（關閉）';
-  progressBlock.classList.add('visible');
-  statsCard.classList.remove('visible');
-  verifySection.classList.remove('visible');
-  resetCognitive();
-  [...previewArea.children].forEach(c => { if (c.id !== 'emptyState') c.remove(); });
-  emptyState.style.display = 'none';
-  log(`── 開始解析 [${currentFileType.toUpperCase()}] (unit=${granularity}) ──`, 'hi');
+    <!-- Mobile Backdrop Overlay -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
-  try {
-    let numPages;
-    if (currentFileType === 'pdf') {
-      numPages = await parsePDF(scale, granularity);
-    } else {
-      numPages = await parseDocument(granularity);
+    <!-- ══ MAIN WORKSPACE ══ -->
+    <div class="main-workspace">
+      
+      <!-- ══ PREVIEW ══ -->
+      <div class="preview-area" id="previewArea">
+        <!-- Center card upload zone on start -->
+        <div class="empty-state" id="emptyState">
+          <div class="upload-zone" id="uploadZone">
+            <input type="file" id="fileInput" accept=".pdf,.html,.htm,.txt,.docx,.md,.markdown">
+            <div class="upload-icon">
+              <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+              </svg>
+            </div>
+            <h3>文件座標擷取與眼動分析</h3>
+            <p>點擊此處 或 拖曳檔案至此開始分析</p>
+            <div class="upload-formats">支援格式: PDF · DOCX · HTML · TXT · MD</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ COLLAPSIBLE BOTTOM LOGS PANEL ══ -->
+      <div class="logs-drawer collapsed" id="logsDrawer">
+        <div class="logs-drawer-header" onclick="toggleLogsDrawer()">
+          <span>系統執行紀錄</span>
+          <span class="drawer-chevron">▲</span>
+        </div>
+        <div class="logs-drawer-content">
+          <div class="log-box" id="logBox"></div>
+        </div>
+      </div>
+      
+    </div><!-- /main-workspace -->
+    
+  </div><!-- /layout -->
+
+  <!-- Settings modal removed - content migrated to sidebar panel -->
+
+  <!-- Tooltip (shared) -->
+  <div id="vTooltip"></div>
+
+  <!-- JavaScript Logics -->
+  <script>
+    'use strict';
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    // ── State ─────────────────────────────────────────────────────────────────────
+    let currentFile     = null;
+    let currentFileType = 'pdf';
+    let extractedData   = [];
+    let overlayOn       = false;
+    let cognitiveOn     = false;
+    let cognitiveResult = null;
+    const cogScoreMap   = new Map();
+    const COG_MIN_SCORE = 0.70;
+    
+    let cogVizMode = 'heatmap';
+    let cogMu      = 0.50;
+    let cogSigma   = 40;
+
+    // Map<pageNum, { overlayCanvas: HTMLCanvasElement, items: Array }>
+    const pageOverlayMap = new Map();
+
+    // ── DOM references ────────────────────────────────────────────────────────────
+    const uploadZone    = document.getElementById('uploadZone');
+    const fileInput     = document.getElementById('fileInput');
+    const parseBtn      = document.getElementById('parseBtn');
+    const exportJson    = document.getElementById('exportJson');
+    const exportCsv     = document.getElementById('exportCsv');
+    const previewArea   = document.getElementById('previewArea');
+    const emptyState    = document.getElementById('emptyState');
+    const progressBlock = document.getElementById('progressBlock');
+    const progressFill  = document.getElementById('progressFill');
+    const progressTxt   = document.getElementById('progressTxt');
+    const statsCard     = document.getElementById('statsCard');
+    const logBox        = document.getElementById('logBox');
+    const scaleInput    = document.getElementById('scaleInput');
+    
+    // verify
+    // verifySection removed - now in panels
+    const overlayToggle = document.getElementById('overlayToggle');
+    const overlayLabel  = document.getElementById('overlayLabel');
+    const alphaSlider   = document.getElementById('alphaSlider');
+    const alphaDisplay  = document.getElementById('alphaDisplay');
+    const searchInput   = document.getElementById('searchInput');
+    const matchCount    = document.getElementById('matchCount');
+    const hoverInfo     = document.getElementById('hoverInfo');
+    const extJsonInput  = document.getElementById('extJsonInput');
+    const extJsonName   = document.getElementById('extJsonName');
+    const vTooltip      = document.getElementById('vTooltip');
+    
+    // history
+    const saveBtn           = document.getElementById('saveBtn');
+    const historyList       = document.getElementById('historyList');
+    const historyCount      = document.getElementById('historyCount');
+    const refreshHistoryBtn = document.getElementById('refreshHistoryBtn');
+    const backendDot        = document.getElementById('backendDot');
+    
+    // cognitive
+    // cognitiveSection removed - now in panels
+    const cogLangSelect     = document.getElementById('cogLangSelect');
+    const cogDomainSelect   = document.getElementById('cogDomainSelect');
+    const cogAnalyzeBtn     = document.getElementById('cogAnalyzeBtn');
+    const cogProgressBlock  = document.getElementById('cogProgressBlock');
+    const cogProgressFill   = document.getElementById('cogProgressFill');
+    const cogProgressTxt    = document.getElementById('cogProgressTxt');
+    const cogStats          = document.getElementById('cogStats');
+    const cogModel          = document.getElementById('cogModel');
+    const cogDomain         = document.getElementById('cogDomain');
+    const cogTotal          = document.getElementById('cogTotal');
+    const cogHighCount      = document.getElementById('cogHighCount');
+    const cogMedCount       = document.getElementById('cogMedCount');
+    const cogOverlayToggle  = document.getElementById('cogOverlayToggle');
+    const cogOverlayLabel   = document.getElementById('cogOverlayLabel');
+    const cogList           = document.getElementById('cogList');
+    const cogEmpty          = document.getElementById('cogEmpty');
+    const cogVizModeSelect  = document.getElementById('cogVizModeSelect');
+    const cogMuSlider       = document.getElementById('cogMuSlider');
+    const cogMuValue        = document.getElementById('cogMuValue');
+    const cogSigmaSlider    = document.getElementById('cogSigmaSlider');
+    const cogSigmaValue     = document.getElementById('cogSigmaValue');
+    const cogMuRow          = document.getElementById('cogMuRow');
+    const cogSigmaRow       = document.getElementById('cogSigmaRow');
+
+    const sidebar           = document.getElementById('sidebar');
+    const mobileMenuBtn     = document.getElementById('mobileMenuBtn');
+    const sidebarBackdrop   = document.getElementById('sidebarBackdrop');
+
+    // ── VS Code Sidebar: Panel Switching ──────────────────────────────────────────
+    const iconBtns      = document.querySelectorAll('.icon-bar-btn[data-panel]');
+    const sidebarPanels = document.querySelectorAll('.sidebar-panel');
+    let activePanel     = 'file'; // default
+
+    function switchPanel(name) {
+      if (activePanel === name) {
+        iconBtns.forEach(b => b.classList.remove('active'));
+        sidebarPanels.forEach(p => p.classList.remove('active'));
+        activePanel = null;
+        sidebar.classList.add('collapsed');
+        return;
+      }
+      sidebar.classList.remove('collapsed');
+      iconBtns.forEach(b => b.classList.toggle('active', b.dataset.panel === name));
+      sidebarPanels.forEach(p => p.classList.toggle('active', p.id === `panel-${name}`));
+      activePanel = name;
     }
 
-    document.getElementById('sPages').textContent = numPages;
-    document.getElementById('sItems').textContent = extractedData.length.toLocaleString();
-    document.getElementById('sUnit').textContent  = granularity === 'word' ? 'Word' : 'Char';
-    document.getElementById('sScale').textContent = currentFileType === 'pdf' ? `${scale}x` : 'N/A';
-    statsCard.classList.add('visible');
-    exportJson.disabled = exportCsv.disabled = saveBtn.disabled = false;
-    verifySection.classList.add('visible');
-    cognitiveSection.classList.add('visible');
-    log(`完成！共擷取 ${extractedData.length} 個項目`, 'ok');
-  } catch (err) {
-    log(`錯誤：${err.message}`, 'err');
-    console.error(err);
-    setProgress(0, '解析失敗');
-  } finally {
-    parseBtn.disabled = false;
-  }
-});
-
-// ── PDF parser ────────────────────────────────────────────────────────────────
-async function parsePDF(scale, granularity) {
-  setProgress(0, '讀取 PDF 檔案…');
-  const buffer   = await readArrayBuffer(currentFile);
-  const pdf      = await pdfjsLib.getDocument({ data: buffer }).promise;
-  const numPages = pdf.numPages;
-  log(`PDF 載入成功，共 ${numPages} 頁`, 'ok');
-  setProgress(5, `共 ${numPages} 頁，開始逐頁渲染…`);
-  let globalIdx = 0;
-  for (let p = 1; p <= numPages; p++) {
-    setProgress(5 + Math.round(((p - 1) / numPages) * 90), `渲染第 ${p} / ${numPages} 頁…`);
-    const { items, nextIdx } = await processPage(pdf, p, scale, granularity, globalIdx);
-    extractedData.push(...items);
-    globalIdx = nextIdx;
-    log(`第 ${p} 頁：${items.length} 個${granularity === 'word' ? '單字' : '字元'}`);
-  }
-  setProgress(100, '解析完成！');
-  return numPages;
-}
-
-// ── Non-PDF parser (HTML / TXT / DOCX) ───────────────────────────────────────
-async function parseDocument(granularity) {
-  setProgress(5, '讀取文件…');
-
-  let htmlContent = '';
-
-  if (currentFileType === 'txt') {
-    const text = await currentFile.text();
-    htmlContent = `<pre>${escHtml(text)}</pre>`;
-    log('TXT 已讀取', 'ok');
-
-  } else if (currentFileType === 'html') {
-    const raw = await currentFile.text();
-    htmlContent = sanitizeHTML(raw);
-    log('HTML 已讀取並清理', 'ok');
-
-  } else if (currentFileType === 'md') {
-    if (typeof marked === 'undefined')
-      throw new Error('marked.js 尚未載入，請確認網路連線後重新整理');
-    const text   = await currentFile.text();
-    htmlContent  = marked.parse(text);
-    log('Markdown → HTML 轉換完成', 'ok');
-
-  } else if (currentFileType === 'docx') {
-    if (typeof mammoth === 'undefined')
-      throw new Error('mammoth.js 尚未載入，請確認網路連線後重新整理');
-    const buf    = await readArrayBuffer(currentFile);
-    const result = await mammoth.convertToHtml({ arrayBuffer: buf });
-    htmlContent  = result.value;
-    if (result.messages.length)
-      log(`DOCX 轉換警告：${result.messages.length} 則（見 console）`);
-    log('DOCX → HTML 轉換完成', 'ok');
-  }
-
-  // ── Pre-load all images into the browser cache BEFORE inserting into DOM ──
-  // Root cause of coordinate drift: images load asynchronously AFTER we
-  // measure positions. By pre-caching with new Image(), when the HTML is
-  // inserted into the DOM the browser finds images already in cache and
-  // renders them at full size immediately — layout is stable from the start.
-  setProgress(25, '預載圖片至快取…');
-  await preloadImages(htmlContent);
-
-  setProgress(55, '渲染頁面…');
-  const contentDiv = document.createElement('div');
-  contentDiv.innerHTML = htmlContent;
-
-  const { wrap, overlayCanvas } = await createDocPage(contentDiv, 1);
-
-  setProgress(82, '擷取座標…');
-  // Small additional wait for any remaining reflow (fonts, etc.)
-  await waitFrames(4);
-
-  const pageRect = wrap.getBoundingClientRect();
-  const items    = extractCoordsFromDOM(contentDiv, 1, pageRect, 0, granularity);
-  addNormCoords(items, pageRect.width, pageRect.height);
-  extractedData  = items;
-  pageOverlayMap.set(1, { overlayCanvas, items });
-
-  setProgress(100, '解析完成！');
-  log(`共擷取 ${items.length} 個${granularity === 'word' ? '單字' : '字元'}`);
-  return 1;
-}
-
-// ── Pre-load all image URLs into browser cache ────────────────────────────────
-// Extracts src (and srcset) from raw HTML string, fetches each via new Image().
-// Once cached, <img> elements in the DOM render synchronously with correct size.
-async function preloadImages(htmlContent, timeoutMs = 12000) {
-  const srcs = new Set();
-
-  htmlContent.replace(/<img\b[^>]*/gi, tag => {
-    // src="..."
-    const sm = tag.match(/\bsrc=["']([^"']+)["']/i);
-    if (sm && !sm[1].startsWith('data:')) srcs.add(sm[1]);
-    // srcset="url 1x, url2 2x, ..."
-    const ss = tag.match(/\bsrcset=["']([^"']+)["']/i);
-    if (ss) ss[1].split(',').forEach(part => {
-      const url = part.trim().split(/\s+/)[0];
-      if (url && !url.startsWith('data:')) srcs.add(url);
+    iconBtns.forEach(btn => {
+      btn.addEventListener('click', () => switchPanel(btn.dataset.panel));
     });
-    return tag;
-  });
 
-  if (!srcs.size) return;
-  log(`預載 ${srcs.size} 張圖片…`);
+    // ── Logs Drawer Toggle Helper ──────────────────────────────────────────
+    window.toggleLogsDrawer = function() {
+      const drawer = document.getElementById('logsDrawer');
+      drawer.classList.toggle('collapsed');
+    };
 
-  const proms = [...srcs].map(src =>
-    new Promise(res => {
-      const img = new Image();
-      img.onload = img.onerror = res;
-      img.src = src;          // triggers browser fetch + cache
-    })
-  );
-
-  const timer = new Promise(res => setTimeout(() => {
-    log(`圖片預載逾時（${timeoutMs / 1000}s），繼續`);
-    res();
-  }, timeoutMs));
-
-  await Promise.race([Promise.all(proms), timer]);
-  log('圖片預載完成', 'ok');
-}
-
-// ── Build non-PDF document page ───────────────────────────────────────────────
-async function createDocPage(contentDiv, pageNum) {
-  const block = document.createElement('div');
-  block.className = 'page-block';
-
-  const wrap = document.createElement('div');
-  wrap.className = 'page-wrap doc-page';
-  wrap.style.width = '794px';   // A4 width at 96 DPI
-  wrap.appendChild(contentDiv);
-
-  const overlayCanvas = document.createElement('canvas');
-  overlayCanvas.className    = 'overlay-canvas';
-  overlayCanvas.style.display = 'none';
-  wrap.appendChild(overlayCanvas);
-
-  const hitDiv = document.createElement('div');
-  hitDiv.className = 'hit-div';
-  wrap.appendChild(hitDiv);
-
-  const lbl = document.createElement('div');
-  lbl.className   = 'page-lbl';
-  lbl.textContent = `第 ${pageNum} 頁  (${FILE_META[currentFileType]?.label ?? currentFileType})`;
-
-  block.appendChild(wrap);
-  block.appendChild(lbl);
-  previewArea.appendChild(block);
-
-  // Images should already be in cache from preloadImages().
-  // waitForImages() here is a safety net that completes near-instantly for
-  // cached images; it only delays if some images slipped past preloading.
-  await waitForImages(contentDiv);
-  await waitFrames(4);
-
-  const w = wrap.getBoundingClientRect().width;
-  const h = wrap.getBoundingClientRect().height;
-  overlayCanvas.width        = Math.round(w);
-  overlayCanvas.height       = Math.round(h);
-  overlayCanvas.style.width  = `${Math.round(w)}px`;
-  overlayCanvas.style.height = `${Math.round(h)}px`;
-
-  hitDiv.addEventListener('mousemove',  e => onPageMouseMove(e, wrap, pageNum));
-  hitDiv.addEventListener('mouseleave', ()  => onPageMouseLeave(pageNum));
-
-  return { wrap, overlayCanvas };
-}
-
-// ── Wait for all <img> inside container to load (with timeout) ───────────────
-// External images may never respond (network blocked / CDN unreachable).
-// We race all pending load/error events against a 5-second timeout so the
-// tool never hangs regardless of image availability.
-function waitForImages(container, timeoutMs = 5000) {
-  const imgs = [...container.querySelectorAll('img')];
-  if (!imgs.length) return Promise.resolve();
-
-  const pending = imgs
-    .filter(img => !img.complete)
-    .map(img =>
-      new Promise(res => {
-        img.addEventListener('load',  res, { once: true });
-        img.addEventListener('error', res, { once: true });
-      })
-    );
-
-  if (!pending.length) return Promise.resolve();   // all already cached
-
-  const timeout = new Promise(res => setTimeout(() => {
-    log(`圖片等待逾時（${timeoutMs / 1000}s），已繼續處理`);
-    res();
-  }, timeoutMs));
-
-  return Promise.race([Promise.all(pending), timeout]);
-}
-
-// ── Add normalised coordinates to extracted items ────────────────────────────
-// norm_* fields are 0.0–1.0 ratios relative to the page container dimensions.
-// They are device-independent: multiply by any page rendering size to recover
-// the absolute position in that coordinate space.
-// DPR is recorded so callers can convert CSS px ↔ physical screen pixels.
-function addNormCoords(items, pageWidth, pageHeight) {
-  const dpr = round4(window.devicePixelRatio || 1);
-  const pw  = round4(pageWidth);
-  const ph  = round4(pageHeight);
-  items.forEach(item => {
-    item.page_width  = pw;
-    item.page_height = ph;
-    item.dpr         = dpr;
-    item.norm_left   = round4(item.left   / pageWidth);
-    item.norm_top    = round4(item.top    / pageHeight);
-    item.norm_right  = round4(item.right  / pageWidth);
-    item.norm_bottom = round4(item.bottom / pageHeight);
-    item.norm_width  = round4(item.width  / pageWidth);
-    item.norm_height = round4(item.height / pageHeight);
-  });
-}
-
-// ── DOM coordinate extractor (for HTML / TXT / DOCX) ─────────────────────────
-// Range.getBoundingClientRect() works correctly for normal DOM (no PDF transforms).
-function extractCoordsFromDOM(rootEl, pageNum, pageRect, startIdx, granularity) {
-  const results = [];
-  let   idx     = startIdx;
-
-  const walker = document.createTreeWalker(rootEl, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      const tag = node.parentElement?.tagName?.toUpperCase() ?? '';
-      if (['SCRIPT','STYLE','NOSCRIPT','TEXTAREA'].includes(tag))
-        return NodeFilter.FILTER_REJECT;
-      return node.textContent.trim()
-        ? NodeFilter.FILTER_ACCEPT
-        : NodeFilter.FILTER_SKIP;
-    },
-  });
-
-  let node;
-  while ((node = walker.nextNode())) {
-    const text = node.textContent;
-
-    if (granularity === 'word') {
-      const re = /\S+/g;
-      let m;
-      while ((m = re.exec(text)) !== null) {
-        // 跨行單字會回傳多個 client rect，每行各自加為一筆（共用 text）
-        const cs = getRangeRects(node, m.index, m.index + m[0].length, pageRect);
-        for (const c of cs) {
-          results.push({ page: pageNum, index: idx++, text: m[0], ...c });
-        }
-      }
-    } else {
-      for (let i = 0; i < text.length; i++) {
-        if (/\s/.test(text[i])) continue;
-        const cs = getRangeRects(node, i, i + 1, pageRect);
-        for (const c of cs) {
-          results.push({ page: pageNum, index: idx++, text: text[i], ...c });
-        }
-      }
+    function closeMobileSheet() {
+      sidebar.classList.remove('mobile-open');
+      sidebar.classList.add('collapsed');
+      sidebarBackdrop.classList.remove('visible');
+      document.body.style.overflow = '';
     }
-  }
-  return results;
-}
+    function openMobileSheet() {
+      sidebar.classList.remove('collapsed');
+      sidebar.classList.add('mobile-open');
+      sidebarBackdrop.classList.add('visible');
+      document.body.style.overflow = 'hidden';
+      switchPanel('file');
+    }
 
-// 對 textNode 的 [start, end) 取所有 client rect（跨行詞會回傳多個）；
-// 過濾掉 0×0 的 rect，並轉成相對於 pageRect 的座標
-function getRangeRects(textNode, start, end, pageRect) {
-  try {
-    const range = document.createRange();
-    range.setStart(textNode, start);
-    range.setEnd(textNode, end);
-    const rects = range.getClientRects();
-    const out = [];
-    for (const r of rects) {
-      if (r.width < 0.5 || r.height < 0.5) continue;
-      out.push({
-        top:    round4(r.top    - pageRect.top),
-        left:   round4(r.left   - pageRect.left),
-        right:  round4(r.right  - pageRect.left),
-        bottom: round4(r.bottom - pageRect.top),
-        width:  round4(r.width),
-        height: round4(r.height),
+    mobileMenuBtn.addEventListener('click', () => {
+      if (sidebar.classList.contains('mobile-open')) {
+        closeMobileSheet();
+      } else {
+        openMobileSheet();
+      }
+    });
+    
+    sidebarBackdrop.addEventListener('click', closeMobileSheet);
+    document.getElementById('mobileCloseBtn')?.addEventListener('click', closeMobileSheet);
+
+    // ── Logging ───────────────────────────────────────────────────────────────────
+    function log(msg, cls = '') {
+      const el = document.createElement('div');
+      el.className = 'log-line' + (cls ? ' ' + cls : '');
+      const ts = new Date().toLocaleTimeString('zh-TW', { hour12: false });
+      el.textContent = `[${ts}] ${msg}`;
+      logBox.appendChild(el);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function setProgress(pct, msg) {
+      progressFill.style.width = `${Math.min(100, pct)}%`;
+      progressTxt.textContent  = msg;
+    }
+
+    // ── File upload ───────────────────────────────────────────────────────────────
+    uploadZone.addEventListener('click', () => fileInput.click());
+    uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+    uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+    uploadZone.addEventListener('drop', e => {
+      e.preventDefault(); uploadZone.classList.remove('drag-over');
+      const f = e.dataTransfer.files[0];
+      if (f) {
+        if (detectFileType(f) !== 'unknown') loadFile(f);
+        else log('不支援的檔案類型，請上傳 PDF / HTML / TXT / DOCX / MD', 'err');
+      }
+    });
+    fileInput.addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+
+    const FILE_META = {
+      pdf:  { icon: '📄', label: 'PDF',  tag: 'PDF'  },
+      html: { icon: '🌐', label: 'HTML', tag: 'HTML' },
+      txt:  { icon: '📝', label: 'TXT',  tag: 'TXT'  },
+      docx: { icon: '📘', label: 'DOCX', tag: 'DOCX' },
+      md:   { icon: '📋', label: 'MD',   tag: 'MD'   },
+    };
+
+    function detectFileType(file) {
+      const n = file.name.toLowerCase();
+      const m = file.type;
+      if (m === 'application/pdf'  || n.endsWith('.pdf'))  return 'pdf';
+      if (m === 'text/html'        || n.endsWith('.html') || n.endsWith('.htm')) return 'html';
+      if (n.endsWith('.md') || n.endsWith('.markdown'))    return 'md';
+      if (m === 'text/plain'       || n.endsWith('.txt'))  return 'txt';
+      if (n.endsWith('.docx') || m.includes('wordprocessingml')) return 'docx';
+      return 'unknown';
+    }
+
+    function loadFile(file) {
+      currentFile     = file;
+      currentFileType = detectFileType(file);
+      const meta      = FILE_META[currentFileType] || FILE_META.pdf;
+
+      // Update File Card Info in Sidebar
+      document.getElementById('fileCardName').textContent = file.name;
+      document.getElementById('fileCardMeta').textContent = `${meta.tag} · ${formatBytes(file.size)}`;
+
+      // Reveal sidebar
+      // Sidebar is always visible; ensure default panel active
+      if (!activePanel) switchPanel('file');
+
+      // Clear existing page blocks and trigger parsing
+      [...previewArea.children].forEach(c => { if (c.id !== 'emptyState') c.remove(); });
+      emptyState.style.display = 'none';
+
+      parseBtn.disabled = false;
+      extractedData = [];
+      exportJson.disabled = exportCsv.disabled = true;
+      statsCard.classList.remove('visible');
+      
+      // Sections now in panels - always available
+
+      resetCognitive();
+      pageOverlayMap.clear();
+      
+      document.getElementById('scaleRow').style.display = currentFileType === 'pdf' ? '' : 'none';
+      log(`已載入檔案: ${file.name} [${meta.tag}] (${formatBytes(file.size)})`, 'hi');
+      
+      // Trigger auto-parse
+      parseBtn.click();
+    }
+
+    function formatBytes(b) {
+      if (b < 1024)    return `${b} B`;
+      if (b < 1048576) return `${(b/1024).toFixed(1)} KB`;
+      return `${(b/1048576).toFixed(2)} MB`;
+    }
+
+    // ── Parse ─────────────────────────────────────────────────────────────────────
+    parseBtn.addEventListener('click', async () => {
+      if (!currentFile) return;
+
+      const scale       = Math.max(0.5, Math.min(3, parseFloat(scaleInput.value) || 1.5));
+      const granularity = document.querySelector('input[name="granularity"]:checked').value;
+
+      parseBtn.disabled = exportJson.disabled = exportCsv.disabled = saveBtn.disabled = true;
+      extractedData = [];
+      pageOverlayMap.clear();
+      overlayOn = false;
+      overlayToggle.classList.remove('active');
+      overlayLabel.textContent = '顯示座標框（關閉）';
+      progressBlock.classList.add('visible');
+      statsCard.classList.remove('visible');
+      
+      resetCognitive();
+      [...previewArea.children].forEach(c => { if (c.id !== 'emptyState') c.remove(); });
+      emptyState.style.display = 'none';
+      log(`── 開始解析 [${currentFileType.toUpperCase()}] (單位: ${granularity}) ──`, 'hi');
+
+      try {
+        let numPages;
+        if (currentFileType === 'pdf') {
+          numPages = await parsePDF(scale, granularity);
+        } else {
+          numPages = await parseDocument(granularity);
+        }
+
+        document.getElementById('sPages').textContent = numPages;
+        document.getElementById('sItems').textContent = extractedData.length.toLocaleString();
+        document.getElementById('sUnit').textContent  = (granularity === 'word' ? 'Word' : 'Char') + (currentFileType === 'pdf' ? ` / ${scale}x` : '');
+        
+        statsCard.classList.add('visible');
+        exportJson.disabled = exportCsv.disabled = saveBtn.disabled = false;
+        
+        // Panels always accessible via icon bar
+        
+        log(`完成！共擷取 ${extractedData.length} 個項目`, 'ok');
+      } catch (err) {
+        log(`錯誤：${err.message}`, 'err');
+        console.error(err);
+        setProgress(0, '解析失敗');
+      } finally {
+        parseBtn.disabled = false;
+        progressBlock.classList.remove('visible');
+      }
+    });
+
+    // ── PDF parser ────────────────────────────────────────────────────────────────
+    async function parsePDF(scale, granularity) {
+      setProgress(0, '讀取 PDF 檔案…');
+      const buffer   = await readArrayBuffer(currentFile);
+      const pdf      = await pdfjsLib.getDocument({ data: buffer }).promise;
+      const numPages = pdf.numPages;
+      log(`PDF 載入成功，共 ${numPages} 頁`, 'ok');
+      setProgress(5, `共 ${numPages} 頁，開始逐頁渲染…`);
+      let globalIdx = 0;
+      for (let p = 1; p <= numPages; p++) {
+        setProgress(5 + Math.round(((p - 1) / numPages) * 90), `渲染第 ${p} / ${numPages} 頁…`);
+        const { items, nextIdx } = await processPage(pdf, p, scale, granularity, globalIdx);
+        extractedData.push(...items);
+        globalIdx = nextIdx;
+      }
+      setProgress(100, '解析完成！');
+      return numPages;
+    }
+
+    // ── Non-PDF parser (HTML / TXT / DOCX / MD) ──────────────────────────────────
+    async function parseDocument(granularity) {
+      setProgress(5, '讀取文件內容…');
+      let htmlContent = '';
+
+      if (currentFileType === 'txt') {
+        const text = await currentFile.text();
+        htmlContent = `<pre>${escHtml(text)}</pre>`;
+        log('TXT 讀取成功', 'ok');
+      } else if (currentFileType === 'html') {
+        const raw = await currentFile.text();
+        htmlContent = sanitizeHTML(raw);
+        log('HTML 讀取成功', 'ok');
+      } else if (currentFileType === 'md') {
+        const text   = await currentFile.text();
+        htmlContent  = marked.parse(text);
+        log('Markdown 轉換成功', 'ok');
+      } else if (currentFileType === 'docx') {
+        const buf    = await readArrayBuffer(currentFile);
+        const result = await mammoth.convertToHtml({ arrayBuffer: buf });
+        htmlContent  = result.value;
+        log('DOCX 轉換成功', 'ok');
+      }
+
+      setProgress(25, '預載圖片快取…');
+      await preloadImages(htmlContent);
+
+      setProgress(55, '渲染文件網頁…');
+      const contentDiv = document.createElement('div');
+      contentDiv.innerHTML = htmlContent;
+
+      const { wrap, overlayCanvas } = await createDocPage(contentDiv, 1);
+      setProgress(82, '分析文字座標…');
+      await waitFrames(4);
+
+      const pageRect = wrap.getBoundingClientRect();
+      const items    = extractCoordsFromDOM(contentDiv, 1, pageRect, 0, granularity);
+      addNormCoords(items, pageRect.width, pageRect.height);
+      extractedData  = items;
+      pageOverlayMap.set(1, { overlayCanvas, items });
+
+      setProgress(100, '解析完成！');
+      return 1;
+    }
+
+    // ── Pre-load all images to prevent DOM coordinate shifts ──────────────────
+    async function preloadImages(htmlContent, timeoutMs = 12000) {
+      const srcs = new Set();
+      htmlContent.replace(/<img\b[^>]*/gi, tag => {
+        const sm = tag.match(/\bsrc=["']([^"']+)["']/i);
+        if (sm && !sm[1].startsWith('data:')) srcs.add(sm[1]);
+        return tag;
+      });
+
+      if (!srcs.size) return;
+      log(`預載 ${srcs.size} 張圖片…`);
+
+      const proms = [...srcs].map(src =>
+        new Promise(res => {
+          const img = new Image();
+          img.onload = img.onerror = res;
+          img.src = src;
+        })
+      );
+
+      const timer = new Promise(res => setTimeout(res, timeoutMs));
+      await Promise.race([Promise.all(proms), timer]);
+    }
+
+    // ── Build non-PDF DOM page block ─────────────────────────────────────────────
+    async function createDocPage(contentDiv, pageNum) {
+      const block = document.createElement('div');
+      block.className = 'page-block';
+
+      const wrap = document.createElement('div');
+      wrap.className = 'page-wrap doc-page';
+      wrap.style.width = '794px'; // standard A4 CSS width at 96 DPI
+      wrap.appendChild(contentDiv);
+
+      const overlayCanvas = document.createElement('canvas');
+      overlayCanvas.className = 'overlay-canvas';
+      wrap.appendChild(overlayCanvas);
+
+      const hitDiv = document.createElement('div');
+      hitDiv.className = 'hit-div';
+      wrap.appendChild(hitDiv);
+
+      const lbl = document.createElement('div');
+      lbl.className   = 'page-lbl';
+      lbl.textContent = `第 ${pageNum} 頁  (${FILE_META[currentFileType]?.label ?? currentFileType})`;
+
+      block.appendChild(wrap);
+      block.appendChild(lbl);
+      previewArea.appendChild(block);
+
+      await waitForImages(contentDiv);
+      await waitFrames(4);
+
+      const w = wrap.getBoundingClientRect().width;
+      const h = wrap.getBoundingClientRect().height;
+      overlayCanvas.width        = Math.round(w);
+      overlayCanvas.height       = Math.round(h);
+      overlayCanvas.style.width  = `${Math.round(w)}px`;
+      overlayCanvas.style.height = `${Math.round(h)}px`;
+
+      hitDiv.addEventListener('mousemove',  e => onPageMouseMove(e, wrap, pageNum));
+      hitDiv.addEventListener('mouseleave', ()  => onPageMouseLeave(pageNum));
+
+      return { wrap, overlayCanvas };
+    }
+
+    function waitForImages(container, timeoutMs = 5000) {
+      const imgs = [...container.querySelectorAll('img')];
+      if (!imgs.length) return Promise.resolve();
+      const pending = imgs.filter(img => !img.complete).map(img =>
+        new Promise(res => {
+          img.addEventListener('load', res, { once: true });
+          img.addEventListener('error', res, { once: true });
+        })
+      );
+      if (!pending.length) return Promise.resolve();
+      return Promise.race([Promise.all(pending), new Promise(res => setTimeout(res, timeoutMs))]);
+    }
+
+    // ── Add normalized coordinates ────────────────────────────────────────────
+    function addNormCoords(items, pageWidth, pageHeight) {
+      const dpr = round4(window.devicePixelRatio || 1);
+      const pw  = round4(pageWidth);
+      const ph  = round4(pageHeight);
+      items.forEach(item => {
+        item.page_width  = pw;
+        item.page_height = ph;
+        item.dpr         = dpr;
+        item.norm_left   = round4(item.left   / pageWidth);
+        item.norm_top    = round4(item.top    / pageHeight);
+        item.norm_right  = round4(item.right  / pageWidth);
+        item.norm_bottom = round4(item.bottom / pageHeight);
+        item.norm_width  = round4(item.width  / pageWidth);
+        item.norm_height = round4(item.height / pageHeight);
       });
     }
-    return out;
-  } catch { return []; }
-}
 
-// Backward-compat for older callers that expected a single rect
-function getRangeRect(textNode, start, end, pageRect) {
-  const cs = getRangeRects(textNode, start, end, pageRect);
-  return cs.length ? cs[0] : null;
-}
+    // ── DOM coordinate extractor ──────────────────────────────────────────────
+    function extractCoordsFromDOM(rootEl, pageNum, pageRect, startIdx, granularity) {
+      const results = [];
+      let   idx     = startIdx;
 
-// ── HTML sanitizer ────────────────────────────────────────────────────────────
-function sanitizeHTML(raw) {
-  const doc = new DOMParser().parseFromString(raw, 'text/html');
-  doc.querySelectorAll(
-    'script,link,style,meta,noscript,iframe,object,embed,form,input,button,select'
-  ).forEach(el => el.remove());
-  // Strip all on* event attributes
-  doc.querySelectorAll('*').forEach(el => {
-    [...el.attributes].forEach(attr => {
-      if (attr.name.startsWith('on')) el.removeAttribute(attr.name);
-    });
-  });
-  return doc.body.innerHTML;
-}
+      const walker = document.createTreeWalker(rootEl, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+          const tag = node.parentElement?.tagName?.toUpperCase() ?? '';
+          if (['SCRIPT','STYLE','NOSCRIPT','TEXTAREA'].includes(tag))
+            return NodeFilter.FILTER_REJECT;
+          return node.textContent.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+        },
+      });
 
-// ── Process single page ───────────────────────────────────────────────────────
-async function processPage(pdf, pageNum, scale, granularity, globalIdx) {
-  const page     = await pdf.getPage(pageNum);
-  const viewport = page.getViewport({ scale });
-
-  // Containers
-  const block = document.createElement('div');
-  block.className = 'page-block';
-
-  const wrap = document.createElement('div');
-  wrap.className = 'page-wrap';
-  wrap.style.width  = `${viewport.width}px`;
-  wrap.style.height = `${viewport.height}px`;
-
-  // PDF canvas
-  const canvas  = document.createElement('canvas');
-  canvas.width  = viewport.width;
-  canvas.height = viewport.height;
-  canvas.style.display = 'block';
-  wrap.appendChild(canvas);
-
-  // Text layer
-  const textLayerDiv = document.createElement('div');
-  textLayerDiv.className = 'textLayer';
-  textLayerDiv.style.width  = `${viewport.width}px`;
-  textLayerDiv.style.height = `${viewport.height}px`;
-  wrap.appendChild(textLayerDiv);
-
-  // Overlay canvas (for coordinate boxes)
-  const overlayCanvas   = document.createElement('canvas');
-  overlayCanvas.className    = 'overlay-canvas';
-  overlayCanvas.width        = viewport.width;
-  overlayCanvas.height       = viewport.height;
-  overlayCanvas.style.display = 'none';   // always start hidden
-  wrap.appendChild(overlayCanvas);
-
-  // Hit-test div (transparent, sits on top, captures mouse events)
-  const hitDiv = document.createElement('div');
-  hitDiv.className = 'hit-div';
-  wrap.appendChild(hitDiv);
-
-  // Label
-  const lbl = document.createElement('div');
-  lbl.className   = 'page-lbl';
-  lbl.textContent = `第 ${pageNum} 頁  (${Math.round(viewport.width)} × ${Math.round(viewport.height)} px)`;
-
-  block.appendChild(wrap);
-  block.appendChild(lbl);
-  previewArea.appendChild(block);
-
-  // Render PDF canvas
-  await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-
-  // Render text layer
-  const textContent = await page.getTextContent();
-  await pdfjsLib.renderTextLayer({
-    textContentSource: textContent,
-    container: textLayerDiv,
-    viewport,
-    textDivs: [],
-  }).promise;
-
-  await waitFrames(2);
-
-  // 直接從 PDF.js textContent + viewport.convertToViewportPoint 取座標。
-  // 這是 PDF.js 自己用於定位 text layer span 的數學，所以位置與畫面渲染一致；
-  // 同一 item 內多個詞的邊界僅以 canvas measureText 比例估算，個別詞框可能
-  // 偏移 1~3 px，但整體位置不會跑版（這比 text-layer span 的 transform 取值
-  // 穩定得多 — 某些 PDF.js 渲染模式會讓 getBoundingClientRect 失準）
-  const items = extractCoords(textContent, viewport, pageNum, globalIdx, granularity);
-  addNormCoords(items, viewport.width, viewport.height);
-  const nextIdx = globalIdx + items.length;
-
-  // Register in overlay map
-  pageOverlayMap.set(pageNum, { overlayCanvas, items });
-
-  // Mouse events via hit div
-  hitDiv.addEventListener('mousemove',  e => onPageMouseMove(e, wrap, pageNum));
-  hitDiv.addEventListener('mouseleave', ()  => onPageMouseLeave(pageNum));
-
-  return { items, nextIdx };
-}
-
-// ── (Disabled) Text-layer-based PDF coordinate extraction ────────────────────
-// Kept as reference / future fallback. In PDF.js v3 the text layer <span>
-// elements are positioned via CSS transform with transform-origin: 0% 0%,
-// and getBoundingClientRect() returns inconsistent results on some PDFs
-// (boxes collapse near 0,0). processPage() now uses extractCoords() instead,
-// which uses PDF.js's own viewport.convertToViewportPoint() math — slightly
-// less accurate for within-item word splitting but never drifts globally.
-function extractCoordsFromTextLayer(textLayerDiv, wrap, pageNum, startIdx, granularity) {
-  const wrapRect = wrap.getBoundingClientRect();
-  const results = [];
-  let idx = startIdx;
-
-  // PDF.js 每個 <span> 對應一個文字區塊；用 span 的 getBoundingClientRect()
-  // 比 Range API 更穩（部分 PDF 的 transform 會讓 Range 回傳 0×0）
-  const mc = document.createElement('canvas').getContext('2d');
-  mc.font = '1000px sans-serif';
-
-  const spans = textLayerDiv.querySelectorAll('span');
-  for (const span of spans) {
-    const str = span.textContent;
-    if (!str || !str.trim()) continue;
-    const sr = span.getBoundingClientRect();
-    if (sr.width < 0.3 && sr.height < 0.3) continue;
-
-    const vTop = sr.top - wrapRect.top;
-    const vLeft = sr.left - wrapRect.left;
-    const vpW = sr.width;
-    const vH = sr.height;
-
-    if (granularity === 'word') {
-      const totalMW = mc.measureText(str).width || 1;
-      const re = /\S+/g;
-      let m;
-      while ((m = re.exec(str)) !== null) {
-        const preW = mc.measureText(str.slice(0, m.index)).width;
-        const chW  = mc.measureText(m[0]).width;
-        const wLeft  = vLeft + (preW / totalMW) * vpW;
-        const wWidth = (chW / totalMW) * vpW;
-        if (wWidth < 0.3) continue;
-        results.push({
-          page: pageNum, index: idx++, text: m[0],
-          top: round4(vTop), left: round4(wLeft),
-          right: round4(wLeft + wWidth), bottom: round4(vTop + vH),
-          width: round4(wWidth), height: round4(vH),
-        });
+      let node;
+      while ((node = walker.nextNode())) {
+        const text = node.textContent;
+        if (granularity === 'word') {
+          const re = /\S+/g;
+          let m;
+          while ((m = re.exec(text)) !== null) {
+            const cs = getRangeRects(node, m.index, m.index + m[0].length, pageRect);
+            for (const c of cs) {
+              results.push({ page: pageNum, index: idx++, text: m[0], ...c });
+            }
+          }
+        } else {
+          for (let i = 0; i < text.length; i++) {
+            if (/\s/.test(text[i])) continue;
+            const cs = getRangeRects(node, i, i + 1, pageRect);
+            for (const c of cs) {
+              results.push({ page: pageNum, index: idx++, text: text[i], ...c });
+            }
+          }
+        }
       }
-    } else {
-      const totalMW = mc.measureText(str).width || 1;
-      for (let i = 0; i < str.length; i++) {
-        if (/\s/.test(str[i])) continue;
-        const preW = mc.measureText(str.slice(0, i)).width;
-        const chW  = mc.measureText(str[i]).width;
-        const wLeft  = vLeft + (preW / totalMW) * vpW;
-        const wWidth = (chW / totalMW) * vpW;
-        if (wWidth < 0.3) continue;
-        results.push({
-          page: pageNum, index: idx++, text: str[i],
-          top: round4(vTop), left: round4(wLeft),
-          right: round4(wLeft + wWidth), bottom: round4(vTop + vH),
-          width: round4(wWidth), height: round4(vH),
-        });
-      }
+      return results;
     }
-  }
-  return results;
-}
 
-// ── (Legacy) Coordinate extraction from raw PDF.js textContent ───────────────
-// Kept for reference / fallback only. Currently NOT used by processPage()
-// because text-layer-based extraction is more accurate (see comment above
-// extractCoordsFromTextLayer).
-//
-// Uses PDF.js text content data + viewport.convertToViewportPoint() for exact
-// per-item position, then canvas.measureText() ratios to split each item into
-// words/chars.
-function extractCoords(textContent, viewport, pageNum, startIdx, granularity) {
-  const results = [];
-  let   idx     = startIdx;
+    function getRangeRects(textNode, start, end, pageRect) {
+      try {
+        const range = document.createRange();
+        range.setStart(textNode, start);
+        range.setEnd(textNode, end);
+        const rects = range.getClientRects();
+        const out = [];
+        for (const r of rects) {
+          if (r.width < 0.5 || r.height < 0.5) continue;
+          out.push({
+            top:    round4(r.top    - pageRect.top),
+            left:   round4(r.left   - pageRect.left),
+            right:  round4(r.right  - pageRect.left),
+            bottom: round4(r.bottom - pageRect.top),
+            width:  round4(r.width),
+            height: round4(r.height),
+          });
+        }
+        return out;
+      } catch { return []; }
+    }
 
-  // Off-screen canvas for proportional within-item character width estimation.
-  const mc = document.createElement('canvas').getContext('2d');
-  mc.font  = '1000px Arial, sans-serif';   // very large → sub-pixel accurate ratios
+    function sanitizeHTML(raw) {
+      const doc = new DOMParser().parseFromString(raw, 'text/html');
+      doc.querySelectorAll('script,link,style,meta,noscript,iframe,object,embed,form,input,button,select')
+         .forEach(el => el.remove());
+      doc.querySelectorAll('*').forEach(el => {
+        [...el.attributes].forEach(attr => {
+          if (attr.name.startsWith('on')) el.removeAttribute(attr.name);
+        });
+      });
+      return doc.body.innerHTML;
+    }
 
-  for (const item of textContent.items) {
-    const str = item.str;
-    if (!str || !str.trim()) continue;
+    // ── Process PDF single page ───────────────────────────────────────────────────
+    async function processPage(pdf, pageNum, scale, granularity, globalIdx) {
+      const page     = await pdf.getPage(pageNum);
+      const viewport = page.getViewport({ scale });
 
-    // item.transform = [a, b, c, d, e, f]  (PDF combined text+CTM matrix)
-    // (e, f) is the glyph origin (baseline-left) in PDF user-space coordinates.
-    const [a, b, c, d, e, f] = item.transform;
+      const block = document.createElement('div');
+      block.className = 'page-block';
 
-    // Convert baseline-left from PDF user space → viewport CSS pixels.
-    // This is the identical transformation PDF.js applies to position each span.
-    const [vpX, vpY] = viewport.convertToViewportPoint(e, f);
+      const wrap = document.createElement('div');
+      wrap.className = 'page-wrap';
+      wrap.style.width  = `${viewport.width}px`;
+      wrap.style.height = `${viewport.height}px`;
 
-    // Advance width of this text item in CSS pixels (exact, from PDF data).
-    const vpWidth = item.width * viewport.scale;
-    if (vpWidth < 0.5) continue;
+      const canvas  = document.createElement('canvas');
+      canvas.width  = viewport.width;
+      canvas.height = viewport.height;
+      canvas.style.display = 'block';
+      wrap.appendChild(canvas);
 
-    // Visual font height in viewport pixels.
-    // Math.hypot(c, d) = the Y-axis scale magnitude of the PDF matrix.
-    // Multiplied by viewport.scale converts PDF user units → CSS pixels.
-    const fontH = Math.hypot(c, d) * viewport.scale;
-    if (fontH < 0.5) continue;
+      const textLayerDiv = document.createElement('div');
+      textLayerDiv.className = 'textLayer';
+      textLayerDiv.style.width  = `${viewport.width}px`;
+      textLayerDiv.style.height = `${viewport.height}px`;
+      wrap.appendChild(textLayerDiv);
 
-    // In viewport space Y increases downward; vpY is the BASELINE.
-    // Characters sit ABOVE the baseline, so top = vpY - fontH.
-    const vTop  = vpY - fontH;
-    const vLeft = vpX;
+      const overlayCanvas   = document.createElement('canvas');
+      overlayCanvas.className    = 'overlay-canvas';
+      overlayCanvas.width        = viewport.width;
+      overlayCanvas.height       = viewport.height;
+      wrap.appendChild(overlayCanvas);
 
-    // Proportional word/char splitting via canvas measureText.
-    const totalMW = mc.measureText(str).width || 1;
+      const hitDiv = document.createElement('div');
+      hitDiv.className = 'hit-div';
+      wrap.appendChild(hitDiv);
 
-    function push(chunk, chunkStart) {
-      const preW  = mc.measureText(str.slice(0, chunkStart)).width;
-      const chW   = mc.measureText(chunk).width;
-      const wLeft  = vLeft + (preW / totalMW) * vpWidth;
-      const wWidth = (chW  / totalMW) * vpWidth;
-      if (wWidth < 0.5) return;
-      results.push({
-        page: pageNum, index: idx++, text: chunk,
-        top:    round4(vTop),
-        left:   round4(wLeft),
-        right:  round4(wLeft + wWidth),
-        bottom: round4(vpY),
-        width:  round4(wWidth),
-        height: round4(fontH),
+      const lbl = document.createElement('div');
+      lbl.className   = 'page-lbl';
+      lbl.textContent = `第 ${pageNum} 頁  (${Math.round(viewport.width)} × ${Math.round(viewport.height)} px)`;
+
+      block.appendChild(wrap);
+      block.appendChild(lbl);
+      previewArea.appendChild(block);
+
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+      const textContent = await page.getTextContent();
+      await pdfjsLib.renderTextLayer({
+        textContentSource: textContent,
+        container: textLayerDiv,
+        viewport,
+        textDivs: [],
+      }).promise;
+
+      await waitFrames(2);
+
+      const items = extractCoords(textContent, viewport, pageNum, globalIdx, granularity);
+      addNormCoords(items, viewport.width, viewport.height);
+      const nextIdx = globalIdx + items.length;
+
+      pageOverlayMap.set(pageNum, { overlayCanvas, items });
+
+      hitDiv.addEventListener('mousemove',  e => onPageMouseMove(e, wrap, pageNum));
+      hitDiv.addEventListener('mouseleave', ()  => onPageMouseLeave(pageNum));
+
+      return { items, nextIdx };
+    }
+
+    function extractCoords(textContent, viewport, pageNum, startIdx, granularity) {
+      const results = [];
+      let   idx     = startIdx;
+      const mc = document.createElement('canvas').getContext('2d');
+      mc.font  = '1000px Arial, sans-serif';
+
+      for (const item of textContent.items) {
+        const str = item.str;
+        if (!str || !str.trim()) continue;
+
+        const [a, b, c, d, e, f] = item.transform;
+        const [vpX, vpY] = viewport.convertToViewportPoint(e, f);
+        const vpWidth = item.width * viewport.scale;
+        if (vpWidth < 0.5) continue;
+
+        const fontH = Math.hypot(c, d) * viewport.scale;
+        if (fontH < 0.5) continue;
+
+        const vTop  = vpY - fontH;
+        const vLeft = vpX;
+        const totalMW = mc.measureText(str).width || 1;
+
+        function push(chunk, chunkStart) {
+          const preW  = mc.measureText(str.slice(0, chunkStart)).width;
+          const chW   = mc.measureText(chunk).width;
+          const wLeft  = vLeft + (preW / totalMW) * vpWidth;
+          const wWidth = (chW  / totalMW) * vpWidth;
+          if (wWidth < 0.5) return;
+          results.push({
+            page: pageNum, index: idx++, text: chunk,
+            top:    round4(vTop),
+            left:   round4(wLeft),
+            right:  round4(wLeft + wWidth),
+            bottom: round4(vpY),
+            width:  round4(wWidth),
+            height: round4(fontH),
+          });
+        }
+
+        if (granularity === 'word') {
+          const re = /\S+/g;
+          let m;
+          while ((m = re.exec(str)) !== null) push(m[0], m.index);
+        } else {
+          for (let i = 0; i < str.length; i++) {
+            if (!/\s/.test(str[i])) push(str[i], i);
+          }
+        }
+      }
+      return results;
+    }
+
+    function round4(n) { return Math.round(n * 10000) / 10000; }
+
+    // ── Overlay drawing ───────────────────────────────────────────────────────────
+    function drawOverlay(overlayCanvas, items, search, alpha, hoverItem = null) {
+      const ctx = overlayCanvas.getContext('2d');
+      ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+      if (cognitiveOn && cogVizMode === 'heatmap') {
+        drawCognitiveHeatmap(ctx, items);
+      }
+
+      items.forEach(item => {
+        const isHover = hoverItem && item.index === hoverItem.index;
+        const isMatch = search && item.text.includes(search);
+        const cog     = cognitiveOn ? lookupCognitive(item.text) : null;
+
+        let fillStyle = null;
+
+        if (isHover) {
+          ctx.strokeStyle = `rgba(16, 185, 129, ${alpha})`;
+          fillStyle       = 'rgba(16, 185, 129, 0.18)';
+          ctx.lineWidth   = 2;
+        } else if (isMatch) {
+          ctx.strokeStyle = `rgba(245, 158, 11, ${alpha})`;
+          fillStyle       = 'rgba(245, 158, 11, 0.15)';
+          ctx.lineWidth   = 1.5;
+        } else if (cognitiveOn && cogVizMode === 'box' && cog && cog.score >= COG_MIN_SCORE) {
+          ctx.strokeStyle = `rgba(239, 68, 68, ${alpha})`;
+          fillStyle       = `rgba(239, 68, 68, ${0.15 + 0.3 * cog.score})`;
+          ctx.lineWidth   = 1.5;
+        } else if (cognitiveOn) {
+          return; // Heatmap mode: do not draw default outlines
+        } else {
+          ctx.strokeStyle = `rgba(59, 130, 246, ${Math.min(alpha, 0.6)})`;
+          ctx.lineWidth   = 1;
+        }
+
+        const lw = ctx.lineWidth;
+        ctx.strokeRect(item.left + lw/2, item.top + lw/2, item.width - lw, item.height - lw);
+        if (fillStyle) {
+          ctx.fillStyle = fillStyle;
+          ctx.fillRect(item.left, item.top, item.width, item.height);
+        }
       });
     }
 
-    if (granularity === 'word') {
-      const re = /\S+/g;
-      let m;
-      while ((m = re.exec(str)) !== null) push(m[0], m.index);
-    } else {
-      for (let i = 0; i < str.length; i++) {
-        if (!/\s/.test(str[i])) push(str[i], i);
-      }
-    }
-  }
-
-  return results;
-}
-
-function round4(n) { return Math.round(n * 10000) / 10000; }
-
-// ── Overlay drawing ───────────────────────────────────────────────────────────
-// 雙模式：
-//   1. box 模式：原本的逐字精確矩形框（紅色填充 = 深難字）
-//   2. heatmap 模式：對每個分數 >= µ 的詞畫高斯 kernel 圓，用 lighter blend
-//      累加重疊區域 → 視覺上像等高線/壓力分佈圖
-// 兩種模式都仍然支援 hover 高亮與 search match
-function drawOverlay(overlayCanvas, items, search, alpha, hoverItem = null) {
-  const ctx = overlayCanvas.getContext('2d');
-  ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-
-  // 熱力圖底層先畫（在所有框框之下）
-  if (cognitiveOn && cogVizMode === 'heatmap') {
-    drawCognitiveHeatmap(ctx, items);
-  }
-
-  items.forEach(item => {
-    const isHover = hoverItem && item.index === hoverItem.index;
-    const isMatch = search && item.text.includes(search);
-    const cog     = cognitiveOn ? lookupCognitive(item.text) : null;
-
-    let fillStyle = null;
-
-    if (isHover) {
-      ctx.strokeStyle = `rgba(61,186,110,${alpha})`;
-      fillStyle       = 'rgba(61,186,110,0.18)';
-      ctx.lineWidth   = 2;
-    } else if (isMatch) {
-      ctx.strokeStyle = `rgba(245,166,35,${alpha})`;
-      fillStyle       = 'rgba(245,166,35,0.15)';
-      ctx.lineWidth   = 1.5;
-    } else if (cognitiveOn && cogVizMode === 'box' && cog && cog.score >= COG_MIN_SCORE) {
-      // 分數 >= 門檻：標示為深難字（紅色填充 + 紅色框）
-      ctx.strokeStyle = `rgba(224,85,85,${alpha})`;
-      fillStyle       = `rgba(224,85,85,${0.18 + 0.32 * cog.score})`;
-      ctx.lineWidth   = 1.5;
-    } else if (cognitiveOn) {
-      // 熱力圖模式下，非 hover/search 的詞不再畫框（熱力圖自己會顯示）
-      return;
-    } else {
-      ctx.strokeStyle = `rgba(79,126,247,${Math.min(alpha, 0.65)})`;
-      ctx.lineWidth   = 1;
-    }
-
-    const lw = ctx.lineWidth;
-    ctx.strokeRect(item.left + lw/2, item.top + lw/2, item.width - lw, item.height - lw);
-    if (fillStyle) {
-      ctx.fillStyle = fillStyle;
-      ctx.fillRect(item.left, item.top, item.width, item.height);
-    }
-  });
-}
-
-// ── Heatmap (等高線) 繪製 ─────────────────────────────────────────────────────
-// KDE 視覺化：每個 score >= µ 的詞當作一個高斯 kernel（中心在詞的位置，σ 由
-// 拉桿控制）。多個 kernel 用 'lighter' blend 累加 → 重疊區域顏色變亮，
-// 自然形成「壓力高低」的等高線錯覺。
-// 之後再用 'source-over' 描上幾條同心等密度線，讓 contour 形狀更明確。
-function drawCognitiveHeatmap(ctx, items) {
-  // 預先收集所有要繪製的 kernel，避免 cogScoreMap 多次查詢
-  const kernels = [];
-  items.forEach(item => {
-    const cog = lookupCognitive(item.text);
-    if (!cog || cog.score < cogMu) return;
-    // 歸一化強度：μ → 0，1.0 → 1.0
-    const intensity = Math.max(0, Math.min(1, (cog.score - cogMu) / Math.max(1 - cogMu, 0.01)));
-    kernels.push({
-      cx: item.left + item.width / 2,
-      cy: item.top + item.height / 2,
-      intensity,
-      score: cog.score,
-    });
-  });
-  if (!kernels.length) return;
-
-  // Pass 1: heatmap fill（lighter blend，累加重疊）
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  for (const k of kernels) {
-    const grad = ctx.createRadialGradient(k.cx, k.cy, 0, k.cx, k.cy, cogSigma);
-    const a0 = 0.55 * k.intensity;       // 中心 alpha
-    const a1 = 0.18 * k.intensity;       // 中段 alpha
-    grad.addColorStop(0,   `rgba(224, 85, 85, ${a0})`);
-    grad.addColorStop(0.55, `rgba(224, 85, 85, ${a1})`);
-    grad.addColorStop(1,   'rgba(224, 85, 85, 0)');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(k.cx, k.cy, cogSigma, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.restore();
-
-  // Pass 2: contour lines（同心等密度環，視覺上像等高線）
-  ctx.save();
-  ctx.lineWidth = 0.8;
-  for (const k of kernels) {
-    // 透明度跟強度走，越深的詞等高線越明顯
-    const lineAlpha = 0.35 + 0.45 * k.intensity;
-    ctx.strokeStyle = `rgba(170, 40, 40, ${lineAlpha})`;
-    // 三圈等密度線：0.35σ / 0.7σ / 1.0σ
-    for (const t of [0.35, 0.7, 1.0]) {
-      ctx.beginPath();
-      ctx.arc(k.cx, k.cy, cogSigma * t, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-  }
-  ctx.restore();
-}
-
-// 認知負荷查表：英文不分大小寫；中文比對原字
-function lookupCognitive(text) {
-  if (!text || !cogScoreMap.size) return null;
-  const key = text.toLowerCase();
-  if (cogScoreMap.has(key)) return cogScoreMap.get(key);
-  // 中文等不轉小寫
-  if (cogScoreMap.has(text)) return cogScoreMap.get(text);
-  return null;
-}
-
-function redrawAllOverlays(hoverPageNum = null, hoverItem = null) {
-  const alpha  = parseFloat(alphaSlider.value) / 100;
-  const search = searchInput.value.trim();
-  pageOverlayMap.forEach(({ overlayCanvas, items }, pageNum) => {
-    const hi = (pageNum === hoverPageNum) ? hoverItem : null;
-    drawOverlay(overlayCanvas, items, search, alpha, hi);
-  });
-  updateMatchCount(search);
-}
-
-function updateMatchCount(search) {
-  if (!search) { matchCount.textContent = ''; return; }
-  let n = 0;
-  pageOverlayMap.forEach(({ items }) => { n += items.filter(i => i.text.includes(search)).length; });
-  matchCount.textContent = `${n} 筆符合`;
-}
-
-// ── Overlay toggle ────────────────────────────────────────────────────────────
-overlayToggle.addEventListener('click', () => {
-  overlayOn = !overlayOn;
-  overlayToggle.classList.toggle('active', overlayOn);
-  overlayLabel.textContent = overlayOn ? '顯示座標框（開啟）' : '顯示座標框（關閉）';
-
-  pageOverlayMap.forEach(({ overlayCanvas }) => {
-    if (overlayOn) {
-      overlayCanvas.style.display = 'block';
-    } else {
-      // Clear canvas content first, then hide — prevents ghost drawing when re-shown
-      overlayCanvas.getContext('2d').clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-      overlayCanvas.style.display = 'none';
-    }
-  });
-
-  document.querySelectorAll('.hit-div').forEach(d => d.classList.toggle('active', overlayOn));
-
-  if (overlayOn) redrawAllOverlays();
-  log(`座標框：${overlayOn ? '開啟' : '關閉'}`);
-});
-
-// ── Slider / search live update ───────────────────────────────────────────────
-alphaSlider.addEventListener('input', () => {
-  alphaDisplay.textContent = alphaSlider.value + '%';
-  if (overlayOn) redrawAllOverlays();
-});
-
-searchInput.addEventListener('input', () => {
-  if (overlayOn) redrawAllOverlays();
-  else updateMatchCount(searchInput.value.trim());
-});
-
-// ── Mouse interaction ─────────────────────────────────────────────────────────
-function onPageMouseMove(e, wrap, pageNum) {
-  if (!overlayOn) return;
-
-  const { overlayCanvas, items } = pageOverlayMap.get(pageNum);
-  const wRect = wrap.getBoundingClientRect();
-  const mx = e.clientX - wRect.left;
-  const my = e.clientY - wRect.top;
-
-  // Find item under cursor; prefer smallest area when overlapping
-  let best = null, bestArea = Infinity;
-  items.forEach(item => {
-    if (mx >= item.left && mx <= item.right && my >= item.top && my <= item.bottom) {
-      const area = item.width * item.height;
-      if (area < bestArea) { best = item; bestArea = area; }
-    }
-  });
-
-  const alpha  = parseFloat(alphaSlider.value) / 100;
-  const search = searchInput.value.trim();
-  drawOverlay(overlayCanvas, items, search, alpha, best);
-
-  if (best) {
-    const cog = lookupCognitive(best.text);
-    const cogLine = cog
-      ? `Load   : ${cog.level} (${cog.score.toFixed(3)})\n`
-      : '';
-
-    hoverInfo.textContent =
-      `Page   : ${best.page}\n` +
-      `Index  : ${best.index}\n` +
-      `Text   : "${best.text}"\n` +
-      cogLine +
-      `Top    : ${best.top}\n` +
-      `Left   : ${best.left}\n` +
-      `Right  : ${best.right}\n` +
-      `Bottom : ${best.bottom}\n` +
-      `Width  : ${best.width}\n` +
-      `Height : ${best.height}`;
-
-    const cogTip = cog
-      ? `<br><span style="color:${cog.level==='high'?'#ff8a8a':'#ffd680'}">load ${cog.level} (${cog.score.toFixed(3)})</span>`
-      : '';
-    vTooltip.innerHTML =
-      `<b style="color:#4f7ef7">"${escHtml(best.text)}"</b><br>` +
-      `Page ${best.page} · #${best.index}<br>` +
-      `(${best.left.toFixed(1)}, ${best.top.toFixed(1)})  ` +
-      `${best.width.toFixed(1)} × ${best.height.toFixed(1)} px` +
-      cogTip;
-    vTooltip.style.display = 'block';
-    vTooltip.style.left    = `${e.clientX + 14}px`;
-    vTooltip.style.top     = `${e.clientY - 10}px`;
-  } else {
-    vTooltip.style.display = 'none';
-    hoverInfo.textContent  = '（移動滑鼠至頁面上方以顯示詳情）';
-  }
-}
-
-function onPageMouseLeave(pageNum) {
-  if (!overlayOn) return;
-  const { overlayCanvas, items } = pageOverlayMap.get(pageNum);
-  const alpha  = parseFloat(alphaSlider.value) / 100;
-  const search = searchInput.value.trim();
-  drawOverlay(overlayCanvas, items, search, alpha);
-  vTooltip.style.display = 'none';
-  hoverInfo.textContent  = '（移動滑鼠至頁面上方以顯示詳情）';
-}
-
-function escHtml(s) {
-  return String(s)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-// ── External JSON load ────────────────────────────────────────────────────────
-extJsonInput.addEventListener('change', async e => {
-  const f = e.target.files[0];
-  if (!f) return;
-  try {
-    const data = JSON.parse(await f.text());
-    if (!Array.isArray(data)) throw new Error('JSON 需為陣列格式');
-
-    // Group by page and update overlay map
-    const byPage = new Map();
-    data.forEach(item => {
-      if (!byPage.has(item.page)) byPage.set(item.page, []);
-      byPage.get(item.page).push(item);
-    });
-
-    let updated = 0;
-    byPage.forEach((items, p) => {
-      if (pageOverlayMap.has(p)) {
-        pageOverlayMap.get(p).items = items;
-        updated++;
-      }
-    });
-
-    extJsonName.textContent = f.name;
-    if (overlayOn) redrawAllOverlays();
-    log(`外部 JSON 載入：${data.length} 筆，更新 ${updated} 頁`, 'ok');
-  } catch (err) {
-    log(`JSON 載入失敗：${err.message}`, 'err');
-  }
-});
-
-// ── Utilities ─────────────────────────────────────────────────────────────────
-function waitFrames(n) {
-  return new Promise(resolve => {
-    let c = 0;
-    const tick = () => { if (++c >= n) resolve(); else requestAnimationFrame(tick); };
-    requestAnimationFrame(tick);
-  });
-}
-
-function readArrayBuffer(file) {
-  return new Promise((res, rej) => {
-    const fr = new FileReader();
-    fr.onload  = e => res(e.target.result);
-    fr.onerror = ()  => rej(new Error('FileReader 讀取失敗'));
-    fr.readAsArrayBuffer(file);
-  });
-}
-
-function triggerDownload(content, filename, mime) {
-  const blob = new Blob([content], { type: mime });
-  const url  = URL.createObjectURL(blob);
-  Object.assign(document.createElement('a'), { href: url, download: filename }).click();
-  URL.revokeObjectURL(url);
-}
-
-// ── Export ────────────────────────────────────────────────────────────────────
-exportJson.addEventListener('click', () => {
-  if (!extractedData.length) return;
-  triggerDownload(JSON.stringify(extractedData, null, 2), 'pdf_coordinates.json', 'application/json');
-  log(`匯出 JSON：${extractedData.length} 筆`, 'ok');
-});
-
-exportCsv.addEventListener('click', () => {
-  if (!extractedData.length) return;
-  const header = [
-    'Page','Index','Text',
-    'Top','Left','Right','Bottom','Width','Height',
-    'NormTop','NormLeft','NormRight','NormBottom','NormWidth','NormHeight',
-    'PageWidth','PageHeight','DPR',
-  ].join(',');
-  const rows = extractedData.map(d => [
-    d.page, d.index,
-    `"${String(d.text).replace(/"/g,'""')}"`,
-    d.top,       d.left,       d.right,       d.bottom,       d.width,       d.height,
-    d.norm_top ?? '', d.norm_left ?? '', d.norm_right ?? '', d.norm_bottom ?? '',
-    d.norm_width ?? '', d.norm_height ?? '',
-    d.page_width ?? '', d.page_height ?? '', d.dpr ?? '',
-  ].join(','));
-  triggerDownload('﻿' + [header, ...rows].join('\r\n'), 'pdf_coordinates.csv', 'text/csv;charset=utf-8');
-  log(`匯出 CSV：${extractedData.length} 筆`, 'ok');
-});
-
-// ── Cognitive Load Analysis ──────────────────────────────────────────────────
-// 將 extractedData 重組為純文字後送 /api/cognitive/analyze/text，後端回傳
-// word_analysis 後以 text → {score, level} map 對應回前端的每個 token。
-//
-// 中文用 jieba 分詞會合併連續字（例如「量子糾纏」），而前端是 char/word 切分，
-// 直接 text-based 對應雖然不是 100% 精準（同字會共享 load_score），但對視覺化
-// 「哪些詞認知負荷高」已足夠實用。
-function resetCognitive() {
-  cognitiveOn = false;
-  cognitiveResult = null;
-  cogScoreMap.clear();
-  cognitiveSection.classList.remove('visible');
-  cogStats.classList.remove('visible');
-  cogList.classList.remove('visible');
-  cogList.innerHTML = '';
-  cogEmpty.style.display = 'block';
-  cogEmpty.textContent = '尚未執行分析';
-  cogProgressBlock.classList.remove('visible');
-  cogOverlayToggle.classList.remove('active');
-  cogOverlayLabel.textContent = '在文件上標示負荷（關閉）';
-}
-
-function detectLang(text) {
-  // 任何中日韓字元就視為中文
-  return /[\u4e00-\u9fff]/.test(text) ? 'zh' : 'en';
-}
-
-function reconstructText(items, lang) {
-  // 英文用空白連接；中文直接連接（jieba 自己分詞）
-  if (!items.length) return '';
-  const joiner = (lang === 'zh') ? '' : ' ';
-  return items.map(d => d.text).join(joiner);
-}
-
-/** 座標擷取為 0 時，從已渲染的 text layer / doc-page 收集純文字供認知分析 */
-function collectTextFromPreview() {
-  const parts = [];
-  previewArea.querySelectorAll('.textLayer').forEach(layer => {
-    const t = layer.textContent.replace(/\s+/g, ' ').trim();
-    if (t) parts.push(t);
-  });
-  if (!parts.length) {
-    previewArea.querySelectorAll('.doc-page').forEach(page => {
-      const t = page.innerText.replace(/\s+/g, ' ').trim();
-      if (t) parts.push(t);
-    });
-  }
-  return parts.join('\n\n');
-}
-
-cogAnalyzeBtn.addEventListener('click', async () => {
-  let lang = cogLangSelect.value;
-  const domain = cogDomainSelect.value;
-
-  let text = '';
-  let coordCount = extractedData.length;
-
-  if (coordCount > 0) {
-    text = reconstructText(extractedData, lang);
-  } else {
-    const previewText = collectTextFromPreview();
-    if (!previewText.trim()) {
-      log('請先上傳檔案並點擊「開始解析」', 'err');
-      return;
-    }
-    text = previewText;
-    log('座標為 0，改以頁面文字進行認知分析（無法在文件上標示）', 'hi');
-  }
-
-  if (lang === 'auto') {
-    const sample = text.slice(0, 2000);
-    lang = detectLang(sample);
-  }
-
-  if (!text.trim()) {
-    log('擷取結果為空，無法分析', 'err');
-    return;
-  }
-
-  cogAnalyzeBtn.disabled = true;
-  cogProgressBlock.classList.add('visible');
-  cogProgressFill.style.width = '15%';
-  cogProgressTxt.textContent = `送出分析請求（lang=${lang}）…`;
-  log(`── 認知負荷分析 [lang=${lang}, domain=${domain}, ${text.length} chars] ──`, 'hi');
-
-  try {
-    const res = await fetch('/api/cognitive/analyze/text', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, lang, domain }),
-    });
-    cogProgressFill.style.width = '75%';
-    cogProgressTxt.textContent = '解析回應…';
-
-    if (!res.ok) {
-      const errBody = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-      throw new Error(errBody.error || `HTTP ${res.status}`);
-    }
-    const result = await res.json();
-    cognitiveResult = result;
-
-    // 建立 text → {score, level} map
-    // 跳過 spaCy NER 標記的專有實體（人名 / 地名 / 組織等）
-    cogScoreMap.clear();
-    (result.word_analysis || []).forEach(w => {
-      if (w.is_entity) return;
-      const key = (w.word || '').toLowerCase();
-      if (!key) return;
-      const prev = cogScoreMap.get(key);
-      if (!prev || w.load_score > prev.score) {
-        cogScoreMap.set(key, {
-          score: w.load_score,
-          level: w.load_level,
-          ent_type: w.ent_type || '',
+    function drawCognitiveHeatmap(ctx, items) {
+      const kernels = [];
+      items.forEach(item => {
+        const cog = lookupCognitive(item.text);
+        if (!cog || cog.score < cogMu) return;
+        const intensity = Math.max(0, Math.min(1, (cog.score - cogMu) / Math.max(1 - cogMu, 0.01)));
+        kernels.push({
+          cx: item.left + item.width / 2,
+          cy: item.top + item.height / 2,
+          intensity,
+          score: cog.score,
         });
+      });
+      if (!kernels.length) return;
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (const k of kernels) {
+        const grad = ctx.createRadialGradient(k.cx, k.cy, 0, k.cx, k.cy, cogSigma);
+        const a0 = 0.55 * k.intensity;
+        const a1 = 0.18 * k.intensity;
+        grad.addColorStop(0,   `rgba(239, 68, 68, ${a0})`);
+        grad.addColorStop(0.55, `rgba(239, 68, 68, ${a1})`);
+        grad.addColorStop(1,   'rgba(239, 68, 68, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(k.cx, k.cy, cogSigma, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+
+      ctx.save();
+      ctx.lineWidth = 0.8;
+      for (const k of kernels) {
+        const lineAlpha = 0.3 + 0.4 * k.intensity;
+        ctx.strokeStyle = `rgba(185, 28, 28, ${lineAlpha})`;
+        for (const t of [0.35, 0.7, 1.0]) {
+          ctx.beginPath();
+          ctx.arc(k.cx, k.cy, cogSigma * t, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    function lookupCognitive(text) {
+      if (!text || !cogScoreMap.size) return null;
+      let key = text.toLowerCase().normalize("NFKD");
+      if (cogScoreMap.has(key)) return cogScoreMap.get(key);
+      
+      key = key.replace(/^[^\w\d\u4e00-\u9fff]+|[^\w\d\u4e00-\u9fff]+$/g, '');
+      if (cogScoreMap.has(key)) return cogScoreMap.get(key);
+      return null;
+    }
+
+    function redrawAllOverlays(hoverPageNum = null, hoverItem = null) {
+      const alpha  = parseFloat(alphaSlider.value) / 100;
+      const search = searchInput.value.trim();
+      pageOverlayMap.forEach(({ overlayCanvas, items }, pageNum) => {
+        const hi = (pageNum === hoverPageNum) ? hoverItem : null;
+        drawOverlay(overlayCanvas, items, search, alpha, hi);
+      });
+      updateMatchCount(search);
+    }
+
+    function updateMatchCount(search) {
+      if (!search) { matchCount.textContent = ''; return; }
+      let n = 0;
+      pageOverlayMap.forEach(({ items }) => { n += items.filter(i => i.text.includes(search)).length; });
+      matchCount.textContent = `${n} 筆符合`;
+    }
+
+    // ── Overlay toggle ────────────────────────────────────────────────────────────
+    overlayToggle.addEventListener('click', () => {
+      overlayOn = !overlayOn;
+      overlayToggle.classList.toggle('active', overlayOn);
+      overlayLabel.textContent = overlayOn ? '顯示座標框（開啟）' : '顯示座標框（關閉）';
+
+      pageOverlayMap.forEach(({ overlayCanvas }) => {
+        if (overlayOn) {
+          overlayCanvas.style.display = 'block';
+        } else {
+          overlayCanvas.getContext('2d').clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+          overlayCanvas.style.display = 'none';
+        }
+      });
+
+      document.querySelectorAll('.hit-div').forEach(d => d.classList.toggle('active', overlayOn));
+      if (overlayOn) redrawAllOverlays();
+      log(`座標邊框：${overlayOn ? '開啟' : '關閉'}`);
+    });
+
+    alphaSlider.addEventListener('input', () => {
+      alphaDisplay.textContent = alphaSlider.value + '%';
+      if (overlayOn) redrawAllOverlays();
+    });
+
+    searchInput.addEventListener('input', () => {
+      if (overlayOn) redrawAllOverlays();
+      else updateMatchCount(searchInput.value.trim());
+    });
+
+    // ── Mouse interaction ─────────────────────────────────────────────────────────
+    function onPageMouseMove(e, wrap, pageNum) {
+      if (!overlayOn) return;
+
+      const { overlayCanvas, items } = pageOverlayMap.get(pageNum);
+      const wRect = wrap.getBoundingClientRect();
+      const mx = (e.clientX - wRect.left) * (overlayCanvas.width / wRect.width);
+      const my = (e.clientY - wRect.top) * (overlayCanvas.height / wRect.height);
+
+      let best = null, bestArea = Infinity;
+      items.forEach(item => {
+        if (mx >= item.left && mx <= item.right && my >= item.top && my <= item.bottom) {
+          const area = item.width * item.height;
+          if (area < bestArea) { best = item; bestArea = area; }
+        }
+      });
+
+      const alpha  = parseFloat(alphaSlider.value) / 100;
+      const search = searchInput.value.trim();
+      drawOverlay(overlayCanvas, items, search, alpha, best);
+
+      if (best) {
+        const cog = lookupCognitive(best.text);
+        const cogLine = cog ? `Load   : ${cog.level} (${cog.score.toFixed(3)})\n` : '';
+        hoverInfo.textContent =
+          `Page   : ${best.page}\n` +
+          `Index  : ${best.index}\n` +
+          `Text   : "${best.text}"\n` +
+          cogLine +
+          `Top    : ${best.top}\n` +
+          `Left   : ${best.left}\n` +
+          `Width  : ${best.width}\n` +
+          `Height : ${best.height}`;
+
+        const cogTip = cog
+          ? `<br><span style="color:${cog.level==='high'?'var(--danger)':'var(--warning)'}">load ${cog.level} (${cog.score.toFixed(3)})</span>`
+          : '';
+        vTooltip.innerHTML =
+          `<b style="color:var(--accent)">"${escHtml(best.text)}"</b><br>` +
+          `Page ${best.page} · #${best.index}<br>` +
+          `(${best.left.toFixed(1)}, ${best.top.toFixed(1)})  ` +
+          `${best.width.toFixed(1)} × ${best.height.toFixed(1)} px` +
+          cogTip;
+        vTooltip.style.display = 'block';
+        vTooltip.style.left    = `${e.clientX + 14}px`;
+        vTooltip.style.top     = `${e.clientY - 10}px`;
+      } else {
+        vTooltip.style.display = 'none';
+        hoverInfo.textContent  = '移動滑鼠至上方頁面顯示詳情';
+      }
+    }
+
+    function onPageMouseLeave(pageNum) {
+      if (!overlayOn) return;
+      const { overlayCanvas, items } = pageOverlayMap.get(pageNum);
+      const alpha  = parseFloat(alphaSlider.value) / 100;
+      const search = searchInput.value.trim();
+      drawOverlay(overlayCanvas, items, search, alpha);
+      vTooltip.style.display = 'none';
+      hoverInfo.textContent  = '移動滑鼠至上方頁面顯示詳情';
+    }
+
+    function escHtml(s) {
+      return String(s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    extJsonInput.addEventListener('change', async e => {
+      const f = e.target.files[0];
+      if (!f) return;
+      try {
+        const data = JSON.parse(await f.text());
+        if (!Array.isArray(data)) throw new Error('JSON 需為陣列格式');
+
+        const byPage = new Map();
+        data.forEach(item => {
+          if (!byPage.has(item.page)) byPage.set(item.page, []);
+          byPage.get(item.page).push(item);
+        });
+
+        let updated = 0;
+        byPage.forEach((items, p) => {
+          if (pageOverlayMap.has(p)) {
+            pageOverlayMap.get(p).items = items;
+            updated++;
+          }
+        });
+
+        extJsonName.textContent = f.name;
+        if (overlayOn) redrawAllOverlays();
+        log(`外部 JSON 載入成功：${data.length} 筆項目，更新 ${updated} 頁面`, 'ok');
+      } catch (err) {
+        log(`JSON 載入失敗：${err.message}`, 'err');
       }
     });
 
-    cogProgressFill.style.width = '100%';
-    cogProgressTxt.textContent = `完成 (${result.process_time_ms ?? '?'} ms)`;
-    renderCognitiveResult(result);
-    const allHard = (result.word_analysis || [])
-      .filter(w => w.load_score >= COG_MIN_SCORE);
-    const filtered = allHard.filter(w => !w.is_entity);
-    const skipped = allHard.length - filtered.length;
-    log(`認知負荷分析完成：${filtered.length} 個深難字（已過濾 ${skipped} 個命名實體）`, 'ok');
-
-    // 自動開啟認知負荷 overlay
-    if (!cognitiveOn) toggleCognitiveOverlay(true);
-  } catch (err) {
-    log(`認知負荷分析失敗：${err.message}`, 'err');
-    cogProgressTxt.textContent = '分析失敗';
-  } finally {
-    cogAnalyzeBtn.disabled = false;
-    setTimeout(() => cogProgressBlock.classList.remove('visible'), 1500);
-  }
-});
-
-function renderCognitiveResult(result) {
-  const words = result.word_analysis || [];
-  // 只保留 load_score >= COG_MIN_SCORE 且非命名實體的深難字
-  const hardWords = words.filter(w =>
-    w.load_score >= COG_MIN_SCORE && !w.is_entity
-  );
-
-  cogModel.textContent      = `${result.model || '?'} / ${result.lang || '?'}`;
-  cogDomain.textContent     = result.domain || '—';
-  cogTotal.textContent      = words.length.toLocaleString();
-  cogHighCount.textContent  = hardWords.length.toLocaleString();
-  cogMedCount.textContent   = `≥ ${COG_MIN_SCORE.toFixed(2)}`;
-  cogStats.classList.add('visible');
-
-  // 深難字 chip 列表（去重，依分數降序）
-  const uniq = new Map();
-  hardWords.forEach(w => {
-    const key = w.word.toLowerCase();
-    if (!uniq.has(key) || uniq.get(key).load_score < w.load_score) {
-      uniq.set(key, w);
+    // ── Utilities ─────────────────────────────────────────────────────────────────
+    function waitFrames(n) {
+      return new Promise(resolve => {
+        let c = 0;
+        const tick = () => { if (++c >= n) resolve(); else requestAnimationFrame(tick); };
+        requestAnimationFrame(tick);
+      });
     }
-  });
-  const sorted = [...uniq.values()].sort((a, b) => b.load_score - a.load_score);
 
-  cogList.innerHTML = '';
-  if (!sorted.length) {
-    cogList.classList.remove('visible');
-    cogEmpty.style.display = 'block';
-    cogEmpty.textContent = `沒有分數 ≥ ${COG_MIN_SCORE} 的深難字`;
-    return;
-  }
-  cogEmpty.style.display = 'none';
-  cogList.classList.add('visible');
-  sorted.forEach(w => {
-    const chip = document.createElement('span');
-    chip.className = 'cog-chip';
-    chip.textContent = `${w.word} · ${w.load_score.toFixed(2)}`;
-    chip.title = `pos=${w.pos}  surprisal=${w.surprisal}  zipf=${w.zipf_score}`;
-    cogList.appendChild(chip);
-  });
-}
+    function readArrayBuffer(file) {
+      return new Promise((res, rej) => {
+        const fr = new FileReader();
+        fr.onload  = e => res(e.target.result);
+        fr.onerror = ()  => rej(new Error('FileReader 讀取失敗'));
+        fr.readAsArrayBuffer(file);
+      });
+    }
 
-function toggleCognitiveOverlay(forceState) {
-  const next = (typeof forceState === 'boolean') ? forceState : !cognitiveOn;
-  cognitiveOn = next;
-  cogOverlayToggle.classList.toggle('active', cognitiveOn);
-  cogOverlayLabel.textContent = cognitiveOn
-    ? '在文件上標示負荷（開啟）'
-    : '在文件上標示負荷（關閉）';
+    function triggerDownload(content, filename, mime) {
+      const blob = new Blob([content], { type: mime });
+      const url  = URL.createObjectURL(blob);
+      Object.assign(document.createElement('a'), { href: url, download: filename }).click();
+      URL.revokeObjectURL(url);
+    }
 
-  if (cognitiveOn && !cogScoreMap.size) {
-    log('請先執行認知負荷分析', 'err');
-    cognitiveOn = false;
-    cogOverlayToggle.classList.remove('active');
-    cogOverlayLabel.textContent = '在文件上標示負荷（關閉）';
-    return;
-  }
-
-  // 認知 overlay 與座標框 overlay 共用 canvas；開啟認知時自動開啟 overlay。
-  if (cognitiveOn && !overlayOn) {
-    overlayToggle.click();   // 開啟座標框 overlay（內部會 redraw）
-  } else {
-    if (overlayOn) redrawAllOverlays();
-  }
-  log(`認知負荷標示：${cognitiveOn ? '開啟' : '關閉'}`);
-}
-
-cogOverlayToggle.addEventListener('click', () => toggleCognitiveOverlay());
-
-// ── 熱力圖控制：模式切換 + µ / σ 拉桿 ──────────────────────────────────────
-function updateCogControlsVisibility() {
-  // 模式為 box 時，隱藏 µ/σ 拉桿（沒有意義）
-  const show = (cogVizMode === 'heatmap');
-  cogMuRow.style.display    = show ? '' : 'none';
-  cogSigmaRow.style.display = show ? '' : 'none';
-}
-updateCogControlsVisibility();
-
-cogVizModeSelect.addEventListener('change', () => {
-  cogVizMode = cogVizModeSelect.value;
-  updateCogControlsVisibility();
-  if (cognitiveOn && overlayOn) redrawAllOverlays();
-});
-
-cogMuSlider.addEventListener('input', () => {
-  cogMu = parseFloat(cogMuSlider.value);
-  cogMuValue.textContent = cogMu.toFixed(2);
-  if (cognitiveOn && overlayOn) redrawAllOverlays();
-});
-
-cogSigmaSlider.addEventListener('input', () => {
-  cogSigma = parseFloat(cogSigmaSlider.value);
-  cogSigmaValue.textContent = `${cogSigma} px`;
-  if (cognitiveOn && overlayOn) redrawAllOverlays();
-});
-
-// ── Backend: Save ─────────────────────────────────────────────────────────────
-saveBtn.addEventListener('click', async () => {
-  if (!extractedData.length) return;
-  saveBtn.disabled = true;
-  saveBtn.textContent = '儲存中…';
-  try {
-    const res = await fetch('/api/sessions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        filename: currentFile?.name ?? 'unknown',
-        filetype: currentFileType,
-        items:    extractedData,
-      }),
+    // ── Export ────────────────────────────────────────────────────────────────────
+    exportJson.addEventListener('click', () => {
+      if (!extractedData.length) return;
+      triggerDownload(JSON.stringify(extractedData, null, 2), 'pdf_coordinates.json', 'application/json');
+      log(`匯出 JSON 成功：${extractedData.length} 筆`, 'ok');
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    log(`已儲存到後端 (${data.id.slice(0, 8)}…)`, 'ok');
-    loadHistory();
-  } catch (e) {
-    log(`儲存失敗：${e.message}`, 'err');
-  } finally {
-    saveBtn.disabled = false;
-    saveBtn.textContent = '☁ 儲存到後端';
-  }
-});
 
-// ── Backend: Load history list ────────────────────────────────────────────────
-async function loadHistory() {
-  // Step 1: health check → set status dot
-  try {
-    const ping = await fetch('/api/ping');
-    if (!ping.ok) throw new Error(`伺服器回應 ${ping.status}`);
-    backendDot.style.background = 'var(--success)';
-    backendDot.title = '後端正常連線';
-  } catch (e) {
-    backendDot.style.background = 'var(--danger)';
-    backendDot.title = `後端未連線：${e.message}`;
-    historyList.innerHTML =
-      `<div style="font-size:.73rem;color:var(--danger);line-height:1.6">
-         ⚠ 無法連線後端（${escHtml(e.message)}）<br>
-         請確認已執行 <code style="background:var(--surface3);padding:.1em .3em;border-radius:3px">
-         python server.py</code>
-       </div>`;
-    return;
-  }
-
-  // Step 2: fetch session list
-  try {
-    const res = await fetch('/api/sessions');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    renderHistory(await res.json());
-  } catch (e) {
-    historyList.innerHTML =
-      `<div style="font-size:.73rem;color:var(--danger)">載入歷史失敗：${escHtml(e.message)}</div>`;
-  }
-}
-
-function renderHistory(sessions) {
-  historyList.innerHTML = '';
-  if (!sessions.length) {
-    historyCount.textContent = '';
-    historyList.innerHTML = '<div id="historyEmpty" style="font-size:.75rem;color:var(--text-muted)">尚無儲存紀錄</div>';
-    return;
-  }
-  historyCount.textContent = `(${sessions.length})`;
-  sessions.forEach(s => {
-    const date = new Date(s.created_at).toLocaleString('zh-TW', { hour12: false });
-    const tag  = s.filetype?.toUpperCase() ?? '';
-    const card = document.createElement('div');
-    card.className = 'hist-card';
-    card.innerHTML = `
-      <div class="hname" title="${escHtml(s.filename)}">${escHtml(s.filename)}</div>
-      <div class="hmeta">${date} &nbsp;·&nbsp; ${tag} &nbsp;·&nbsp; ${s.item_count.toLocaleString()} 筆</div>
-      <div class="hbtns">
-        <button class="btn-sm" onclick="downloadSession('${s.id}','json')">⬇ JSON</button>
-        <button class="btn-sm" onclick="downloadSession('${s.id}','csv')">⬇ CSV</button>
-        <button class="btn-sm btn-del" onclick="deleteSession('${s.id}',this)">🗑 刪除</button>
-      </div>`;
-    historyList.appendChild(card);
-  });
-}
-
-refreshHistoryBtn.addEventListener('click', loadHistory);
-
-// ── Backend: Download a saved session ────────────────────────────────────────
-async function downloadSession(id, format) {
-  try {
-    const res     = await fetch(`/api/sessions/${id}`);
-    if (!res.ok) throw new Error('找不到紀錄');
-    const session = await res.json();
-    const items   = session.items ?? [];
-    const base    = session.filename.replace(/\.[^.]+$/, '');
-
-    if (format === 'json') {
-      triggerDownload(JSON.stringify(items, null, 2), `${base}_coords.json`, 'application/json');
-    } else {
+    exportCsv.addEventListener('click', () => {
+      if (!extractedData.length) return;
       const header = [
         'Page','Index','Text',
         'Top','Left','Right','Bottom','Width','Height',
         'NormTop','NormLeft','NormRight','NormBottom','NormWidth','NormHeight',
         'PageWidth','PageHeight','DPR',
       ].join(',');
-      const rows = items.map(d => [
+      const rows = extractedData.map(d => [
         d.page, d.index,
         `"${String(d.text).replace(/"/g,'""')}"`,
-        d.top, d.left, d.right, d.bottom, d.width, d.height,
+        d.top,       d.left,       d.right,       d.bottom,       d.width,       d.height,
         d.norm_top ?? '', d.norm_left ?? '', d.norm_right ?? '', d.norm_bottom ?? '',
         d.norm_width ?? '', d.norm_height ?? '',
         d.page_width ?? '', d.page_height ?? '', d.dpr ?? '',
       ].join(','));
-      triggerDownload('﻿' + [header, ...rows].join('\r\n'), `${base}_coords.csv`, 'text/csv;charset=utf-8');
+      triggerDownload('﻿' + [header, ...rows].join('\r\n'), 'pdf_coordinates.csv', 'text/csv;charset=utf-8');
+      log(`匯出 CSV 成功：${extractedData.length} 筆`, 'ok');
+    });
+
+    // ── Cognitive Load Analysis ──────────────────────────────────────────────────
+    function resetCognitive() {
+      cognitiveOn = false;
+      cognitiveResult = null;
+      cogScoreMap.clear();
+      cogStats.classList.remove('visible');
+      cogList.classList.remove('visible');
+      cogList.innerHTML = '';
+      cogEmpty.style.display = 'block';
+      cogEmpty.textContent = '尚未執行分析';
+      cogProgressBlock.classList.remove('visible');
+      cogOverlayToggle.classList.remove('active');
+      cogOverlayLabel.textContent = '在文件上標示負荷（關閉）';
     }
-    log(`已從歷史下載 ${format.toUpperCase()}`, 'ok');
-  } catch (e) {
-    log(`下載失敗：${e.message}`, 'err');
-  }
-}
 
-// ── Backend: Delete a session ─────────────────────────────────────────────────
-async function deleteSession(id, btn) {
-  if (!confirm('確定要永久刪除這筆紀錄？')) return;
-  btn.disabled = true;
-  try {
-    const res = await fetch(`/api/sessions/${id}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    log('已刪除紀錄', 'ok');
+    function detectLang(text) {
+      return /[\u4e00-\u9fff]/.test(text) ? 'zh' : 'en';
+    }
+
+    function reconstructText(items, lang) {
+      if (!items.length) return '';
+      const joiner = (lang === 'zh') ? '' : ' ';
+      return items.map(d => d.text).join(joiner);
+    }
+
+    function collectTextFromPreview() {
+      const parts = [];
+      previewArea.querySelectorAll('.textLayer').forEach(layer => {
+        const t = layer.textContent.replace(/\s+/g, ' ').trim();
+        if (t) parts.push(t);
+      });
+      if (!parts.length) {
+        previewArea.querySelectorAll('.doc-page').forEach(page => {
+          const t = page.innerText.replace(/\s+/g, ' ').trim();
+          if (t) parts.push(t);
+        });
+      }
+      return parts.join('\n\n');
+    }
+
+    cogAnalyzeBtn.addEventListener('click', async () => {
+      let lang = cogLangSelect.value;
+      const domain = cogDomainSelect.value;
+      let text = '';
+      let coordCount = extractedData.length;
+
+      if (coordCount > 0) {
+        text = reconstructText(extractedData, lang);
+      } else {
+        const previewText = collectTextFromPreview();
+        if (!previewText.trim()) {
+          log('請先載入並解析檔案', 'err');
+          return;
+        }
+        text = previewText;
+        log('無文字座標，直接對全文字進行分析 (無法於文件標示)', 'hi');
+      }
+
+      if (lang === 'auto') {
+        lang = detectLang(text.slice(0, 2000));
+      }
+
+      cogAnalyzeBtn.disabled = true;
+      cogProgressBlock.classList.add('visible');
+      cogProgressFill.style.width = '15%';
+      cogProgressTxt.textContent = `送出請求中 (語言: ${lang})...`;
+      log(`── 啟動認知負荷評估 [lang=${lang}, domain=${domain}] ──`, 'hi');
+
+      try {
+        const res = await fetch('/api/cognitive/analyze/text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, lang, domain }),
+        });
+        cogProgressFill.style.width = '75%';
+        cogProgressTxt.textContent = '後端計算中...';
+
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+          throw new Error(errBody.error || `HTTP ${res.status}`);
+        }
+        const result = await res.json();
+        cognitiveResult = result;
+
+        cogScoreMap.clear();
+        (result.word_analysis || []).forEach(w => {
+          if (w.is_entity) return;
+          const key = (w.word || '').toLowerCase().normalize("NFKD").replace(/^[^\w\d\u4e00-\u9fff]+|[^\w\d\u4e00-\u9fff]+$/g, '');
+          if (!key) return;
+          const prev = cogScoreMap.get(key);
+          if (!prev || w.load_score > prev.score) {
+            cogScoreMap.set(key, {
+              score: w.load_score,
+              level: w.load_level,
+              ent_type: w.ent_type || '',
+            });
+          }
+        });
+
+        cogProgressFill.style.width = '100%';
+        cogProgressTxt.textContent = `評估完成 (${result.process_time_ms ?? '?'} ms)`;
+        renderCognitiveResult(result);
+        
+        // Auto enable overlay
+        if (!cognitiveOn) toggleCognitiveOverlay(true);
+      } catch (err) {
+        log(`評估失敗：${err.message}`, 'err');
+        cogProgressTxt.textContent = '評估失敗';
+      } finally {
+        cogAnalyzeBtn.disabled = false;
+        setTimeout(() => cogProgressBlock.classList.remove('visible'), 1500);
+      }
+    });
+
+    function renderCognitiveResult(result) {
+      const words = result.word_analysis || [];
+      const hardWords = words.filter(w => w.load_score >= COG_MIN_SCORE && !w.is_entity);
+
+      cogModel.textContent      = `${result.model || '?'} / ${result.lang || '?'}`;
+      cogDomain.textContent     = result.domain || '—';
+      cogTotal.textContent      = words.length.toLocaleString();
+      cogHighCount.textContent  = hardWords.length.toLocaleString();
+      cogMedCount.textContent   = `≥ ${COG_MIN_SCORE.toFixed(2)}`;
+      cogStats.classList.add('visible');
+
+      const uniq = new Map();
+      hardWords.forEach(w => {
+        const key = w.word.toLowerCase();
+        if (!uniq.has(key) || uniq.get(key).load_score < w.load_score) {
+          uniq.set(key, w);
+        }
+      });
+      const sorted = [...uniq.values()].sort((a, b) => b.load_score - a.load_score);
+
+      cogList.innerHTML = '';
+      if (!sorted.length) {
+        cogList.classList.remove('visible');
+        cogEmpty.style.display = 'block';
+        cogEmpty.textContent = `無分數大於 ${COG_MIN_SCORE} 的深難詞`;
+        return;
+      }
+      
+      cogEmpty.style.display = 'none';
+      cogList.classList.add('visible');
+      sorted.forEach(w => {
+        const chip = document.createElement('span');
+        chip.className = 'cog-chip';
+        chip.textContent = `${w.word} (${w.load_score.toFixed(2)})`;
+        cogList.appendChild(chip);
+      });
+    }
+
+    function toggleCognitiveOverlay(forceState) {
+      const next = (typeof forceState === 'boolean') ? forceState : !cognitiveOn;
+      cognitiveOn = next;
+      cogOverlayToggle.classList.toggle('active', cognitiveOn);
+      cogOverlayLabel.textContent = cognitiveOn ? '在文件上標示負荷（開啟）' : '在文件上標示負荷（關閉）';
+
+      if (cognitiveOn && !cogScoreMap.size) {
+        log('請先執行評估分析', 'err');
+        cognitiveOn = false;
+        cogOverlayToggle.classList.remove('active');
+        cogOverlayLabel.textContent = '在文件上標示負荷（關閉）';
+        return;
+      }
+
+      if (cognitiveOn && !overlayOn) {
+        overlayToggle.click(); // auto toggle outlines on
+      } else {
+        if (overlayOn) redrawAllOverlays();
+      }
+      log(`認知負荷標記：${cognitiveOn ? '開啟' : '關閉'}`);
+    }
+
+    cogOverlayToggle.addEventListener('click', () => toggleCognitiveOverlay());
+
+    function updateCogControlsVisibility() {
+      const show = (cogVizMode === 'heatmap');
+      cogMuRow.style.display    = show ? '' : 'none';
+      cogSigmaRow.style.display = show ? '' : 'none';
+    }
+    updateCogControlsVisibility();
+
+    cogVizModeSelect.addEventListener('change', () => {
+      cogVizMode = cogVizModeSelect.value;
+      updateCogControlsVisibility();
+      if (cognitiveOn && overlayOn) redrawAllOverlays();
+    });
+
+    cogMuSlider.addEventListener('input', () => {
+      cogMu = parseFloat(cogMuSlider.value);
+      cogMuValue.textContent = cogMu.toFixed(2);
+      if (cognitiveOn && overlayOn) redrawAllOverlays();
+    });
+
+    cogSigmaSlider.addEventListener('input', () => {
+      cogSigma = parseFloat(cogSigmaSlider.value);
+      cogSigmaValue.textContent = `${cogSigma} px`;
+      if (cognitiveOn && overlayOn) redrawAllOverlays();
+    });
+
+    // ── Backend: Save ─────────────────────────────────────────────────────────────
+    saveBtn.addEventListener('click', async () => {
+      if (!extractedData.length) return;
+      saveBtn.disabled = true;
+      saveBtn.textContent = '儲存中…';
+      try {
+        const res = await fetch('/api/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filename: currentFile?.name ?? 'unknown',
+            filetype: currentFileType,
+            items:    extractedData,
+          }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        log(`成功儲存座標資料到後端 (${data.id.slice(0, 8)}…)`, 'ok');
+        loadHistory();
+      } catch (e) {
+        log(`儲存失敗：${e.message}`, 'err');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = '儲存至伺服器';
+      }
+    });
+
+    // ── Backend: Load history list ────────────────────────────────────────────────
+    async function loadHistory() {
+      try {
+        const ping = await fetch('/api/ping');
+        if (!ping.ok) throw new Error(`網關異常 ${ping.status}`);
+        backendDot.style.background = 'var(--success)';
+        backendDot.title = '伺服器連線正常';
+      } catch (e) {
+        backendDot.style.background = 'var(--danger)';
+        backendDot.title = `伺服器連線失敗：${e.message}`;
+        historyList.innerHTML = `<div style="font-size:0.75rem; color:var(--danger)">⚠ 伺服器未連線</div>`;
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/sessions');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        renderHistory(await res.json());
+      } catch (e) {
+        historyList.innerHTML = `<div style="font-size:0.75rem; color:var(--danger)">讀取歷史失敗: ${e.message}</div>`;
+      }
+    }
+
+    function renderHistory(sessions) {
+      historyList.innerHTML = '';
+      if (!sessions.length) {
+        historyCount.textContent = '';
+        historyList.innerHTML = '<div id="historyEmpty" style="font-size:0.75rem; color:var(--ink-secondary)">尚無歷史紀錄</div>';
+        return;
+      }
+      historyCount.textContent = `(${sessions.length})`;
+      sessions.forEach(s => {
+        const date = new Date(s.created_at).toLocaleString('zh-TW', { hour12: false });
+        const tag  = s.filetype?.toUpperCase() ?? '';
+        const card = document.createElement('div');
+        card.className = 'hist-card';
+        card.innerHTML = `
+          <div class="hname" title="${escHtml(s.filename)}">${escHtml(s.filename)}</div>
+          <div class="hmeta">${date} &nbsp;·&nbsp; ${tag} &nbsp;·&nbsp; ${s.item_count.toLocaleString()} 點</div>
+          <div class="hbtns">
+            <button class="btn-sm" onclick="downloadSession('${s.id}','json')">JSON</button>
+            <button class="btn-sm" onclick="downloadSession('${s.id}','csv')">CSV</button>
+            <button class="btn-sm btn-del" onclick="deleteSession('${s.id}',this)">🗑 刪除</button>
+          </div>`;
+        historyList.appendChild(card);
+      });
+    }
+
+    window.downloadSession = async function(id, format) {
+      try {
+        const res     = await fetch(`/api/sessions/${id}`);
+        if (!res.ok) throw new Error('找不到該筆紀錄');
+        const session = await res.json();
+        const items   = session.items ?? [];
+        const base    = session.filename.replace(/\.[^.]+$/, '');
+
+        if (format === 'json') {
+          triggerDownload(JSON.stringify(items, null, 2), `${base}_coords.json`, 'application/json');
+        } else {
+          const header = [
+            'Page','Index','Text',
+            'Top','Left','Right','Bottom','Width','Height',
+            'NormTop','NormLeft','NormRight','NormBottom','NormWidth','NormHeight',
+            'PageWidth','PageHeight','DPR',
+          ].join(',');
+          const rows = items.map(d => [
+            d.page, d.index,
+            `"${String(d.text).replace(/"/g,'""')}"`,
+            d.top, d.left, d.right, d.bottom, d.width, d.height,
+            d.norm_top ?? '', d.norm_left ?? '', d.norm_right ?? '', d.norm_bottom ?? '',
+            d.norm_width ?? '', d.norm_height ?? '',
+            d.page_width ?? '', d.page_height ?? '', d.dpr ?? '',
+          ].join(','));
+          triggerDownload('﻿' + [header, ...rows].join('\r\n'), `${base}_coords.csv`, 'text/csv;charset=utf-8');
+        }
+        log(`已成功從歷史讀取並下載 ${format.toUpperCase()}`, 'ok');
+      } catch (e) {
+        log(`下載歷史失敗：${e.message}`, 'err');
+      }
+    };
+
+    window.deleteSession = async function(id, btn) {
+      if (!confirm('確定要永久刪除此歷史紀錄？')) return;
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/sessions/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        log('已成功刪除該歷史紀錄', 'ok');
+        loadHistory();
+      } catch (e) {
+        log(`刪除歷史失敗：${e.message}`, 'err');
+        btn.disabled = false;
+      }
+    };
+
+    refreshHistoryBtn.addEventListener('click', loadHistory);
+
+    // Load history on start
     loadHistory();
-  } catch (e) {
-    log(`刪除失敗：${e.message}`, 'err');
-    btn.disabled = false;
-  }
-}
 
-// Load history on page start
-loadHistory();
-
-</script>
-<div id="gaze-cursor" class="hidden" style="
-  position: fixed;
-  width: 24px;
-  height: 24px;
-  background: rgba(79, 126, 247, 0.25);
-  border: 2px solid var(--primary);
-  border-radius: 50%;
-  pointer-events: none;
-  transform: translate(-50%, -50%);
-  z-index: 99999;
-  display: none;
-">
-  <div style="
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 6px;
-    height: 6px;
-    background: var(--primary);
+  </script>
+  
+  <!-- Gaze Follower Element -->
+  <div id="gaze-cursor" class="hidden" style="
+    position: fixed;
+    width: 24px;
+    height: 24px;
+    background: rgba(59, 130, 246, 0.25);
+    border: 2px solid var(--accent);
     border-radius: 50%;
+    pointer-events: none;
     transform: translate(-50%, -50%);
-  "></div>
-</div>
-<script src="mapping.js"></script>
-<script src="gaze_integration.js"></script>
+    z-index: 99999;
+    display: none;
+  ">
+    <div style="
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 6px;
+      height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+    "></div>
+  </div>
+
+  <!-- External Gaze & Mapping Scripts -->
+  <script src="mapping.js"></script>
+  <script src="gaze_integration.js"></script>
 </body>
 </html>

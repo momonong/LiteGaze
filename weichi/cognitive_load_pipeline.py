@@ -319,7 +319,7 @@ class CognitiveLoadPipeline:
         self._ridge_mu    = np.array(m["scaler_mean"])
         self._ridge_std   = np.array(m["scaler_std"])
         self._ridge_feats = m["features"]
-        print(f"[Ridge v6] 載入模型（Val R²={m.get('r2_val', '?'):.3f}，α={m.get('alpha','?')}）")
+        print(f"[Ridge v6] 載入模型（Val R^2={m.get('r2_val', '?'):.3f}，α={m.get('alpha','?')}）")
         return m
 
     def _load_xgb_model(self):

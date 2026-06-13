@@ -1,9 +1,16 @@
+# IMPORTANT: Start with `python -X utf8 server.py` to prevent UnicodeEncodeError
+# crashes on Windows CP950 when library code prints non-Big5 characters.
+import os
+import sys
+
 import json
 import mimetypes
 import uuid
 import webbrowser
 from datetime import datetime
 from pathlib import Path
+
+import json
 
 from flask import Flask, jsonify, request, send_from_directory
 

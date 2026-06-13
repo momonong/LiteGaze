@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import datetime
+import io
 import os
 import shutil
 import sys
@@ -21,6 +22,68 @@ from pathlib import Path
 from typing import Optional
 
 from flask import Blueprint, jsonify, request
+
+# ── Safe output wrapper for CP950 (Windows Big5) encoding ────────────────────
+class _SafeWriter:
+    """Wraps a writable stream, replacing unencodable characters on write()."""
+    __slots__ = ('_stream', '_encoding')
+    def __init__(self, stream):
+        self._stream = stream
+        self._encoding = getattr(stream, 'encoding', None) or 'utf-8'
+    def write(self, s):
+        if isinstance(s, str):
+            try:
+                self._stream.write(s)
+            except UnicodeEncodeError:
+                self._stream.write(s.encode(self._encoding, errors='replace').decode(self._encoding))
+        else:
+            self._stream.write(s)
+    def flush(self):
+        self._stream.flush()
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+# Wrap stdout/stderr with safe writer that replaces unencodable chars
+sys.stdout = _SafeWriter(sys.stdout)
+sys.stderr = _SafeWriter(sys.stderr)
+
+# Also patch builtins.print, warnings.warn and logging StreamHandlers
+import builtins as _builtins
+import logging
+import warnings as _warnings
+
+_original_print = _builtins.print
+def _safe_print(*args, **kwargs):
+    try:
+        _original_print(*args, **kwargs)
+    except UnicodeEncodeError:
+        f = kwargs.get('file', sys.stdout)
+        enc = getattr(f, 'encoding', None) or 'utf-8'
+        safe_args = []
+        for a in args:
+            if isinstance(a, str):
+                safe_args.append(a.encode(enc, errors='replace').decode(enc))
+            else:
+                safe_args.append(str(a))
+        _original_print(*safe_args, **kwargs)
+_builtins.print = _safe_print
+
+_original_warn = _warnings.warn
+def _safe_warn(message, *args, **kwargs):
+    if isinstance(message, str):
+        try:
+            message.encode(getattr(sys.stderr, 'encoding', None) or 'utf-8')
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            enc = getattr(sys.stderr, 'encoding', None) or 'utf-8'
+            message = message.encode(enc, errors='replace').decode(enc)
+    _original_warn(message, *args, **kwargs)
+_warnings.warn = _safe_warn
+
+# Patch logging handlers on existing loggers, just in case
+for _name in ('transformers', 'huggingface_hub', 'filelock', ''):
+    for _h in logging.getLogger(_name).handlers:
+        if hasattr(_h, 'stream') and not isinstance(_h.stream, _SafeWriter):
+            _h.stream = _SafeWriter(_h.stream)
 
 ROOT = Path(__file__).parent
 WEICHI_DIR = ROOT.parent / "weichi"
@@ -51,11 +114,14 @@ def _get_pipeline(lang: str):
 
     with _pipeline_lock:
         if _pipelines[lang] is None:
-            from cognitive_load_pipeline import CognitiveLoadPipeline
-
+            ssl_cert = os.environ.get("SSL_CERT_FILE", "")
+            if ssl_cert and "\\" not in ssl_cert and ssl_cert.count(":") > 1:
+                del os.environ["SSL_CERT_FILE"]
             model_type = _DEFAULT_MODELS[lang]
             print(f"[Cognitive] 首次載入 pipeline (lang={lang}, model={model_type})...")
+            from cognitive_load_pipeline import CognitiveLoadPipeline
             _pipelines[lang] = CognitiveLoadPipeline(model_type=model_type, lang=lang)
+
             print(f"[Cognitive] pipeline ({lang}) 載入完成")
     return _pipelines[lang]
 
