@@ -43,6 +43,7 @@ def build_df(content_df: pd.DataFrame) -> pd.DataFrame:
         if col not in df.columns:
             df[col] = 0.0
     df["log_trt"] = np.log(df["mean_trt"].clip(lower=1))
+    df["log_gd"]  = np.log(df["mean_gd"].clip(lower=1))
     return df.dropna(subset=XGB_FEATS + ["log_trt"])
 
 
@@ -158,19 +159,74 @@ def evaluate(booster, test_df, lmm_df=None):
         except Exception as e:
             print(f"  LMM failed: {e}")
 
+    # ── GD OLS ───────────────────────────────────────────────────
+    gd_df = test_df.dropna(subset=["log_gd"])
+    beta_ols_gd = delta_aic_gd = delta_r2_gd = p_ols_gd = float("nan")
+    if len(gd_df) > 50:
+        m_base_gd = smf.ols(
+            "log_gd ~ WORD_LENGTH + zipf_score + sent_position"
+            " + prev_surprisal + prev_word_length",
+            data=gd_df).fit()
+        m_full_gd = smf.ols(
+            "log_gd ~ xgb_load + WORD_LENGTH + zipf_score + sent_position"
+            " + prev_surprisal + prev_word_length",
+            data=gd_df).fit()
+        delta_r2_gd  = m_full_gd.rsquared - m_base_gd.rsquared
+        delta_aic_gd = m_base_gd.aic - m_full_gd.aic
+        beta_ols_gd  = m_full_gd.params.get("xgb_load", float("nan"))
+        p_ols_gd     = m_full_gd.pvalues.get("xgb_load", float("nan"))
+
+    # ── GD LMM ───────────────────────────────────────────────────
+    lmm_beta_gd = lmm_p_gd = lrt_stat_gd = lrt_p_gd = lmm_daic_gd = float("nan")
+    n_obs_gd = n_subj_gd = 0
+
+    if lmm_df is not None and len(lmm_df) > 0 and "log_gd" in lmm_df.columns:
+        mu, sd = test_df["xgb_load"].mean(), test_df["xgb_load"].std()
+        xgb_z_gd = test_df[["WORD_ID", "xgb_load"]].copy()
+        xgb_z_gd["xgb_load_z"] = (xgb_z_gd["xgb_load"] - mu) / (sd if sd > 0 else 1)
+
+        lmm_gd = lmm_df.merge(xgb_z_gd[["WORD_ID", "xgb_load_z"]], on="WORD_ID", how="inner")
+        lmm_gd = lmm_gd.dropna(subset=["xgb_load_z", "log_gd",
+                                        "WORD_LENGTH_z", "zipf_score_z", "sent_position_z"])
+        if len(lmm_gd) > 100:
+            try:
+                m_lmm_base_gd = smf.mixedlm(
+                    "log_gd ~ WORD_LENGTH_z + zipf_score_z + sent_position_z",
+                    data=lmm_gd, groups=lmm_gd["subject"]).fit(reml=False)
+                m_lmm_full_gd = smf.mixedlm(
+                    "log_gd ~ xgb_load_z + WORD_LENGTH_z + zipf_score_z + sent_position_z",
+                    data=lmm_gd, groups=lmm_gd["subject"]).fit(reml=False)
+                lrt_stat_gd = -2 * (m_lmm_base_gd.llf - m_lmm_full_gd.llf)
+                lrt_p_gd    = chi2_dist.sf(lrt_stat_gd, df=1) if lrt_stat_gd >= 0 else float("nan")
+                lmm_beta_gd = m_lmm_full_gd.params.get("xgb_load_z", float("nan"))
+                lmm_p_gd    = m_lmm_full_gd.pvalues.get("xgb_load_z", float("nan"))
+                lmm_daic_gd = m_lmm_base_gd.aic - m_lmm_full_gd.aic
+                n_obs_gd    = len(lmm_gd)
+                n_subj_gd   = lmm_gd["subject"].nunique()
+            except Exception as e:
+                print(f"  GD LMM failed: {e}")
+
     return {
-        "n_words":    len(test_df),
-        "rho_trt":    rho_trt,    "p_trt":    p_trt,
-        "rho_gd":     rho_gd,     "p_gd":     p_gd,
-        "ci_trt":     (ci_trt_lo, ci_trt_hi),
-        "ci_gd":      (ci_gd_lo,  ci_gd_hi),
-        "r2_held":    r2,
-        "beta_ols":   beta_ols,   "p_ols":    p_ols,
-        "delta_r2":   delta_r2,   "delta_aic": delta_aic,
-        "lmm_beta":   lmm_beta,   "lmm_p":    lmm_p,
-        "lrt_stat":   lrt_stat,   "lrt_p":    lrt_p,
-        "lmm_daic":   lmm_daic,
-        "n_obs":      n_obs,       "n_subj":   n_subj,
+        "n_words":       len(test_df),
+        "rho_trt":       rho_trt,       "p_trt":       p_trt,
+        "rho_gd":        rho_gd,        "p_gd":        p_gd,
+        "ci_trt":        (ci_trt_lo, ci_trt_hi),
+        "ci_gd":         (ci_gd_lo,  ci_gd_hi),
+        "r2_held":       r2,
+        # TRT
+        "beta_ols":      beta_ols,      "p_ols":       p_ols,
+        "delta_r2":      delta_r2,      "delta_aic":   delta_aic,
+        "lmm_beta":      lmm_beta,      "lmm_p":       lmm_p,
+        "lrt_stat":      lrt_stat,      "lrt_p":       lrt_p,
+        "lmm_daic":      lmm_daic,
+        "n_obs":         n_obs,         "n_subj":      n_subj,
+        # GD
+        "beta_ols_gd":   beta_ols_gd,   "p_ols_gd":    p_ols_gd,
+        "delta_r2_gd":   delta_r2_gd,   "delta_aic_gd": delta_aic_gd,
+        "lmm_beta_gd":   lmm_beta_gd,   "lmm_p_gd":    lmm_p_gd,
+        "lrt_stat_gd":   lrt_stat_gd,   "lrt_p_gd":    lrt_p_gd,
+        "lmm_daic_gd":   lmm_daic_gd,
+        "n_obs_gd":      n_obs_gd,      "n_subj_gd":   n_subj_gd,
     }
 
 
@@ -202,14 +258,21 @@ def write_report(res, train_n, val_n, holdout_n):
         f"| [{ci_gd[0]:.3f}, {ci_gd[1]:.3f}] | {sig_stars(res['p_gd'])} |",
         f"| Held-out R² (log TRT) | {fmt(res['r2_held'],4)} | — | — |",
         "",
-        "## OLS Regression (Word-level Mean TRT)", "",
+        "## OLS Regression — TRT (Word-level Mean)", "",
         "| Parameter | Value | Sig. |",
         "|-----------|-------|------|",
         f"| β(xgb_load) | {fmt(res['beta_ols'],4)} | {sig_stars(res['p_ols'])} |",
         f"| ΔR²         | {fmt(res['delta_r2'],4)} | — |",
         f"| ΔAIC        | {fmt(res['delta_aic'],1)} | — |",
         "",
-        "## LMM (Per-Reader, Random Intercepts)", "",
+        "## OLS Regression — GD (Word-level Mean)", "",
+        "| Parameter | Value | Sig. |",
+        "|-----------|-------|------|",
+        f"| β(xgb_load) | {fmt(res['beta_ols_gd'],4)} | {sig_stars(res['p_ols_gd'])} |",
+        f"| ΔR²         | {fmt(res['delta_r2_gd'],4)} | — |",
+        f"| ΔAIC        | {fmt(res['delta_aic_gd'],1)} | — |",
+        "",
+        "## LMM — TRT (Per-Reader, Random Intercepts)", "",
         "| Parameter | Value | Sig. |",
         "|-----------|-------|------|",
         f"| β(xgb_load_z) | {fmt(res['lmm_beta'],4)} | {sig_stars(res['lmm_p'])} |",
@@ -217,6 +280,15 @@ def write_report(res, train_n, val_n, holdout_n):
         f"| ΔAIC          | {fmt(res['lmm_daic'],1)} | — |",
         f"| N (obs)       | {res['n_obs']} | — |",
         f"| N (subjects)  | {res['n_subj']} | — |",
+        "",
+        "## LMM — GD (Per-Reader, Random Intercepts)", "",
+        "| Parameter | Value | Sig. |",
+        "|-----------|-------|------|",
+        f"| β(xgb_load_z) | {fmt(res['lmm_beta_gd'],4)} | {sig_stars(res['lmm_p_gd'])} |",
+        f"| LRT χ²(1)     | {fmt(res['lrt_stat_gd'],2)} | {sig_stars(res['lrt_p_gd'])} |",
+        f"| ΔAIC          | {fmt(res['lmm_daic_gd'],1)} | — |",
+        f"| N (obs)       | {res['n_obs_gd']} | — |",
+        f"| N (subjects)  | {res['n_subj_gd']} | — |",
         "",
         "---", "",
         "## Paper-Ready Quote",
@@ -228,7 +300,11 @@ def write_report(res, train_n, val_n, holdout_n):
         f'> word frequency, length, sentence position, and spillover',
         f'> (OLS β = {res["beta_ols"]:.3f}, p < .001, ΔAIC = {res["delta_aic"]:.1f};',
         f'> LMM β = {res["lmm_beta"]:.3f}, LRT χ²(1) = {res["lrt_stat"]:.2f}, '
-        f'p < .001, ΔAIC = {res["lmm_daic"]:.1f})."',
+        f'p < .001, ΔAIC = {res["lmm_daic"]:.1f}, n = {res["n_obs"]} reader×word obs).',
+        f'> Parallel models on GD yielded',
+        f'> OLS β = {res["beta_ols_gd"]:.3f} (ΔAIC = {res["delta_aic_gd"]:.1f})',
+        f'> and LMM β = {res["lmm_beta_gd"]:.3f}, LRT χ²(1) = {res["lrt_stat_gd"]:.2f}, '
+        f'p < .001, ΔAIC = {res["lmm_daic_gd"]:.1f}, n = {res["n_obs_gd"]} obs."',
     ]
     path = os.path.join(OUT_DIR, "full_validation_report.md")
     with open(path, "w", encoding="utf-8") as f:
@@ -273,9 +349,14 @@ def main():
     print(f"  Held-out R²      = {res['r2_held']:.4f}")
     print(f"  OLS β(load) = {res['beta_ols']:.4f}  p={res['p_ols']:.4f}"
           f"  {sig_stars(res['p_ols'])}  ΔAIC={res['delta_aic']:.1f}")
-    print(f"  LMM β(load_z) = {res['lmm_beta']:.4f}  p={res['lmm_p']:.4f}"
+    print(f"  OLS β(GD)   = {res['beta_ols_gd']:.4f}  p={res['p_ols_gd']:.4f}"
+          f"  {sig_stars(res['p_ols_gd'])}  ΔAIC={res['delta_aic_gd']:.1f}")
+    print(f"  LMM β(load_z) TRT = {res['lmm_beta']:.4f}  p={res['lmm_p']:.4f}"
           f"  {sig_stars(res['lmm_p'])}  LRT χ²={res['lrt_stat']:.2f}"
           f"  ΔAIC={res['lmm_daic']:.1f}")
+    print(f"  LMM β(load_z) GD  = {res['lmm_beta_gd']:.4f}  p={res['lmm_p_gd']:.4f}"
+          f"  {sig_stars(res['lmm_p_gd'])}  LRT χ²={res['lrt_stat_gd']:.2f}"
+          f"  ΔAIC={res['lmm_daic_gd']:.1f}")
 
     write_report(res, TRAIN_N, VAL_N, HOLDOUT_N)
     print("\n[完成] full_validation_report.md")

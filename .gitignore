@@ -16,6 +16,13 @@ data/
 Data/
 Model/
 
+# Eye-tracking corpora (raw data, not committed)
+weichi/GECO_data/
+weichi/PROVO_data/
+
+# Generated / large cached files
+weichi/test_predictions.csv
+
 # Environment
 .env
 venv/
