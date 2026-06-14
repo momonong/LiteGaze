@@ -1,7 +1,7 @@
 [project]
 name = "lexigaze"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.8.2"
+description = "LexiGaze: A comprehensive tool for document analysis, gaze tracking, and cognitive load analysis"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 dependencies = [
