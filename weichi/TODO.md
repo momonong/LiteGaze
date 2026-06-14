@@ -191,7 +191,11 @@ Pipeline 已整合以下特徵（符合文獻建議）：
   - 排除 track-loss trial
   - 處理 skipped word（未被注視的詞）
   - 標點符號的 token 對齊要特別確認
-- [ ] First-pass（GD）和 later regression（TRT）分開計算，分別 run 模型
+- [x] **First-pass（GD）和 later regression（TRT）分開 OLS + LMM** ✅（`gd_trt_separate_models.py`）
+  - TRT: OLS β=0.639 ***, ΔAIC=+104.6; LMM β=0.049 ***, LRT χ²=184.61, ΔAIC=+182.6
+  - GD:  OLS β=0.406 ***, ΔAIC=+62.5;  LMM β=0.029 ***, LRT χ²=84.77,  ΔAIC=+82.8
+  - **結論**：GD 效果較小（初次閱讀），TRT 效果更強（含回視 = 整合困難），兩者皆 p < .001
+  - 報告：`gd_trt_separate_report.md`
 
 ---
 

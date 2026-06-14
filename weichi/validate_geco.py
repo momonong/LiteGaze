@@ -197,15 +197,20 @@ def merge_eye(scores_df, eye):
     print(f"  → {len(content_df)} content words (≥{MIN_READERS} readers)")
 
     # Per-reader dataframe for LMM
-    per_reader = eye_sub[["PP_NR", "WORD_ID", "WORD_TOTAL_READING_TIME"]].copy()
+    per_reader = eye_sub[["PP_NR", "WORD_ID",
+                          "WORD_TOTAL_READING_TIME", "WORD_GAZE_DURATION"]].copy()
     per_reader = per_reader.dropna(subset=["WORD_TOTAL_READING_TIME"])
-    per_reader = per_reader.rename(columns={"WORD_TOTAL_READING_TIME": "TRT"})
+    per_reader = per_reader.rename(columns={
+        "WORD_TOTAL_READING_TIME": "TRT",
+        "WORD_GAZE_DURATION":      "GD",
+    })
     lmm_df = per_reader.merge(
         content_df[["WORD_ID", "load_score_z", "WORD_LENGTH_z",
                     "zipf_score_z", "sent_position_z"]],
         on="WORD_ID", how="inner"
     )
     lmm_df["log_trt"] = np.log(lmm_df["TRT"].clip(lower=1))
+    lmm_df["log_gd"]  = np.log(lmm_df["GD"].clip(lower=1))   # NaN for skipped words
     lmm_df["subject"] = lmm_df["PP_NR"].astype(str)
     print(f"  → {len(lmm_df)} per-reader observations for LMM "
           f"({lmm_df['subject'].nunique()} subjects)")
