@@ -27,6 +27,51 @@
     filterY: null,
   };
 
+  // ── Gaze Buffer (for fusion) ─────────────────────────────────────────────
+  // Accumulates per-word dwell and fixation counts during a reading session.
+  // Flushed to POST /api/fuse when the user triggers "Export" or session ends.
+  const gazeBuffer = {};   // { wordKey: { word, dwell_count, fixation_count, confidence } }
+  let _lastGazeWord = null;  // tracks previous word to detect new fixations
+
+  function recordGazeHit(word, confidence) {
+    const key = word.toLowerCase();
+    if (!gazeBuffer[key]) {
+      gazeBuffer[key] = { word, dwell_count: 0, fixation_count: 0, confidence };
+    }
+    gazeBuffer[key].dwell_count += 1;
+    // A new fixation is counted when the gaze moves to a different word
+    if (_lastGazeWord !== key) {
+      gazeBuffer[key].fixation_count += 1;
+      _lastGazeWord = key;
+    }
+    // Keep the highest-confidence label seen for this word
+    const rank = { high: 2, medium: 1, low: 0 };
+    if ((rank[confidence] || 0) > (rank[gazeBuffer[key].confidence] || 0)) {
+      gazeBuffer[key].confidence = confidence;
+    }
+  }
+
+  function flushGazeBuffer() {
+    return Object.values(gazeBuffer).map(entry => ({
+      word:           entry.word,
+      confidence:     entry.confidence,
+      dwell_count:    entry.dwell_count,
+      fixation_count: entry.fixation_count,
+      timestamp_ms:   Date.now(),
+    }));
+  }
+
+  function clearGazeBuffer() {
+    Object.keys(gazeBuffer).forEach(k => delete gazeBuffer[k]);
+    _lastGazeWord = null;
+  }
+
+  // Expose for use by word_track.html inline script
+  window.gazeBuffer        = gazeBuffer;
+  window.flushGazeBuffer   = flushGazeBuffer;
+  window.clearGazeBuffer   = clearGazeBuffer;
+  window.recordGazeHit     = recordGazeHit;
+
   class LowPassFilter {
     constructor(alpha) {
       this.alpha = alpha;
@@ -203,6 +248,35 @@
       await new Promise((resolve) => window.setTimeout(resolve, 120));
     }
   }
+
+  // ── Fusion export ─────────────────────────────────────────────────────────
+  async function exportFusion(cognitiveResult, sessionId, persist = false) {
+    const events = flushGazeBuffer();
+    if (events.length === 0) {
+      console.warn("[Fusion] gazeBuffer is empty — nothing to fuse");
+      return null;
+    }
+    try {
+      const res = await fetch("/api/fuse/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id:       sessionId || `session_${Date.now()}`,
+          persist:          persist,
+          cognitive_result: cognitiveResult || {},
+          gaze_events:      events,
+        }),
+      });
+      const data = await res.json();
+      console.log("[Fusion] RDS result:", data);
+      return data;
+    } catch (err) {
+      console.error("[Fusion] POST /api/fuse failed:", err);
+      return null;
+    }
+  }
+
+  window.exportFusion = exportFusion;
 
   async function setEnabled(enabled) {
     state.enabled = enabled;

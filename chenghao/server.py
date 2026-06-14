@@ -15,6 +15,7 @@ import json
 from flask import Flask, jsonify, request, send_from_directory
 
 from cognitive_routes import cognitive_bp
+from fusion_routes import fusion_bp
 from gaze_routes import gaze_api_bp, gaze_bp
 
 ROOT     = Path(__file__).parent
@@ -28,6 +29,7 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB 上傳上限（PDF 
 app.register_blueprint(gaze_bp)
 app.register_blueprint(gaze_api_bp)
 app.register_blueprint(cognitive_bp)
+app.register_blueprint(fusion_bp)
 
 # ── Static files ──────────────────────────────────────────────────────────────
 @app.route('/')

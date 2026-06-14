@@ -13,13 +13,14 @@
 4. [Backend: Flask Server](#4-backend-flask-server)
 5. [Gaze Tracking Pipeline](#5-gaze-tracking-pipeline)
 6. [Cognitive Load Pipeline](#6-cognitive-load-pipeline)
-7. [Integration Layer](#7-integration-layer)
-8. [Frontend UI](#8-frontend-ui)
-9. [REST API Reference](#9-rest-api-reference)
-10. [Data Flow Diagrams](#10-data-flow-diagrams)
-11. [File-System Layout of Runtime Data](#11-file-system-layout-of-runtime-data)
-12. [Dependency Graph](#12-dependency-graph)
-13. [Configuration & Environment](#13-configuration--environment)
+7. [**Fusion Algorithm**](#7-fusion-algorithm)
+8. [Integration Layer](#8-integration-layer)
+9. [Frontend UI](#9-frontend-ui)
+10. [REST API Reference](#10-rest-api-reference)
+11. [Data Flow Diagrams](#11-data-flow-diagrams)
+12. [File-System Layout of Runtime Data](#12-file-system-layout-of-runtime-data)
+13. [Dependency Graph](#13-dependency-graph)
+14. [Configuration & Environment](#14-configuration--environment)
 
 ---
 
@@ -535,7 +536,155 @@ load_score = scaled * pos_score + (1 - pos_score) * 0.0
 
 ---
 
-## 7. Integration Layer
+## 7. Fusion Algorithm
+
+> **This is the central architectural bridge of LexiGaze.** The Fusion Algorithm connects the two independent signal sources — the real-time eye tracker and the offline text modeling pipeline — to produce per-word reading difficulty evidence anchored to where the reader actually looks.
+
+### 7.1 Core Concept
+
+The two modules produce fundamentally different outputs:
+
+| Module | Output | Domain |
+|---|---|---|
+| **Eye Tracker** (`shengwen` + `chenghao/gaze_core`) | `(x_px, y_px)` — screen pixel coordinates, ~8 Hz | Space (where) |
+| **Text Model** (`weichi`) | `load_score ∈ [0, 1]`, `load_level` — per word | Language (how hard) |
+
+Fusion maps the spatial gaze signal onto the linguistic signal by asking: *"For each gaze point, which word is the reader looking at, and how cognitively demanding is that word?"*
+
+---
+
+### 7.2 Three-Stage Fusion Pipeline
+
+```mermaid
+flowchart LR
+    subgraph EyeTracker["👁️ Eye Tracker"]
+        ET1["UniGaze-B16\n→ pitch, yaw"]
+        ET2["Polynomial Calibration\n→ screen_xy_px"]
+        ET3["Debounce Filter\n(one-euro / corridor / dwell)"]
+        ET1 --> ET2 --> ET3
+    end
+
+    subgraph TextModel["🧠 Text Model"]
+        TM1["LanguageModelCalculator\nBERT / GPT-2 surprisal"]
+        TM2["CognitiveLoadPipeline\nload_score per word"]
+        TM3["Word Bounding Boxes\nextracted from PDF"]
+        TM1 --> TM2
+    end
+
+    subgraph Fusion["⚡ Fusion Algorithm"]
+        F1["Stage 1: Gaze-to-Word Anchoring\nfindNearestExtractedWord()"]
+        F2["Stage 2: Load Score Lookup\nword → load_score"]
+        F3["Stage 3: Reading Difficulty Score (RDS)\nRDS = w₁·dwell + w₂·density + w₃·load"]
+        F1 --> F2 --> F3
+    end
+
+    ET3 -->|"gaze (x, y)"| F1
+    TM3 -->|"word bboxes"| F1
+    TM2 -->|"load_score[ ]"| F2
+    F3 --> Output["📊 Per-Word Reading Evidence\nhighlighted overlay + analytics"]
+```
+
+---
+
+### 7.3 Stage 1 — Gaze-to-Word Anchoring
+
+**Current implementation:** `chenghao/mapping.js → findNearestExtractedWord(x, y)`
+
+Each gaze point `(x_px, y_px)` is mapped to a word using confidence-ranked nearest-neighbour lookup against the word bounding boxes stored in `pageOverlayMap`.
+
+| Priority | Condition | Label |
+|---|---|---|
+| 1 | Point inside bounding box | `high` |
+| 2 | Within 35 px, same text line (ΔY ≤ 90 px) | `medium` |
+| 3 | Within 35–90 px, same line | `low` |
+| — | Nothing in range | `null` (ignored) |
+
+**Output:** `{ word, confidence, bbox }` — the word being fixated and how certain the mapping is.
+
+**Data source for bboxes:** Word coordinates are extracted from the PDF by the browser's PDF.js renderer and stored in a reading session via `POST /api/sessions`. This means word layout is document-specific and must be computed once per document upload.
+
+---
+
+### 7.4 Stage 2 — Load Score Lookup
+
+**Current implementation:** `chenghao/word_track.html` (inline JS at render time)
+
+When a cognitive load analysis result is returned from `/api/cognitive/analyze/*`, the frontend stores the `word_analysis[]` array as a lookup table:
+
+```javascript
+// word_analysis is the array returned by CognitiveLoadPipeline.run()
+cognitiveLookup = {};
+word_analysis.forEach(item => {
+  cognitiveLookup[item.word.toLowerCase()] = item;
+});
+```
+
+When a gaze point is anchored to word `w` (Stage 1), the load data is retrieved:
+
+```javascript
+const entry = cognitiveLookup[w.toLowerCase()];
+const load_score = entry ? entry.load_score : 0.0;
+const load_level = entry ? entry.load_level : "low";
+```
+
+**Key design choice:** Load scores are **pre-computed** (offline, on document upload) and **looked up in O(1)** during live gaze inference. This keeps the real-time 8 Hz gaze loop latency-free.
+
+---
+
+### 7.5 Stage 3 — Reading Difficulty Score (RDS)
+
+This is the **proposed fusion formula** that combines the gaze signal with the linguistic signal into a single per-word evidence metric:
+
+$$\text{RDS}(w) = w_1 \cdot \hat{d}(w) + w_2 \cdot \hat{\rho}(w) + w_3 \cdot \text{load\_score}(w)$$
+
+Where:
+
+| Term | Symbol | Description |
+|---|---|---|
+| Dwell time (normalised) | $\hat{d}(w)$ | Total time gaze dwelt on word $w$, min-max scaled across all words |
+| Fixation density (normalised) | $\hat{\rho}(w)$ | Number of distinct fixations on $w$, min-max scaled |
+| Cognitive load score | $\text{load\_score}(w)$ | Output of `CognitiveLoadPipeline` ∈ [0, 1] |
+| Weights | $w_1, w_2, w_3$ | Default: `0.35, 0.25, 0.40` (sum to 1.0) |
+
+**Rationale for weights:**
+- `load_score` carries the highest weight (0.40) because it is the most reliable signal — validated against the GECO eye-tracking corpus.
+- Dwell time (0.35) is a strong real-time behavioural signal for difficulty.
+- Fixation count (0.25) adds orthogonal evidence (re-reading behaviour).
+
+**Classification thresholds:**
+
+| RDS range | Interpretation |
+|---|---|
+| ≥ 0.70 | `"difficulty"` — reader is clearly struggling |
+| 0.40 – 0.69 | `"attention"` — reader is engaged but managing |
+| < 0.40 | `"fluent"` — reader is reading smoothly |
+
+---
+
+### 7.6 Current vs. Proposed Architecture
+
+> [!NOTE]
+> The current system implements **frontend fusion** — both the gaze-to-word anchoring and the load score lookup run in JavaScript in the browser. This is intentional for real-time responsiveness but limits the richness of analytics available.
+
+> [!IMPORTANT]
+> The **proposed integration goal** is a lightweight backend fusion endpoint `POST /api/fuse` that aggregates a session's gaze events with the cognitive load scores and returns a full per-word RDS breakdown. This enables:
+> - Persistent reading behaviour logging
+> - Cross-session aggregation
+> - Statistical comparison across readers
+
+**Comparison:**
+
+| Aspect | Current (Frontend Fusion) | Proposed (Backend Fusion) |
+|---|---|---|
+| Where fusion runs | `mapping.js` + `word_track.html` JS | New `fusion_routes.py` Blueprint |
+| Gaze data lifetime | Ephemeral (in memory, per page load) | Persisted to `data/<session>/gaze_log.jsonl` |
+| RDS computation | Not yet implemented | `POST /api/fuse` endpoint |
+| Analytics | Visual overlay only | Per-word RDS JSON + visualisation |
+| Latency | ~0 ms (O(1) lookup) | Async batch (end-of-session) |
+
+---
+
+## 8. Integration Layer
 
 **File:** `chenghao/cognitive_routes.py`
 
@@ -583,7 +732,7 @@ Every file analysed via `/api/cognitive/analyze/file` is automatically saved to 
 
 ---
 
-## 8. Frontend UI
+## 9. Frontend UI
 
 ### 8.1 Document Tool (`word_track.html`)
 
@@ -698,7 +847,7 @@ The module uses canvas overlays aligned to each `page-wrap` element. When both *
 
 ---
 
-## 9. REST API Reference
+## 10. REST API Reference
 
 ### Gaze API — `/api/gaze/*` (and legacy `/api/*`)
 
@@ -737,7 +886,7 @@ Legacy flat endpoints mirror the above at `/api/health`, `/api/list_models`, `/a
 
 ---
 
-## 10. Data Flow Diagrams
+## 11. Data Flow Diagrams
 
 ### Calibration Data Collection
 
@@ -852,7 +1001,7 @@ flowchart TD
 
 ---
 
-## 11. File-System Layout of Runtime Data
+## 12. File-System Layout of Runtime Data
 
 ```
 lexigaze/
@@ -880,7 +1029,7 @@ lexigaze/
 
 ---
 
-## 12. Dependency Graph
+## 13. Dependency Graph
 
 ```mermaid
 flowchart TD
@@ -935,7 +1084,7 @@ flowchart TD
 
 ---
 
-## 13. Configuration & Environment
+## 14. Configuration & Environment
 
 ### Environment Variables
 
@@ -982,4 +1131,4 @@ python server.py
 
 ---
 
-*Documentation generated for LexiGaze CHI submission — June 2026.*
+*Documentation generated for LexiGaze CHI submission — June 2026. Section 7 (Fusion Algorithm) added June 14, 2026.*
