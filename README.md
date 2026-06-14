@@ -3,9 +3,7 @@
 Webcam gaze tracking alone is too inaccurate for language learning research. **lexigaze** tackles this by combining three pieces into one Flask app:
 
 - **Document coordinate extraction** — Parses PDF, HTML, TXT, DOCX, and Markdown into pixel-level word/character bounding boxes. Normalized (0.0–1.0) so results are device-independent.
-
 - **Gaze tracking** — UniGaze-B neural network + MediaPipe face detection runs in real time from any webcam. A personalization step collects a few calibration samples and trains a polynomial regression to fix per-user bias.
-
 - **Cognitive load analysis** — GPT-2 (EN) or BERT (ZH) scores each word's difficulty. Long text auto-chunks and aggregates via ridge regression.
 
 The key idea: extracted word coordinates are the shared reference frame for both gaze mapping and cognitive load overlay. This fuses **where** someone looks with **how hard** the text is — giving researchers a single coordinate space to do higher-dimensional analysis that raw gaze accuracy alone can't support.
@@ -13,13 +11,9 @@ The key idea: extracted word coordinates are the shared reference frame for both
 ## Use Cases
 
 - **Reading research** — Record gaze patterns aligned to exact word positions during natural reading. Export mappings with confidence levels (high/medium/low) for offline analysis.
-
 - **Readability assessment** — Upload a chapter or paper, run cognitive load analysis, and see which sentences pack the hardest vocabulary.
-
 - **Personalized calibration** — A few seconds of webcam data trains a per-user model that meaningfully improves gaze accuracy, no special hardware needed.
-
 - **Material comparison** — Overlay cognitive load heatmaps from two versions of the same document side by side to see which one reduces comprehension barriers.
-
 - **Annotation QA** — After coordinate extraction, visually verify every bounding box lines up with rendered text before exporting.
 
 ## Directory Structure
@@ -110,35 +104,42 @@ Analyze text difficulty using transformer-based models to detect "deep/hard word
 
 ## API Reference
 
-### Gaze Tracking (`/api/gaze/*`, `/api/*`)
+### Gaze Tracking (`/api/gaze/`*, `/api/*`)
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/gaze/health` | Backend health check |
-| GET | `/api/gaze/models` | List trained personalization models |
-| GET | `/api/gaze/datasets` | List calibration datasets |
-| POST | `/api/gaze/session` | Create a new calibration session |
-| POST | `/api/gaze/sample` | Save a calibration sample (image + target) |
-| POST | `/api/gaze/train` | Train a personalization model from a dataset |
-| POST | `/api/gaze/predict` | Run gaze prediction on a webcam frame |
+
+| Method | Endpoint             | Description                                  |
+| ------ | -------------------- | -------------------------------------------- |
+| GET    | `/api/gaze/health`   | Backend health check                         |
+| GET    | `/api/gaze/models`   | List trained personalization models          |
+| GET    | `/api/gaze/datasets` | List calibration datasets                    |
+| POST   | `/api/gaze/session`  | Create a new calibration session             |
+| POST   | `/api/gaze/sample`   | Save a calibration sample (image + target)   |
+| POST   | `/api/gaze/train`    | Train a personalization model from a dataset |
+| POST   | `/api/gaze/predict`  | Run gaze prediction on a webcam frame        |
+
 
 ### Cognitive Load (`/api/cognitive/*`)
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/cognitive/health` | Health check with loaded languages |
-| POST | `/api/cognitive/warmup` | Pre-load a language model (zh/en) |
-| POST | `/api/cognitive/analyze/text` | Analyze short or long text |
-| POST | `/api/cognitive/analyze/file` | Upload PDF/TXT/MD for analysis |
-| POST | `/api/cognitive/evaluate` | Compare prediction with ground truth (precision/recall/F1) |
-| GET | `/api/cognitive/archives` | List previously analyzed files |
+
+| Method | Endpoint                      | Description                                                |
+| ------ | ----------------------------- | ---------------------------------------------------------- |
+| GET    | `/api/cognitive/health`       | Health check with loaded languages                         |
+| POST   | `/api/cognitive/warmup`       | Pre-load a language model (zh/en)                          |
+| POST   | `/api/cognitive/analyze/text` | Analyze short or long text                                 |
+| POST   | `/api/cognitive/analyze/file` | Upload PDF/TXT/MD for analysis                             |
+| POST   | `/api/cognitive/evaluate`     | Compare prediction with ground truth (precision/recall/F1) |
+| GET    | `/api/cognitive/archives`     | List previously analyzed files                             |
+
 
 ### Document Sessions (`/api/*`)
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/ping` | Health check with session count |
-| GET | `/api/sessions` | List saved document sessions |
-| POST | `/api/sessions` | Save extracted coordinates as a session |
-| GET | `/api/sessions/<id>` | Retrieve a saved session |
-| DELETE | `/api/sessions/<id>` | Delete a session |
+
+| Method | Endpoint             | Description                             |
+| ------ | -------------------- | --------------------------------------- |
+| GET    | `/api/ping`          | Health check with session count         |
+| GET    | `/api/sessions`      | List saved document sessions            |
+| POST   | `/api/sessions`      | Save extracted coordinates as a session |
+| GET    | `/api/sessions/<id>` | Retrieve a saved session                |
+| DELETE | `/api/sessions/<id>` | Delete a session                        |
+
+

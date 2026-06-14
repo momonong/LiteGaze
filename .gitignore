@@ -33,6 +33,7 @@ miniconda3/
 # IDE
 .vscode/
 .gemini/
+.antigravitycli/
 
 # uv
 uv.lock
