@@ -13,6 +13,8 @@ const state = {
 };
 
 const renameTarget = { type: "", id: "" };
+let _testLoopId = 0;
+let _testAbort = null;
 
 const els = {
   health: document.getElementById("health"),
@@ -84,11 +86,12 @@ function escHtml(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
-async function postJson(url, body) {
+async function postJson(url, body, signal) {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal,
   });
   const data = await res.json();
   if (!res.ok || data.ok === false) {
@@ -106,15 +109,15 @@ async function startCamera() {
   await els.video.play();
 }
 
-function captureFrame() {
-  const width = 640;
+function captureFrame(quality) {
+  const width = 320;
   const aspect = els.video.videoHeight ? els.video.videoWidth / els.video.videoHeight : 4 / 3;
   const height = Math.round(width / aspect);
   els.canvas.width = width;
   els.canvas.height = height;
   const ctx = els.canvas.getContext("2d");
   ctx.drawImage(els.video, 0, 0, width, height);
-  return els.canvas.toDataURL("image/jpeg", 0.8);
+  return els.canvas.toDataURL("image/jpeg", quality || 0.5);
 }
 
 function pointToStage(point) {
@@ -335,13 +338,13 @@ async function train() {
   }
 }
 
-async function predictOnce() {
+async function predictOnce(signal) {
   const data = await postJson("/api/gaze/predict", {
-    image_data: captureFrame(),
+    image_data: captureFrame(0.5),
     model_name: els.testModeSelect.value,
     viewport_width: window.innerWidth,
     viewport_height: window.innerHeight,
-  });
+  }, signal);
   const x = data.screen_xy_px?.[0] ?? window.innerWidth / 2;
   const y = data.screen_xy_px?.[1] ?? window.innerHeight / 2;
   const rect = els.stage.getBoundingClientRect();
@@ -349,31 +352,36 @@ async function predictOnce() {
   els.gazeCursor.style.top = `${y - rect.top}px`;
 }
 
-async function testLoop() {
+async function testLoop(id) {
   while (state.testing) {
+    if (id !== _testLoopId) return;
     try {
-      await predictOnce();
+      await predictOnce(_testAbort?.signal);
     } catch (err) {
-      log(`測試失敗: ${err.message}`);
-      state.testing = false;
+      if (err.name === "AbortError") return;
     }
-    await sleep(120);
+    if (id !== _testLoopId) return;
+    await sleep(30);
   }
-  els.gazeCursor.classList.add("hidden");
-  els.testControls.classList.add("hidden");
-  els.testBtn.textContent = "測試";
-  els.phase.textContent = "待命";
 }
 
 async function toggleTest() {
   state.testing = !state.testing;
   if (state.testing) {
+    _testAbort = new AbortController();
+    const id = ++_testLoopId;
     els.gazeCursor.classList.remove("hidden");
     els.testControls.classList.remove("hidden");
     els.testBtn.textContent = "停止測試";
     els.phase.textContent = "測試中";
     await refreshTestModels();
-    testLoop();
+    testLoop(id);
+  } else {
+    if (_testAbort) _testAbort.abort();
+    els.gazeCursor.classList.add("hidden");
+    els.testControls.classList.add("hidden");
+    els.testBtn.textContent = "測試";
+    els.phase.textContent = "待命";
   }
 }
 
