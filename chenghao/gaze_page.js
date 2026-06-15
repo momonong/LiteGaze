@@ -12,6 +12,8 @@ const state = {
   testing: false,
 };
 
+const renameTarget = { type: "", id: "" };
+
 const els = {
   health: document.getElementById("health"),
   participantName: document.getElementById("participantName"),
@@ -48,7 +50,7 @@ const els = {
   toggleCorridorLock: document.getElementById("toggleCorridorLock"),
   btnFullscreen: document.getElementById("btnFullscreen"),
   toggleSettings: document.getElementById("toggle-settings"),
-  toggleLogs: document.getElementById("toggle-logs"),
+
   modelsModal: document.getElementById("modelsModal"),
   closeModels: document.getElementById("closeModels"),
   btnCloseModels: document.getElementById("btnCloseModels"),
@@ -426,11 +428,6 @@ els.closeModels.addEventListener("click", () => hideModal(els.modelsModal));
 els.btnCloseModels.addEventListener("click", () => hideModal(els.modelsModal));
 els.modelsModal.addEventListener("click", (e) => {
   if (e.target === els.modelsModal) hideModal(els.modelsModal);
-});
-
-// Logs tray toggle
-els.toggleLogs.addEventListener("click", () => {
-  els.logsTray.classList.toggle("hidden");
 });
 
 // Fullscreen

@@ -42,3 +42,22 @@ def list_models(root: Path) -> list[dict]:
 
 def model_path(root: Path, model_name: str) -> Path:
     return ensure_runs_dir(root) / f"{clean_model_name(model_name)}.json"
+
+
+def delete_model(root: Path, model_name: str) -> dict:
+    path = model_path(root, model_name)
+    if not path.exists():
+        return {"ok": False, "error": "model not found"}
+    path.unlink()
+    return {"ok": True}
+
+
+def rename_model(root: Path, model_name: str, new_name: str) -> dict:
+    src = model_path(root, model_name)
+    if not src.exists():
+        return {"ok": False, "error": "model not found"}
+    dst = model_path(root, new_name)
+    if dst.exists():
+        return {"ok": False, "error": "target name already exists"}
+    src.rename(dst)
+    return {"ok": True}

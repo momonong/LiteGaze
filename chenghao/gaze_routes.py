@@ -5,8 +5,8 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request
 
 from gaze_core.inference import predict
-from gaze_core.model_registry import ensure_runs_dir, list_models
-from gaze_core.sample_store import create_session, list_datasets, save_sample
+from gaze_core.model_registry import ensure_runs_dir, list_models, delete_model, rename_model
+from gaze_core.sample_store import create_session, list_datasets, save_sample, delete_dataset, rename_dataset
 from gaze_core.training import train_placeholder
 
 
@@ -56,6 +56,28 @@ def predict_gaze():
     body = request.get_json(force=True) or {}
     response, status = predict(ROOT, body)
     return jsonify(response), status
+
+
+@gaze_bp.route("/datasets/<session_id>", methods=["DELETE", "PUT"])
+def dataset_ops(session_id):
+    if request.method == "DELETE":
+        return jsonify(delete_dataset(ROOT, session_id))
+    body = request.get_json(force=True) or {}
+    new_name = body.get("new_name", "")
+    if not new_name:
+        return jsonify({"ok": False, "error": "new_name required"}), 400
+    return jsonify(rename_dataset(ROOT, session_id, new_name))
+
+
+@gaze_bp.route("/models/<model_name>", methods=["DELETE", "PUT"])
+def model_ops(model_name):
+    if request.method == "DELETE":
+        return jsonify(delete_model(ROOT, model_name))
+    body = request.get_json(force=True) or {}
+    new_name = body.get("new_name", "")
+    if not new_name:
+        return jsonify({"ok": False, "error": "new_name required"}), 400
+    return jsonify(rename_model(ROOT, model_name, new_name))
 
 
 @gaze_api_bp.get("/health")
