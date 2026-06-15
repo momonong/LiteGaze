@@ -38,3 +38,8 @@ models/
 
 # local gaze data
 gaze_data/
+
+# binary model / wasm files (large, not tracked)
+*.onnx
+*.task
+wasm/

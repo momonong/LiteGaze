@@ -1,0 +1,415 @@
+"""
+scripts/fusion/orchestrator.py
+══════════════════════════════════════════════════════════════════════════════
+LexiGaze 數據融合協調器 (Fusion Orchestrator)
+
+將「感知端」（眼動軌跡 gaze_log.jsonl）與「認知端」（CognitiveLoadPipeline
+輸出的 word_analysis[]）進行後端離線融合，計算每個單字的
+Reading Difficulty Score（RDS），並輸出完整的 JSON 報告。
+
+RDS(w) = 0.35 × dwell_norm(w) + 0.25 × fix_norm(w) + 0.40 × load_score(w)
+
+使用方式：
+    python scripts/fusion/orchestrator.py \\
+        --gaze-log    data/<session_id>/gaze_log.jsonl \\
+        --cognitive   docs/fusion_reports/cognitive_<session_id>.json \\
+        --session-id  <session_id>
+
+    # 或讓 orchestrator 自行呼叫 weichi pipeline 分析一段文字：
+    python scripts/fusion/orchestrator.py \\
+        --gaze-log    data/<session_id>/gaze_log.jsonl \\
+        --text        "The quick brown fox..." \\
+        --lang        en \\
+        --session-id  <session_id>
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+import time
+from pathlib import Path
+from typing import Optional
+
+# ── Path bootstrap ────────────────────────────────────────────────────────────
+ROOT       = Path(__file__).resolve().parents[2]   # lexigaze/
+WEICHI_DIR = ROOT / "weichi"
+REPORTS_DIR = ROOT / "docs" / "fusion_reports"
+REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+
+if str(WEICHI_DIR) not in sys.path:
+    sys.path.insert(0, str(WEICHI_DIR))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 1. 眼動感知端 — 讀取 gaze_log.jsonl
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def load_gaze_log(path: Path) -> list[dict]:
+    """
+    讀取眼動事件日誌 (gaze_log.jsonl)。
+
+    每一行預期欄位（由前端寫入）：
+        {
+          "word":           str,    // 已對齊的單字（toLowerCase 後由 mapping.js 填入）
+          "confidence":     str,    // "high" | "medium" | "low"
+          "dwell_count":    int,    // 在此單字上的 8 Hz gaze 命中次數
+          "fixation_count": int,    // 獨立眼跳次數（前端從 is_new_fixation 累計）
+          "timestamp_ms":   int,    // Date.now() 採集時間
+          "gaze_x":         float,  // 螢幕像素 X（選配）
+          "gaze_y":         float   // 螢幕像素 Y（選配）
+        }
+
+    也相容舊格式：直接包含 timestamp / gaze_x / gaze_y 但無 word 的原始推論
+    log（此時 word 欄位會是 None，這些行會被過濾掉）。
+    """
+    events: list[dict] = []
+    with open(path, encoding="utf-8") as fh:
+        for lineno, raw in enumerate(fh, start=1):
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                obj = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                print(f"[Orchestrator] ⚠  第 {lineno} 行解析失敗: {exc}", file=sys.stderr)
+                continue
+            # 過濾掉沒有 word 的原始 gaze 推論記錄
+            if not obj.get("word"):
+                continue
+            events.append(obj)
+    print(f"[Orchestrator] 讀取 {len(events)} 筆有效眼動事件（來自 {path.name}）")
+    return events
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 2. 認知端 — 取得 word_analysis[]
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def load_cognitive_result(path: Path) -> dict:
+    """從已存好的 JSON 檔讀取 CognitiveLoadPipeline 輸出。"""
+    with open(path, encoding="utf-8") as fh:
+        result = json.load(fh)
+    n = len(result.get("word_analysis", []))
+    print(f"[Orchestrator] 讀取認知分析結果: {n} 個單字（來自 {path.name}）")
+    return result
+
+
+def run_cognitive_pipeline(text: str, lang: str = "en") -> dict:
+    """直接呼叫 weichi CognitiveLoadPipeline 對文字進行分析。"""
+    from cognitive_load_pipeline import CognitiveLoadPipeline
+    model_type = "bert" if lang == "zh" else "gpt2"
+    print(f"[Orchestrator] 啟動 CognitiveLoadPipeline (lang={lang}, model={model_type})…")
+    pipeline = CognitiveLoadPipeline(model_type=model_type, lang=lang)
+    result = pipeline.run(text)
+    print(f"[Orchestrator] 認知分析完成，共 {len(result.get('word_analysis', []))} 個單字")
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 3. 雙模態對齊 — 建立 load_score lookup（含大小寫 + 連字號模糊比對）
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def build_cognitive_lookup(word_analysis: list[dict]) -> dict[str, dict]:
+    """
+    建立 word → WordResult 的查詢表。
+
+    對齊規則（依 fusion_blueprint.md §3 痛點 3 & 4）：
+    1. 所有 key 強制 .lower()
+    2. 記錄一份 hyphen_lookup：{ 子詞 → 複合詞條目 }，
+       供 PDF 拆字後仍能命中完整複合詞的分數。
+    """
+    lookup: dict[str, dict] = {}
+    hyphen_lookup: dict[str, dict] = {}
+
+    for item in word_analysis:
+        key = item.get("word", "").lower()
+        if not key:
+            continue
+        lookup[key] = item
+        # 若是連字號複合詞，把每個子詞也對應到此條目
+        if "-" in key:
+            for part in key.split("-"):
+                part = part.strip()
+                if part and part not in lookup:
+                    hyphen_lookup[part] = item
+
+    # 合併：直接命中優先，子詞退回才走 hyphen_lookup
+    merged = {**hyphen_lookup, **lookup}
+    return merged
+
+
+def lookup_word(key: str, merged_lookup: dict[str, dict]) -> Optional[dict]:
+    """查詢單字的認知分析條目（小寫，含連字號退回）。"""
+    return merged_lookup.get(key.lower())
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 4. 核心融合演算法 — RDS 計算
+# ═══════════════════════════════════════════════════════════════════════════════
+
+W_DWELL   = 0.35   # 停留時間權重
+W_FIXATION = 0.25  # 注視次數權重
+W_LOAD    = 0.40   # 認知負荷分數權重
+
+DWELL_MS_PER_COUNT = 120  # 前端以 120 ms 輪詢，每次命中代表約 120 ms 停留
+
+
+def _classify_rds(rds: float) -> str:
+    if rds >= 0.70:
+        return "difficulty"
+    if rds >= 0.40:
+        return "attention"
+    return "fluent"
+
+
+def aggregate_gaze_events(events: list[dict]) -> dict[str, dict]:
+    """
+    將多行 gaze_event 按 word（小寫）彙整，累加 dwell_ms 和 fixation_count。
+    """
+    agg: dict[str, dict] = {}
+    for ev in events:
+        key = ev.get("word", "").lower()
+        if not key:
+            continue
+        if key not in agg:
+            agg[key] = {
+                "word": ev.get("word", key),
+                "dwell_ms": 0,
+                "fixation_count": 0,
+                "hit_count": 0,
+                "confidence_counts": {"high": 0, "medium": 0, "low": 0},
+            }
+        agg[key]["dwell_ms"]       += int(ev.get("dwell_count", 1)) * DWELL_MS_PER_COUNT
+        agg[key]["fixation_count"] += int(ev.get("fixation_count", 0))
+        agg[key]["hit_count"]      += 1
+        conf = ev.get("confidence", "low")
+        if conf in agg[key]["confidence_counts"]:
+            agg[key]["confidence_counts"][conf] += 1
+    return agg
+
+
+def compute_rds(
+    gaze_events: list[dict],
+    cognitive_result: dict,
+) -> list[dict]:
+    """
+    主要融合函式。
+
+    步驟：
+      1. 彙整眼動事件 → { word: { dwell_ms, fixation_count } }
+      2. 建立認知分析 lookup
+      3. Min-Max 正規化 dwell_ms 和 fixation_count（session 層級）
+      4. 計算 RDS = W_DWELL × dwell_norm + W_FIXATION × fix_norm + W_LOAD × load_score
+      5. 合併所有細粒度語言學特徵
+    """
+    word_analysis = cognitive_result.get("word_analysis", [])
+    merged_lookup = build_cognitive_lookup(word_analysis)
+    aggregated    = aggregate_gaze_events(gaze_events)
+
+    if not aggregated:
+        print("[Orchestrator] ⚠  沒有有效的眼動事件可融合")
+        return []
+
+    # Min-Max Scaling（session 層級）
+    all_dwell   = [v["dwell_ms"]       for v in aggregated.values()]
+    all_fix     = [v["fixation_count"] for v in aggregated.values()]
+    max_dwell   = max(all_dwell)  if max(all_dwell)  > 0 else 1
+    max_fix     = max(all_fix)    if max(all_fix)    > 0 else 1
+    min_dwell   = min(all_dwell)
+    min_fix     = min(all_fix)
+    range_dwell = max_dwell - min_dwell or 1
+    range_fix   = max_fix   - min_fix   or 1
+
+    results: list[dict] = []
+    for key, agg in aggregated.items():
+        cog_entry  = lookup_word(key, merged_lookup) or {}
+        load_score = float(cog_entry.get("load_score", 0.0))
+
+        dwell_norm = (agg["dwell_ms"]       - min_dwell) / range_dwell
+        fix_norm   = (agg["fixation_count"] - min_fix)   / range_fix
+
+        rds = round(
+            W_DWELL * dwell_norm + W_FIXATION * fix_norm + W_LOAD * load_score,
+            4,
+        )
+
+        results.append({
+            # ── 融合核心輸出 ──
+            "word":            agg["word"],
+            "rds":             rds,
+            "rds_level":       _classify_rds(rds),
+
+            # ── 眼動感知端 ──
+            "dwell_ms":        agg["dwell_ms"],
+            "dwell_norm":      round(dwell_norm, 4),
+            "fixation_count":  agg["fixation_count"],
+            "fix_norm":        round(fix_norm, 4),
+            "hit_count":       agg["hit_count"],
+            "confidence_counts": agg["confidence_counts"],
+
+            # ── 語言認知端（細粒度）──
+            "load_score":      load_score,
+            "load_level":      cog_entry.get("load_level", ""),
+            "pos":             cog_entry.get("pos", ""),
+            "surprisal":       cog_entry.get("surprisal", None),
+            "entropy":         cog_entry.get("entropy", None),
+            "renyi_entropy":   cog_entry.get("renyi_entropy", None),
+            "dependency_load": cog_entry.get("dependency_load", None),
+            "zipf_score":      cog_entry.get("zipf_score", None),
+            "word_length":     cog_entry.get("word_length", None),
+            "aoa_score":       cog_entry.get("aoa_score", None),
+            "pos_score":       cog_entry.get("pos_score", None),
+        })
+
+    # 依 RDS 由高到低排序
+    results.sort(key=lambda x: x["rds"], reverse=True)
+    return results
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 5. 報告輸出
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def write_report(
+    session_id: str,
+    rds_results: list[dict],
+    cognitive_result: dict,
+    gaze_event_count: int,
+    elapsed_ms: int,
+) -> Path:
+    """
+    將融合結果寫入 docs/fusion_reports/<session_id>.json。
+    """
+    difficulty_words = [r["word"] for r in rds_results if r["rds_level"] == "difficulty"]
+    attention_words  = [r["word"] for r in rds_results if r["rds_level"] == "attention"]
+    fluent_words     = [r["word"] for r in rds_results if r["rds_level"] == "fluent"]
+
+    report = {
+        "session_id":        session_id,
+        "fusion_version":    "1.0",
+        "generated_at":      time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "elapsed_ms":        elapsed_ms,
+        "weights": {
+            "dwell":    W_DWELL,
+            "fixation": W_FIXATION,
+            "load":     W_LOAD,
+        },
+        "summary": {
+            "total_words_tracked":  len(rds_results),
+            "gaze_events_ingested": gaze_event_count,
+            "difficulty_count":     len(difficulty_words),
+            "attention_count":      len(attention_words),
+            "fluent_count":         len(fluent_words),
+            "mean_rds":             round(
+                sum(r["rds"] for r in rds_results) / len(rds_results), 4
+            ) if rds_results else 0.0,
+        },
+        "difficulty_words":  difficulty_words,
+        "attention_words":   attention_words,
+        # ── 原始認知分析 metadata ──
+        "cognitive_model":   cognitive_result.get("model"),
+        "cognitive_lang":    cognitive_result.get("lang"),
+        "cognitive_domain":  cognitive_result.get("domain"),
+        # ── 完整 RDS 結果（含所有細粒度特徵）──
+        "rds_results":       rds_results,
+    }
+
+    out_path = REPORTS_DIR / f"{session_id}.json"
+    with open(out_path, "w", encoding="utf-8") as fh:
+        json.dump(report, fh, ensure_ascii=False, indent=2)
+
+    print(f"[Orchestrator] ✅ 報告已輸出至 {out_path}")
+    print(f"[Orchestrator]    難詞({len(difficulty_words)}) 注意({len(attention_words)}) 流暢({len(fluent_words)})")
+    return out_path
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 6. CLI 入口
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="LexiGaze Fusion Orchestrator — 感知 × 認知雙模態融合",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    parser.add_argument(
+        "--gaze-log", required=True, metavar="PATH",
+        help="眼動事件日誌路徑（.jsonl），每行一筆已對齊的 gaze event",
+    )
+    parser.add_argument(
+        "--cognitive", metavar="PATH",
+        help="已有的認知分析 JSON 路徑（pipeline.run() 的輸出）",
+    )
+    parser.add_argument(
+        "--text", metavar="TEXT",
+        help="直接傳入原始文字，讓 orchestrator 呼叫 pipeline 分析（與 --cognitive 二擇一）",
+    )
+    parser.add_argument(
+        "--lang", default="en", choices=["en", "zh"],
+        help="語言（與 --text 搭配使用，預設 en）",
+    )
+    parser.add_argument(
+        "--session-id", default="session",
+        help="Session 識別碼，用於命名輸出報告（預設 'session'）",
+    )
+    parser.add_argument(
+        "--save-cognitive", metavar="PATH",
+        help="（選用）將認知分析結果另存到指定路徑",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    t0 = time.time()
+
+    # 1. 載入眼動事件
+    gaze_path = Path(args.gaze_log)
+    if not gaze_path.exists():
+        print(f"[Orchestrator] ❌ 找不到 gaze_log: {gaze_path}", file=sys.stderr)
+        sys.exit(1)
+    gaze_events = load_gaze_log(gaze_path)
+
+    # 2. 取得認知分析結果
+    if args.cognitive:
+        cog_path = Path(args.cognitive)
+        if not cog_path.exists():
+            print(f"[Orchestrator] ❌ 找不到 cognitive JSON: {cog_path}", file=sys.stderr)
+            sys.exit(1)
+        cognitive_result = load_cognitive_result(cog_path)
+    elif args.text:
+        cognitive_result = run_cognitive_pipeline(args.text, lang=args.lang)
+        if args.save_cognitive:
+            save_path = Path(args.save_cognitive)
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(save_path, "w", encoding="utf-8") as fh:
+                json.dump(cognitive_result, fh, ensure_ascii=False, indent=2)
+            print(f"[Orchestrator] 認知分析結果已另存至 {save_path}")
+    else:
+        print(
+            "[Orchestrator] ❌ 請提供 --cognitive（已有的 JSON）或 --text（直接分析文字）",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # 3. 融合計算
+    print("[Orchestrator] 開始 RDS 融合計算…")
+    rds_results = compute_rds(gaze_events, cognitive_result)
+
+    # 4. 輸出報告
+    elapsed_ms = int((time.time() - t0) * 1000)
+    write_report(
+        session_id=args.session_id,
+        rds_results=rds_results,
+        cognitive_result=cognitive_result,
+        gaze_event_count=len(gaze_events),
+        elapsed_ms=elapsed_ms,
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -41,6 +41,13 @@ function processMouseGroundTruth(mouseX, mouseY) {
 function processGazeOnExtractedData(gazeX, gazeY) {
   if (!gazeMappingOn) return;
   gazeMatch = findNearestExtractedWord(gazeX, gazeY);
+
+  // ── Feed the fusion gaze buffer ──────────────────────────────────
+  // recordGazeHit is exposed by gaze_integration.js via window.recordGazeHit
+  if (gazeMatch && typeof window.recordGazeHit === "function") {
+    window.recordGazeHit(gazeMatch.item.text, gazeMatch.confidence);
+  }
+
   drawHighlights();
 }
 
@@ -221,4 +228,18 @@ function highlightExtractedWord(match, type) {
 }
 
 window.processGazeOnExtractedData = processGazeOnExtractedData;
+
+// ── Cognitive lookup helper (case-normalised + hyphen fallback) ────────────
+// cognitiveLookup is expected to be set by word_track.html after a
+// /api/cognitive/analyze/* response arrives.
+//   { "word".toLowerCase(): WordResult }
+window.lookupCognitive = function lookupCognitive(text) {
+  if (!window.cognitiveLookup) return null;
+  const key = text.toLowerCase();
+  if (window.cognitiveLookup[key]) return window.cognitiveLookup[key];
+  for (const [k, v] of Object.entries(window.cognitiveLookup)) {
+    if (k.includes("-") && k.split("-").includes(key)) return v;
+  }
+  return null;
+};
 
