@@ -6,10 +6,26 @@ const calibrationPoints = [
   [0.29, 0.70], [0.71, 0.70],
 ];
 
+class LowPassFilter {
+  constructor(alpha) { this.alpha = alpha; this.value = null; }
+  filter(value) {
+    if (this.value === null) { this.value = value; return value; }
+    this.value = this.value + this.alpha * (value - this.value);
+    return this.value;
+  }
+  reset() { this.value = null; }
+}
+
 const state = {
   sessionId: "",
   collecting: false,
   testing: false,
+  heatmap: false,
+  antiShake: true,
+  corridorLock: false,
+  filterX: new LowPassFilter(0.28),
+  filterY: new LowPassFilter(0.28),
+  _lockedY: null,
 };
 
 const renameTarget = { type: "", id: "" };
@@ -52,7 +68,7 @@ const els = {
   toggleCorridorLock: document.getElementById("toggleCorridorLock"),
   btnFullscreen: document.getElementById("btnFullscreen"),
   toggleSettings: document.getElementById("toggle-settings"),
-
+  heatmapCanvas: document.getElementById("heatmap-overlay"),
   modelsModal: document.getElementById("modelsModal"),
   closeModels: document.getElementById("closeModels"),
   btnCloseModels: document.getElementById("btnCloseModels"),
@@ -109,15 +125,15 @@ async function startCamera() {
   await els.video.play();
 }
 
-function captureFrame(quality) {
-  const width = 320;
+function captureFrame() {
+  const width = 640;
   const aspect = els.video.videoHeight ? els.video.videoWidth / els.video.videoHeight : 4 / 3;
   const height = Math.round(width / aspect);
   els.canvas.width = width;
   els.canvas.height = height;
   const ctx = els.canvas.getContext("2d");
   ctx.drawImage(els.video, 0, 0, width, height);
-  return els.canvas.toDataURL("image/jpeg", quality || 0.5);
+  return els.canvas.toDataURL("image/jpeg", 0.8);
 }
 
 function pointToStage(point) {
@@ -340,13 +356,39 @@ async function train() {
 
 async function predictOnce(signal) {
   const data = await postJson("/api/gaze/predict", {
-    image_data: captureFrame(0.5),
+    image_data: captureFrame(),
     model_name: els.testModeSelect.value,
     viewport_width: window.innerWidth,
     viewport_height: window.innerHeight,
   }, signal);
-  const x = data.screen_xy_px?.[0] ?? window.innerWidth / 2;
-  const y = data.screen_xy_px?.[1] ?? window.innerHeight / 2;
+  let x = data.screen_xy_px?.[0] ?? window.innerWidth / 2;
+  let y = data.screen_xy_px?.[1] ?? window.innerHeight / 2;
+
+  if (state.antiShake) {
+    x = state.filterX.filter(x);
+    y = state.filterY.filter(y);
+  } else {
+    state.filterX.reset();
+    state.filterY.reset();
+  }
+
+  if (state.corridorLock) {
+    const corridorH = 50;
+    if (state._lockedY === null) {
+      state._lockedY = y;
+    } else if (Math.abs(y - state._lockedY) <= corridorH) {
+      y = state._lockedY;
+    } else {
+      state._lockedY = y;
+    }
+  } else {
+    state._lockedY = null;
+  }
+
+  if (state.heatmap) {
+    drawHeatmapPoint(x, y);
+  }
+
   const rect = els.stage.getBoundingClientRect();
   els.gazeCursor.style.left = `${x - rect.left}px`;
   els.gazeCursor.style.top = `${y - rect.top}px`;
@@ -362,6 +404,18 @@ async function testLoop(id) {
     }
     if (id !== _testLoopId) return;
     await sleep(30);
+  }
+}
+
+function drawHeatmapPoint(x, y) {
+  const canvas = els.heatmapCanvas;
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.fillStyle = "rgba(255, 100, 50, 0.12)";
+    ctx.beginPath();
+    ctx.arc(x, y, 18, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 
@@ -424,6 +478,33 @@ els.trainModal.addEventListener("click", (e) => {
 
 // Test toggle
 els.testBtn.addEventListener("click", () => toggleTest());
+
+// Test control checkboxes
+els.toggleHeatmap.addEventListener("change", () => {
+  state.heatmap = els.toggleHeatmap.checked;
+  const canvas = els.heatmapCanvas;
+  if (!state.heatmap && canvas) {
+    canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+  }
+  if (canvas) {
+    canvas.classList.toggle("hidden", !state.heatmap);
+    if (state.heatmap) {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+  }
+});
+
+els.toggleAntiShake.addEventListener("change", () => {
+  state.antiShake = els.toggleAntiShake.checked;
+  state.filterX.reset();
+  state.filterY.reset();
+});
+
+els.toggleCorridorLock.addEventListener("change", () => {
+  state.corridorLock = els.toggleCorridorLock.checked;
+  state._lockedY = null;
+});
 
 // Models modal
 els.toggleSettings.addEventListener("click", () => {
