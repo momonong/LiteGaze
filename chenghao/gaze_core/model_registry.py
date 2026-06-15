@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 def ensure_runs_dir(root: Path) -> Path:
-    runs_dir = root / "gaze_data" / "runs"
+    runs_dir = root / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
     return runs_dir
 

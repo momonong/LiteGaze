@@ -2,6 +2,7 @@
 # crashes on Windows CP950 when library code prints non-Big5 characters.
 import os
 import sys
+sys.dont_write_bytecode = True
 
 import json
 import mimetypes

@@ -95,6 +95,7 @@ input::placeholder { color: var(--ink-muted); }
 }
 #target.capturing { transform: translate(-50%, -50%) scale(0.78); border-color: var(--accent); }
 #target.capturing::after { background: var(--accent); }
+#target.hidden { display: none; }
 #backLink {
   position: fixed;
   top: calc(12px + var(--safe-top));
@@ -346,15 +347,15 @@ input::placeholder { color: var(--ink-muted); }
         </div>
 
         <div class="dock-center">
-          <button id="calibration" disabled>
+          <button id="calibration">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
             收集
           </button>
-          <button id="train" disabled class="btn-inactive">
+          <button id="train">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
             訓練
           </button>
-          <button id="test" disabled class="btn-inactive">
+          <button id="test">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
             測試
           </button>

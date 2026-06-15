@@ -27,7 +27,7 @@ def get_preprocessor():
 
 
 def ensure_sessions_dir(root: Path) -> Path:
-    sessions_dir = root / "gaze_data" / "sessions"
+    sessions_dir = root / "data" / "sessions"
     sessions_dir.mkdir(parents=True, exist_ok=True)
     return sessions_dir
 
