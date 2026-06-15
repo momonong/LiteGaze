@@ -201,7 +201,7 @@ async function refreshDatasetsList() {
         '<div class="model-info-meta">' + escHtml(ds.id) + ' &middot; ' + ds.sample_count + ' samples</div>' +
       '</div>' +
       '<div class="model-actions">' +
-        '<button class="btn-icon-sm" data-act="ren-ds" data-id="' + escHtml(ds.id) + '"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>' +
+        '<button class="btn-icon-sm" data-act="ren-ds" data-id="' + escHtml(ds.id) + '" data-participant="' + escHtml(ds.participant) + '"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>' +
         '<button class="btn-icon-sm danger" data-act="del-ds" data-id="' + escHtml(ds.id) + '"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>' +
       '</div>';
     els.datasetsList.appendChild(div);
@@ -457,7 +457,7 @@ els.datasetsList.addEventListener("click", async (e) => {
   } else if (act === "ren-ds") {
     renameTarget.type = "dataset";
     renameTarget.id = id;
-    els.renameInput.value = id;
+    els.renameInput.value = btn.dataset.participant || id;
     showModal(els.renameDialog);
   }
 });
