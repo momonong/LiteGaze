@@ -6,6 +6,8 @@ const gazeMappingLabel = document.getElementById("gazeMappingLabel");
 let mouseMatch = null;
 let gazeMatch = null;
 
+const gazeOverlayMap = new Map();
+
 gazeMappingToggle.addEventListener("click", () => {
   gazeMappingOn = !gazeMappingOn;
   mouseMatch = null;
@@ -21,25 +23,24 @@ gazeMappingToggle.addEventListener("click", () => {
   }
 });
 
+let _mouseRaf = null;
 document.addEventListener("mousemove", (e) => {
-  processMouseGroundTruth(e.clientX, e.clientY);
-});
+  if (!gazeMappingOn) return;
+  cancelAnimationFrame(_mouseRaf);
+  _mouseRaf = requestAnimationFrame(() => {
+    processMouseGroundTruth(e.clientX, e.clientY);
+  });
+}, { passive: true });
 
 function processMouseGroundTruth(mouseX, mouseY) {
-
   if (!gazeMappingOn) return;
-
-  mouseMatch = findNearestExtractedWord(mouseX,mouseY);
-
+  mouseMatch = findNearestExtractedWord(mouseX, mouseY);
   drawHighlights();
 }
 
 function processGazeOnExtractedData(gazeX, gazeY) {
-
   if (!gazeMappingOn) return;
-
-  gazeMatch = findNearestExtractedWord(gazeX,gazeY);
-
+  gazeMatch = findNearestExtractedWord(gazeX, gazeY);
   drawHighlights();
 }
 
@@ -56,13 +57,14 @@ function findNearestExtractedWord(gazeX, gazeY) {
   const MEDIUM_DISTANCE = 35;
   const LOW_DISTANCE = 90;
 
+  const pageWraps = document.querySelectorAll(".page-wrap");
+
   for (const [pageNum, pageData]
     of pageOverlayMap.entries()) {
 
     const { items } = pageData;
 
-    const pageWrap =
-      document.querySelectorAll(".page-wrap")[pageNum - 1];
+    const pageWrap = pageWraps[pageNum - 1];
 
     if (!pageWrap) continue;
 
@@ -163,73 +165,59 @@ function drawHighlights() {
 }
 
 function clearAllGazeHighlights() {
-  pageOverlayMap.forEach(({ overlayCanvas }) => {
-    const ctx = overlayCanvas.getContext("2d");
-    ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  gazeOverlayMap.forEach((canvas) => {
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
   });
 }
 
-function highlightExtractedWord(match, type) {
-  const pageData =
-    pageOverlayMap.get(match.pageNum);
+function getGazeCanvas(pageNum) {
+  if (gazeOverlayMap.has(pageNum)) return gazeOverlayMap.get(pageNum);
 
-  if (!pageData) return;
+  const pageWraps = document.querySelectorAll(".page-wrap");
+  const wrap = pageWraps[pageNum - 1];
+  if (!wrap) return null;
 
-  const { overlayCanvas, items } = pageData;
+  const canvas = document.createElement("canvas");
+  canvas.className = "gaze-overlay-canvas";
+  canvas.style.position = "absolute";
+  canvas.style.top = "0";
+  canvas.style.left = "0";
+  canvas.style.pointerEvents = "none";
+  canvas.style.zIndex = "5";
 
-  overlayCanvas.style.display = "block";
-  const ctx =
-    overlayCanvas.getContext("2d");
+  const rect = wrap.getBoundingClientRect();
+  canvas.width = Math.round(rect.width);
+  canvas.height = Math.round(rect.height);
+  canvas.style.width = `${Math.round(rect.width)}px`;
+  canvas.style.height = `${Math.round(rect.height)}px`;
 
-
-  //highlight
-  if (type === "correct") {
-
-    ctx.fillStyle =
-      "rgba(0,255,0,0.45)";
-
-    ctx.strokeStyle =
-      "rgba(0,200,0,1)";
-  }
-  else if (type === "mouse") {
-
-    ctx.fillStyle =
-      "rgba(80, 180, 255, 0.45)";
-
-    ctx.strokeStyle =
-      "rgba(0, 120, 255, 0.9)";
-
-  }
-  else {
-
-    ctx.fillStyle =
-      "rgba(255, 220, 80, 0.45)";
-
-    ctx.strokeStyle =
-      "rgba(255, 180, 0, 0.9)";
-
+  wrap.appendChild(canvas);
+  gazeOverlayMap.set(pageNum, canvas);
+  return canvas;
 }
 
+function highlightExtractedWord(match, type) {
+  const canvas = getGazeCanvas(match.pageNum);
+  if (!canvas) return;
+
+  canvas.style.display = "block";
+  const ctx = canvas.getContext("2d");
+
+  if (type === "correct") {
+    ctx.fillStyle = "rgba(0,255,0,0.45)";
+    ctx.strokeStyle = "rgba(0,200,0,1)";
+  } else if (type === "mouse") {
+    ctx.fillStyle = "rgba(80, 180, 255, 0.45)";
+    ctx.strokeStyle = "rgba(0, 120, 255, 0.9)";
+  } else {
+    ctx.fillStyle = "rgba(255, 220, 80, 0.45)";
+    ctx.strokeStyle = "rgba(255, 180, 0, 0.9)";
+  }
+
   ctx.lineWidth = 2;
-
-  ctx.fillRect(
-    match.item.left,
-    match.item.top,
-    match.item.width,
-    match.item.height
-  );
-
-  ctx.strokeRect(
-    match.item.left,
-    match.item.top,
-    match.item.width,
-    match.item.height
-  );
-
-  console.log(
-    "Matched:",
-    match.item.text
-  );
+  ctx.fillRect(match.item.left, match.item.top, match.item.width, match.item.height);
+  ctx.strokeRect(match.item.left, match.item.top, match.item.width, match.item.height);
 }
 
 window.processGazeOnExtractedData = processGazeOnExtractedData;
