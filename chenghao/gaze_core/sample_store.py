@@ -85,7 +85,7 @@ def list_datasets(root: Path) -> list[dict]:
         datasets.append(
             {
                 "id": folder.name,
-                "display_name": f"{folder.name} ({participant}, {sample_count} samples)",
+                "display_name": f"{participant} ({sample_count} samples)",
                 "participant": participant,
                 "sample_count": sample_count,
             }
