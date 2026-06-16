@@ -1,0 +1,7 @@
+Method,Pearson r,Pearson p-val,Spearman rho,Spearman p-val
+Linear,0.888,7.91e-54,0.8816,4.40e-52
+Multiplicative,0.6812,1.30e-22,0.8007,4.28e-36
+Gated,0.5742,4.63e-15,0.7507,1.59e-29
+Sigmoid,0.849,1.65e-44,0.8816,4.40e-52
+Bayesian,0.7556,4.34e-30,0.7993,6.95e-36
+Rrf,0.7742,2.13e-32,0.7819,2.05e-33
