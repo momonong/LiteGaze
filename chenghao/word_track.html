@@ -1643,6 +1643,7 @@
       const ts = new Date().toLocaleTimeString('zh-TW', { hour12: false });
       el.textContent = `[${ts}] ${msg}`;
       logBox.appendChild(el);
+      while (logBox.children.length > 200) logBox.removeChild(logBox.firstChild);
       logBox.scrollTop = logBox.scrollHeight;
     }
 

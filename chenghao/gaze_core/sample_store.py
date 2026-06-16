@@ -27,7 +27,7 @@ def get_preprocessor():
 
 
 def ensure_sessions_dir(root: Path) -> Path:
-    sessions_dir = root / "gaze_data" / "sessions"
+    sessions_dir = root / "data" / "sessions"
     sessions_dir.mkdir(parents=True, exist_ok=True)
     return sessions_dir
 
@@ -85,7 +85,7 @@ def list_datasets(root: Path) -> list[dict]:
         datasets.append(
             {
                 "id": folder.name,
-                "display_name": f"{folder.name} ({participant}, {sample_count} samples)",
+                "display_name": f"{participant} ({sample_count} samples)",
                 "participant": participant,
                 "sample_count": sample_count,
             }
@@ -190,3 +190,23 @@ def save_sample(root: Path, payload: dict) -> tuple[dict, int]:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     return {"ok": record["ok"], "sample_index": sample_index, "error": record.get("error", "")}, 200
+
+
+def delete_dataset(root: Path, session_id: str) -> dict:
+    import shutil
+    session_dir = ensure_sessions_dir(root) / session_id
+    if not session_dir.exists():
+        return {"ok": False, "error": "dataset not found"}
+    shutil.rmtree(session_dir)
+    return {"ok": True}
+
+
+def rename_dataset(root: Path, session_id: str, new_name: str) -> dict:
+    session_dir = ensure_sessions_dir(root) / session_id
+    meta_file = session_dir / "session.json"
+    if not meta_file.exists():
+        return {"ok": False, "error": "dataset not found"}
+    meta = json.loads(meta_file.read_text(encoding="utf-8"))
+    meta["participant_id"] = new_name
+    meta_file.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"ok": True}

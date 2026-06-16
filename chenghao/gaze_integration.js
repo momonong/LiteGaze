@@ -39,12 +39,10 @@
       gazeBuffer[key] = { word, dwell_count: 0, fixation_count: 0, confidence };
     }
     gazeBuffer[key].dwell_count += 1;
-    // A new fixation is counted when the gaze moves to a different word
     if (_lastGazeWord !== key) {
       gazeBuffer[key].fixation_count += 1;
       _lastGazeWord = key;
     }
-    // Keep the highest-confidence label seen for this word
     const rank = { high: 2, medium: 1, low: 0 };
     if ((rank[confidence] || 0) > (rank[gazeBuffer[key].confidence] || 0)) {
       gazeBuffer[key].confidence = confidence;
@@ -66,7 +64,6 @@
     _lastGazeWord = null;
   }
 
-  // Expose for use by word_track.html inline script
   window.gazeBuffer        = gazeBuffer;
   window.flushGazeBuffer   = flushGazeBuffer;
   window.clearGazeBuffer   = clearGazeBuffer;
@@ -99,8 +96,8 @@
   function updateSmoothLabel() {
     els.smoothValue.textContent = els.smoothSlider.value;
     const alpha = 0.08 + (Number(els.smoothSlider.value) / 100) * 0.42;
-    state.filterX = new LowPassFilter(alpha);
-    state.filterY = new LowPassFilter(alpha);
+    if (state.filterX) state.filterX.alpha = alpha;
+    if (state.filterY) state.filterY.alpha = alpha;
   }
 
   async function refreshModels() {
@@ -146,17 +143,17 @@
   }
 
   function captureFrame() {
-    const width = 360;
+    const width = 240;
     const aspect = state.video.videoHeight ? state.video.videoWidth / state.video.videoHeight : 4 / 3;
     const height = Math.round(width / aspect);
     state.canvas.width = width;
     state.canvas.height = height;
     const ctx = state.canvas.getContext("2d");
     ctx.drawImage(state.video, 0, 0, width, height);
-    return state.canvas.toDataURL("image/jpeg", 0.75);
+    return state.canvas.toDataURL("image/jpeg", 0.5);
   }
 
-  async function predict() {
+  async function predict(signal) {
     const res = await fetch("/api/gaze/predict", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -166,6 +163,7 @@
         viewport_width: window.innerWidth,
         viewport_height: window.innerHeight,
       }),
+      signal,
     });
     const data = await res.json();
     if (!res.ok || data.ok === false) {
@@ -227,11 +225,22 @@
 
   async function loop() {
     while (state.enabled) {
+      if (document.hidden) {
+        await new Promise((resolve) => window.setTimeout(resolve, 500));
+        continue;
+      }
+
+      const ac = new AbortController();
+      state._currentAbort = ac;
+      const timeout = window.setTimeout(() => ac.abort(), 5000);
+
       try {
-        const [x, y] = await predict();
+        const [x, y] = await predict(ac.signal);
+        clearTimeout(timeout);
+        state._currentAbort = null;
+
         const point = applyDebounce(x, y);
         if (point) {
-          // Update visual gaze cursor position
           if (els.gazeCursor) {
             els.gazeCursor.style.left = `${point.x}px`;
             els.gazeCursor.style.top = `${point.y}px`;
@@ -242,10 +251,18 @@
           }
         }
       } catch (err) {
-        setStatus(`推論失敗：${err.message}`);
-        await new Promise((resolve) => window.setTimeout(resolve, 500));
+        clearTimeout(timeout);
+        state._currentAbort = null;
+        if (err.name === "AbortError") {
+          setStatus("推論超時，重試中...");
+        } else {
+          setStatus(`推論失敗：${err.message}`);
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 300));
+        continue;
       }
-      await new Promise((resolve) => window.setTimeout(resolve, 120));
+
+      await new Promise((resolve) => window.setTimeout(resolve, 90));
     }
   }
 
@@ -284,18 +301,18 @@
     els.toggleLabel.textContent = enabled ? "啟用眼動推論（開啟）" : "啟用眼動推論（關閉）";
 
     if (enabled) {
-      // Auto-enable Gaze Mapping highlights if currently disabled
-      if (typeof gazeMappingToggle !== "undefined" && typeof gazeMappingOn !== "undefined" && !gazeMappingOn) {
+      if (typeof gazeMappingToggle !== "undefined" && gazeMappingToggle && typeof gazeMappingOn !== "undefined" && !gazeMappingOn) {
         gazeMappingToggle.click();
       }
-      
-      // Show visual cursor
+
       if (els.gazeCursor) {
         els.gazeCursor.style.display = "block";
       }
 
       try {
         await startCamera();
+        state.filterX = new LowPassFilter(0.08);
+        state.filterY = new LowPassFilter(0.08);
         setStatus("攝影機已啟動，開始推論");
         loop();
       } catch (err) {
@@ -308,8 +325,11 @@
         setStatus(`攝影機啟動失敗：${err.message}`);
       }
     } else {
+      if (state._currentAbort) {
+        state._currentAbort.abort();
+        state._currentAbort = null;
+      }
       stopCamera();
-      // Hide visual cursor
       if (els.gazeCursor) {
         els.gazeCursor.style.display = "none";
       }
@@ -322,8 +342,9 @@
   });
   els.toggle.addEventListener("click", () => setEnabled(!state.enabled));
   els.smoothSlider.addEventListener("input", updateSmoothLabel);
-  els.modelSelect.addEventListener("focus", refreshModels);
 
+  state.filterX = new LowPassFilter(0.08);
+  state.filterY = new LowPassFilter(0.08);
   updateSmoothLabel();
   refreshModels();
 })();
