@@ -1,145 +1,196 @@
-# lexigaze
+# LexiGaze: Multimodal Eye-Gaze & Cognitive Load Integration Platform
 
-Webcam gaze tracking alone is too inaccurate for language learning research. **lexigaze** tackles this by combining three pieces into one Flask app:
+Webcam gaze tracking alone is often too inaccurate for high-fidelity reading research. **LexiGaze** solves this by fusing real-time neural eye-gaze tracking (where the user looks) with symbolic natural language processing cognitive load models (how difficult the text is) onto a shared coordinate reference frame.
 
-- **Document coordinate extraction** — Parses PDF, HTML, TXT, DOCX, and Markdown into pixel-level word/character bounding boxes. Normalized (0.0–1.0) so results are device-independent.
-- **Gaze tracking** — UniGaze-B neural network + MediaPipe face detection runs in real time from any webcam. A personalization step collects a few calibration samples and trains a polynomial regression to fix per-user bias.
-- **Cognitive load analysis** — GPT-2 (EN) or BERT (ZH) scores each word's difficulty. Long text auto-chunks and aggregates via ridge regression.
+By mapping gaze coordinates directly to pixel-level bounding boxes of words, researchers can run higher-dimensional analysis, correcting gaze noise and identifying true processing bottlenecks during natural reading.
 
-The key idea: extracted word coordinates are the shared reference frame for both gaze mapping and cognitive load overlay. This fuses **where** someone looks with **how hard** the text is — giving researchers a single coordinate space to do higher-dimensional analysis that raw gaze accuracy alone can't support.
+---
 
-## Use Cases
+## 📂 Project Structure & Module Ownership
 
-- **Reading research** — Record gaze patterns aligned to exact word positions during natural reading. Export mappings with confidence levels (high/medium/low) for offline analysis.
-- **Readability assessment** — Upload a chapter or paper, run cognitive load analysis, and see which sentences pack the hardest vocabulary.
-- **Personalized calibration** — A few seconds of webcam data trains a per-user model that meaningfully improves gaze accuracy, no special hardware needed.
-- **Material comparison** — Overlay cognitive load heatmaps from two versions of the same document side by side to see which one reduces comprehension barriers.
-- **Annotation QA** — After coordinate extraction, visually verify every bounding box lines up with rendered text before exporting.
-
-## Directory Structure
+The project is structured into three main research modules and an integration hub:
 
 ```
-chenghao/
-├── server.py                  # Flask entry point; serves static files & REST APIs
-├── word_track.html            # Main SPA: document upload, parsing, gaze overlay, cognitive load
-├── gaze_page.html             # Gaze calibration & model training UI
-├── gaze_page.js               # Calibration logic: data collection, training, live testing
-├── gaze_integration.js        # Gaze inference loop: camera capture, prediction, filtering
-├── mapping.js                 # Gaze-to-word overlay highlighting on extracted coordinates
-├── gaze_routes.py             # Flask Blueprints for gaze APIs (predict, train, session, etc.)
-├── cognitive_routes.py        # Flask Blueprints for cognitive load analysis APIs
-├── gaze_core/                 # Backend Python package for gaze pipeline
-│   ├── __init__.py            # sys.path injection for sibling module access
-│   ├── inference.py           # UniGaze model inference (MediaPipe + ONNX → screen coords)
-│   ├── training.py            # Personalization: polynomial regression calibration
-│   ├── sample_store.py        # Session/dataset management, sample saving
-│   ├── model_registry.py      # Model listing, naming, path resolution
-│   └── filters.py             # Placeholder for server-side smoothing
-├── wasm/                      # MediaPipe WebAssembly assets for face detection
-│   ├── vision_wasm_internal.js
-│   └── vision_wasm_internal.wasm
-├── unigaze_b16.onnx           # Pre-trained UniGaze-B gaze estimation model
-├── face_landmarker.task       # MediaPipe face landmarker model
-├── data/                      # Saved session JSON files (uploaded document sessions)
-└── gaze_data/                 # Calibration sessions & trained personalization models
-    ├── sessions/
-    └── runs/
+lexigaze/
+├── chenghao/                      # MAIN INTEGRATION HUB (Chenghao)
+│   ├── server.py                  # Single Flask entry point serving all SPA and REST APIs
+│   ├── word_track.html            # Main SPA: PDF/doc viewer, text rendering, gaze & cognitive heatmaps
+│   ├── gaze_page.html             # Gaze calibration & model personalization collection UI
+│   ├── gaze_page.js               # Calibration logic (grid display, sample collection, prediction check)
+│   ├── gaze_integration.js        # Live inference loop & camera capturing in the browser
+│   ├── mapping.js                 # Gaze-to-word coordinate matching and overlay rendering
+│   ├── gaze_routes.py             # REST API for calibration session, samples, and model prediction
+│   ├── cognitive_routes.py        # REST API for BERT/GPT-2 difficulty and evaluation
+│   ├── fusion_routes.py           # REST API for real-time gaze-cognitive data fusion (/api/fuse)
+│   └── gaze_core/                 # Backend python module for UniGaze inference & training
+│       ├── inference.py           # Preprocesses frames & feeds to ONNX model
+│       ├── training.py            # Trains polynomial regression on calibration datasets
+│       ├── sample_store.py        # Stores raw, cropped, and normalized calibration frames
+│       └── model_registry.py      # Manages and lists trained per-user personalization models
+│
+├── shengwen/                      # EYE-GAZE BASILINE & PREPROCESSING (Shengwen)
+│   ├── face_landmarker.task       # MediaPipe face marker model (3.6 MB)
+│   └── src/unigaze_personalization/
+│       ├── preprocess.py          # MediaPipe preprocessor (face cropping & head pose estimation)
+│       ├── model.py               # Frozen UniGaze-B16 ViT model weights wrapper
+│       ├── dataset.py             # Manifest helper for loading calibration sessions
+│       └── transforms.py          # Image transformation pipeline (224x224 RGB normalization)
+│
+├── weichi/                        # COGNITIVE LOAD PIPELINE & VALIDATION (Weichi)
+│   ├── cognitive_load_pipeline.py # NLP Pipeline: surprisal (GPT-2/BERT) + Rényi entropy + AoA + dep_load
+│   ├── xgb_model.json             # Trained XGBoost model (trained on 2,000 GECO sentences)
+│   ├── ridge_model.json           # Ridge regression model (fallback weights)
+│   ├── train_xgb_geco.py          # Training scripts for XGBoost cognitive model
+│   └── validate_geco.py           # Validates pipeline predictions against human reading data
+│
+├── BoWei/                         # SUPPLEMENTARY VISUALIZATION (BoWei)
+│   ├── mapping.html               # Multi-document overlay viewer
+│   └── mapping.js                 # Coordinate-to-gaze mapping experiments
+│
+├── scripts/                       # BENCHMARKS & EXPERIMENTS
+│   ├── fusion_module.py           # Reusable module with 6 different gaze-cognitive fusion algorithms
+│   ├── experiment_fusion.py       # Comparative experiment comparing the 6 fusion methods on GECO data
+│   ├── fusion/
+│   │   └── orchestrator.py        # CLI data fusion orchestrator for offline batch processing
+│   └── geco/                      # NeurIPS gaze correction and Viterbi decoding benchmark
+│       └── tasks/
+│           ├── extract_cognitive_mass.py # Extracts surprisal and attention weights using BERT
+│           └── evaluate_pipeline.py      # Runs correction models (Kalman, Bayesian, STOCK-T)
+│
+├── output/                        # Experiment results, evaluation statistics, and plots (autogenerated)
+├── data/                          # Document coordinate sessions (JSON)
+├── archive/                       # Historical research logs, pre-computed benchmark datasets, and logs
+└── docs/                          # CHI and NeurIPS system architecture and papers
 ```
 
-## Quick Start
+---
 
-### Prerequisites
+## 🚀 Quick Start
 
-- Python 3.10+
-- A webcam (for gaze tracking)
+### 1. Prerequisites
 
-### Setup
+- **Python**: **3.11** is strictly required (3.10 is acceptable; 3.9 or below is **not** supported).
+- **Webcam**: Standard USB or built-in webcam.
+- **CUDA GPU**: Highly recommended for real-time model inference.
+
+### 2. Setup
+
+Clone the repository and set up your environment:
 
 ```bash
-# Install Python dependencies
-pip install flask opencv-python numpy torch unigaze-personalization
+# Using Conda
+conda create -n lexigaze python=3.11
+conda activate lexigaze
 
-# Start the server
-python chenghao/server.py
+# Upgrade pip
+python -m pip install --upgrade pip
+
+# Install dependencies (in editable mode)
+pip install -e .
+
+# Download spaCy English model for cognitive load syntactic dependency extraction
+python -m spacy download en_core_web_sm
 ```
 
-The server starts at `http://localhost:8080`. Open it in your browser to access the main tool.
+Alternatively, you can run `uv sync` if you have **uv** installed.
 
-> **Note:** The first call to cognitive load analysis will download BERT / GPT-2 models (~500 MB) automatically.
+### 3. Environment Variables
 
-## Features
+Create a `.env` file in the project root:
+
+```env
+HF_HOME="D:/hf_models"  # Where Hugging Face models are cached
+GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+### 4. Running the Web Platform
+
+Start the Flask server from the project root with UTF-8 encoding enabled (required for Windows terminals to avoid crashes due to library logs):
+
+```bash
+python -X utf8 chenghao/server.py
+```
+
+The browser will open automatically at `http://localhost:8080/word_track.html`.
+
+---
+
+## 🧠 Core Systems
 
 ### 1. Document Coordinate Extraction
-
-Upload PDF, HTML, TXT, DOCX, or Markdown files and extract precise bounding boxes for every word or character. The parser renders each page and records position, size, and normalized coordinates (0.0–1.0, device-independent).
-
-- **PDF**: Renders via pdf.js at configurable scale, extracts text layer coordinates
-- **HTML / TXT / DOCX / MD**: Renders in-browser, uses DOM `Range.getClientRects()` for sub-pixel accurate positions
-- Supports both **word** and **character** granularity
-- Export results as **JSON** or **CSV**
-- Save/load sessions via REST API
-- Visual overlay with search highlight, hover inspection, and color legend
+- Upload **PDF, HTML, TXT, DOCX, or Markdown** files.
+- Extracts pixel-level bounding boxes for every word or character using DOM range client rects (HTML/DOCX) or PDF.js rendering.
+- Converts coordinates to a normalized range `[0.0, 1.0]` for device-independent analysis.
 
 ### 2. Gaze Tracking & Personalization
-
-Real-time gaze estimation using the UniGaze-B neural network with MediaPipe face preprocessing.
-
-- **Live inference**: Webcam feed → face detection → gaze angle prediction → screen coordinate mapping
-- **Filtering modes**: None, OneEuro smoothing, horizontal corridor lock, dwell (fixation detection), or combined
-- **Personalization**: Collect calibration samples (9-point grid with configurable repeats), train a polynomial regression model to map raw gaze → screen coordinates
-- Model versions are versioned and selectable from a dropdown
+- **Webcam capture**: Captures real-time webcam frames in the browser.
+- **Inference pipeline**: MediaPipe face detection $\rightarrow$ crop and normalize face image $\rightarrow$ UniGaze-B16 neural net $\rightarrow$ screen coordinates.
+- **Personalization**: Collects calibration samples (9-point grid) and trains a polynomial regression adapter to remove user-specific bias, reducing average gaze error down to 30-50 pixels.
+- **Smoothing filters**: OneEuro, horizontal corridor locking, and fixation/dwell detection.
 
 ### 3. Cognitive Load Analysis
+- Employs **GPT-2 (English)** and **BERT (Chinese)**.
+- Combines multiple features:
+  - **Surprisal**: Information density (unpredictability in context).
+  - **Rényi Entropy**: Model's prediction uncertainty (alpha = 0.5).
+  - **Lexical Difficulty**: Age-of-Acquisition (AoA Kuperman norms) and Zipf word frequency.
+  - **Syntactic Complexity**: Dependency load (pos-gated for nouns, verbs, and pronouns).
+- Fits these features onto a trained **XGBoost** model to predict reading difficulty scores (`load_score`), validated with high correlation against GECO ($\rho = 0.437$) and PROVO ($\rho = 0.619$) human eye-tracking corpora.
 
-Analyze text difficulty using transformer-based models to detect "deep/hard words" that impose high cognitive load.
+### 4. Multimodal Data Fusion (Latest Progress)
+Fuses gaze attention metrics (dwell time, fixation counts) and language cognitive metrics (`load_score`) to calculate a unified **Reading Difficulty Score (RDS)**. 
 
-- **English**: GPT-2 based pipeline
-- **Chinese**: BERT based pipeline
-- **Domain detection**: Auto, academic, or general
-- Accepts short text (single inference) or long documents (auto-chunked, file-level threshold via ridge regression)
-- Upload PDF / TXT / MD for batch analysis
-- Visual overlay on extracted document coordinates: precise bounding boxes or Gaussian heatmap with adjustable µ (threshold) and σ (spread)
-- Archive management for previous analysis results
-- Evaluate against ground-truth annotation with precision / recall / F1 scoring
+Six fusion methods are implemented under `scripts/fusion_module.py` and evaluated in `scripts/experiment_fusion.py`:
+1. **Linear Sum (Baseline)**: $RDS = w_1 \cdot G_{dwell} + w_2 \cdot G_{fix} + w_3 \cdot C_{load}$
+2. **Multiplicative (Interactive)**: $RDS = C_{load} \cdot (w_1 \cdot G_{dwell} + w_2 \cdot G_{fix})$
+3. **Attention-Gated**: Gates cognitive load so it is only applied when the user fixated on the word.
+4. **Sigmoid / Logistic**: Applies a non-linear threshold activation over the linear combination.
+5. **Bayesian Posterior Update**: Integrates cognitive load as a prior and gaze attention as likelihood.
+6. **Reciprocal Rank Fusion (RRF)**: Scale-invariant combination of gaze and load ranking lists.
 
-## API Reference
+Evaluating these methods on actual GECO reading trials demonstrates that the **Linear** and **Sigmoid** methods achieve the highest Spearman rank correlation ($\rho = 0.8816$) with actual human reading times. Results, report, and visualizations are saved to the `output/` directory.
 
-### Gaze Tracking (`/api/gaze/`*, `/api/*`)
+---
 
+## ⚡ REST API Reference
 
-| Method | Endpoint             | Description                                  |
-| ------ | -------------------- | -------------------------------------------- |
-| GET    | `/api/gaze/health`   | Backend health check                         |
-| GET    | `/api/gaze/models`   | List trained personalization models          |
-| GET    | `/api/gaze/datasets` | List calibration datasets                    |
-| POST   | `/api/gaze/session`  | Create a new calibration session             |
-| POST   | `/api/gaze/sample`   | Save a calibration sample (image + target)   |
-| POST   | `/api/gaze/train`    | Train a personalization model from a dataset |
-| POST   | `/api/gaze/predict`  | Run gaze prediction on a webcam frame        |
-
+### Gaze Tracking (`/api/gaze/*`, `/api/*`)
+- `GET /api/gaze/health`: Gaze system health check
+- `GET /api/gaze/models`: List trained personalization models
+- `GET /api/gaze/datasets`: List collected calibration datasets
+- `POST /api/gaze/session`: Start a calibration session
+- `POST /api/gaze/sample`: Save a calibration sample image & target coordinate
+- `POST /api/gaze/train`: Train a personalization model on a dataset
+- `POST /api/gaze/predict`: Run real-time gaze prediction on a base64 frame
 
 ### Cognitive Load (`/api/cognitive/*`)
+- `GET /api/cognitive/health`: List loaded models & status
+- `POST /api/cognitive/warmup`: Pre-load a specific language model (English/Chinese)
+- `POST /api/cognitive/analyze/text`: Analyze short/long text difficulty
+- `POST /api/cognitive/analyze/file`: Batch analyze uploaded documents (PDF/TXT/MD)
+- `POST /api/cognitive/evaluate`: Compare predictions against ground-truth CSV lists
 
+### Multimodal Data Fusion (`/api/fuse/*`)
+- `GET /api/fuse/health`: Fusion health check
+- `POST /api/fuse/`: Compute per-word RDS for a session's events
+- `GET /api/fuse/reports`: List all saved fusion reports
+- `GET /api/fuse/reports/<session_id>`: Retrieve specific fusion report details
 
-| Method | Endpoint                      | Description                                                |
-| ------ | ----------------------------- | ---------------------------------------------------------- |
-| GET    | `/api/cognitive/health`       | Health check with loaded languages                         |
-| POST   | `/api/cognitive/warmup`       | Pre-load a language model (zh/en)                          |
-| POST   | `/api/cognitive/analyze/text` | Analyze short or long text                                 |
-| POST   | `/api/cognitive/analyze/file` | Upload PDF/TXT/MD for analysis                             |
-| POST   | `/api/cognitive/evaluate`     | Compare prediction with ground truth (precision/recall/F1) |
-| GET    | `/api/cognitive/archives`     | List previously analyzed files                             |
+---
 
+## 🧪 Running Offline Benchmarks & Experiments
 
-### Document Sessions (`/api/*`)
+You can run experiments, benchmarks, and training routines offline:
 
+```bash
+# Run the comparative fusion experiment on GECO human reading data
+python scripts/experiment_fusion.py
 
-| Method | Endpoint             | Description                             |
-| ------ | -------------------- | --------------------------------------- |
-| GET    | `/api/ping`          | Health check with session count         |
-| GET    | `/api/sessions`      | List saved document sessions            |
-| POST   | `/api/sessions`      | Save extracted coordinates as a session |
-| GET    | `/api/sessions/<id>` | Retrieve a saved session                |
-| DELETE | `/api/sessions/<id>` | Delete a session                        |
+# Retrain the cognitive XGBoost model on GECO corpus
+python weichi/train_xgb_geco.py
 
+# Run Viterbi gaze decoding correction algorithms on pp01 trial data
+python scripts/geco/tasks/evaluate_pipeline.py
+```
 
+All plots, evaluation summaries, and markdown reports from the fusion experiments will be saved under the `output/` directory.
