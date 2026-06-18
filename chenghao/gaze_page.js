@@ -26,6 +26,10 @@ const state = {
   filterX: new LowPassFilter(0.28),
   filterY: new LowPassFilter(0.28),
   _lockedY: null,
+  mediaRecorder: null,
+  recordedBlobs: [],
+  timelineTargets: [],
+  recordingStartTime: 0,
 };
 
 const renameTarget = { type: "", id: "" };
@@ -79,6 +83,10 @@ const els = {
   btnConfirmRename: document.getElementById("btnConfirmRename"),
   btnCancelRename: document.getElementById("btnCancelRename"),
   closeRename: document.getElementById("closeRename"),
+  recordVideo: document.getElementById("recordVideo"),
+  uploadVideoFile: document.getElementById("uploadVideoFile"),
+  uploadTimelineFile: document.getElementById("uploadTimelineFile"),
+  btnUploadOffline: document.getElementById("btnUploadOffline"),
 };
 
 function showModal(modal) {
@@ -260,6 +268,17 @@ async function createSession() {
   log(`建立資料集 ${state.sessionId}`);
 }
 
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 async function saveSample(point, pointIndex, repeatIndex) {
   const pos = moveTarget(point);
   await sleep(650);
@@ -267,6 +286,23 @@ async function saveSample(point, pointIndex, repeatIndex) {
   const rect = els.stage.getBoundingClientRect();
   const targetXNorm = (pos.pageX / window.innerWidth) * 2 - 1;
   const targetYNorm = (pos.pageY / window.innerHeight) * 2 - 1;
+  
+  if (els.recordVideo && els.recordVideo.checked && state.recordingStartTime > 0) {
+    const timeOffsetMs = performance.now() - state.recordingStartTime;
+    state.timelineTargets.push({
+      timestamp_ms: timeOffsetMs,
+      target_x: pos.pageX,
+      target_y: pos.pageY,
+      target_x_norm: targetXNorm,
+      target_y_norm: targetYNorm,
+      point_index: pointIndex,
+      repeat_index: repeatIndex,
+      phase: "calibration",
+      screen_width: window.innerWidth,
+      screen_height: window.innerHeight
+    });
+  }
+
   await postJson("/api/gaze/sample", {
     session_id: state.sessionId,
     image_data: captureFrame(),
@@ -295,13 +331,39 @@ async function collect() {
   els.target.style.display = "";
   els.target.classList.remove("hidden");
 
+  const recordVideo = els.recordVideo && els.recordVideo.checked;
+  if (recordVideo) {
+    state.recordedBlobs = [];
+    state.timelineTargets = [];
+    const options = { mimeType: 'video/webm;codecs=vp8,opus' };
+    if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+      options.mimeType = 'video/webm';
+    }
+    try {
+      state.mediaRecorder = new MediaRecorder(els.video.srcObject, options);
+    } catch (e) {
+      console.error('Exception while creating MediaRecorder:', e);
+      state.mediaRecorder = new MediaRecorder(els.video.srcObject);
+    }
+    state.mediaRecorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) {
+        state.recordedBlobs.push(event.data);
+      }
+    };
+    state.mediaRecorder.start(10);
+    state.recordingStartTime = performance.now();
+    log("已啟動鏡頭影片錄製...");
+  } else {
+    state.recordingStartTime = 0;
+  }
+
   const repeats = Math.max(1, Math.min(5, Number.parseInt(els.repeatCount.value, 10) || 1));
   const total = calibrationPoints.length * repeats;
   let done = 0;
   try {
     for (let repeat = 0; repeat < repeats; repeat += 1) {
       for (let pointIndex = 0; pointIndex < calibrationPoints.length; pointIndex += 1) {
-        if (!state.collecting) return;
+        if (!state.collecting) break;
         await saveSample(calibrationPoints[pointIndex], pointIndex, repeat);
         done += 1;
         els.progress.textContent = `${done} / ${total}`;
@@ -309,12 +371,66 @@ async function collect() {
         await sleep(140);
       }
     }
-    log("收集完成，可以訓練模型");
-    els.phase.textContent = "收集完成";
-    await refreshDatasets();
+    
+    if (recordVideo && state.mediaRecorder && state.mediaRecorder.state !== "inactive") {
+      state.mediaRecorder.stop();
+      state.mediaRecorder.onstop = async () => {
+        els.phase.textContent = "影片校正中...";
+        log("正在上傳並處理校正影片...");
+        
+        const videoBlob = new Blob(state.recordedBlobs, { type: "video/webm" });
+        const participantId = els.participantName.value.trim() || "anonymous";
+        const timelineData = {
+          participant_id: participantId,
+          viewport_width: window.innerWidth,
+          viewport_height: window.innerHeight,
+          targets: state.timelineTargets
+        };
+        
+        const formData = new FormData();
+        formData.append("video", videoBlob, "calibration.webm");
+        formData.append("timeline", JSON.stringify(timelineData));
+        
+        try {
+          const res = await fetch("/api/demo/upload_video", {
+            method: "POST",
+            body: formData
+          });
+          const result = await res.json();
+          if (result.ok) {
+            log(`影片校正完成！Session ID: ${result.session_id}`);
+            log(`已擷取 ${result.processed_samples} 幀，失敗 ${result.failed_samples} 幀`);
+            log(`已自動訓練個人化影片模型: ${result.model_name}`);
+            
+            // Backup download
+            downloadBlob(videoBlob, `${participantId}_calibration.webm`);
+            downloadBlob(new Blob([JSON.stringify(timelineData, null, 2)], { type: "application/json" }), `${participantId}_timeline.json`);
+            log("已為您下載影片與時間軸 JSON 檔案作為本地備份。");
+            
+            els.phase.textContent = "影片校正成功";
+            await refreshDatasets();
+            await refreshModels();
+            els.selectBaseModel.value = result.model_name;
+          } else {
+            log(`影片校正失敗: ${result.error}`);
+            els.phase.textContent = "影片校正失敗";
+          }
+        } catch (err) {
+          log(`影片校正上傳失敗: ${err.message}`);
+          els.phase.textContent = "處理失敗";
+        }
+      };
+    } else {
+      log("收集完成，可以訓練模型");
+      els.phase.textContent = "收集完成";
+      await refreshDatasets();
+    }
   } catch (err) {
     log(`收集失敗: ${err.message}`);
     els.phase.textContent = "收集失敗";
+    if (recordVideo && state.mediaRecorder && state.mediaRecorder.state !== "inactive") {
+      state.mediaRecorder.stop();
+    }
   } finally {
     state.collecting = false;
     els.calibrationBtn.disabled = false;
@@ -457,6 +573,60 @@ els.btnCancelCollect.addEventListener("click", () => hideModal(els.collectModal)
 els.closeCollect.addEventListener("click", () => hideModal(els.collectModal));
 els.collectModal.addEventListener("click", (e) => {
   if (e.target === els.collectModal) hideModal(els.collectModal);
+});
+
+async function uploadExistingVideo() {
+  const videoFile = els.uploadVideoFile.files[0];
+  const timelineFile = els.uploadTimelineFile.files[0];
+  
+  if (!videoFile || !timelineFile) {
+    log("請先選擇離線校正影片檔與時間軸 JSON 檔");
+    alert("請先選擇影片與時間軸 JSON 檔案！");
+    return;
+  }
+  
+  hideModal(els.collectModal);
+  els.phase.textContent = "上傳離線檔案...";
+  log("正在上傳並處理離線校正影片與時間軸...");
+  
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const timelineText = e.target.result;
+      const timeline = JSON.parse(timelineText);
+      
+      const formData = new FormData();
+      formData.append("video", videoFile);
+      formData.append("timeline", JSON.stringify(timeline));
+      
+      const res = await fetch("/api/demo/upload_video", {
+        method: "POST",
+        body: formData
+      });
+      const result = await res.json();
+      if (result.ok) {
+        log(`離線影片校正成功！Session ID: ${result.session_id}`);
+        log(`已從影片擷取 ${result.processed_samples} 幀，失敗 ${result.failed_samples} 幀`);
+        log(`已自動訓練個人化影片模型: ${result.model_name}`);
+        
+        els.phase.textContent = "離線校正成功";
+        await refreshDatasets();
+        await refreshModels();
+        els.selectBaseModel.value = result.model_name;
+      } else {
+        log(`離線影片校正失敗: ${result.error}`);
+        els.phase.textContent = "離線校正失敗";
+      }
+    } catch (err) {
+      log(`離線校正上傳處理失敗: ${err.message}`);
+      els.phase.textContent = "處理失敗";
+    }
+  };
+  reader.readAsText(timelineFile);
+}
+
+els.btnUploadOffline.addEventListener("click", () => {
+  uploadExistingVideo();
 });
 
 // Train modal

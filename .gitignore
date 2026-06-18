@@ -51,3 +51,6 @@ gaze_data/
 *.onnx
 *.task
 wasm/
+
+# ngrok binaries
+scripts/bin/

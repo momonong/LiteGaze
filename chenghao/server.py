@@ -16,6 +16,7 @@ import json
 from flask import Flask, jsonify, request, send_from_directory
 
 from cognitive_routes import cognitive_bp
+from demo_routes import demo_bp
 from fusion_routes import fusion_bp
 from gaze_routes import gaze_api_bp, gaze_bp
 
@@ -31,6 +32,7 @@ app.register_blueprint(gaze_bp)
 app.register_blueprint(gaze_api_bp)
 app.register_blueprint(cognitive_bp)
 app.register_blueprint(fusion_bp)
+app.register_blueprint(demo_bp)
 
 # ── Static files ──────────────────────────────────────────────────────────────
 @app.route('/')

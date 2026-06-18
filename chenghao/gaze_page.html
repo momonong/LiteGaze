@@ -411,6 +411,26 @@ input::placeholder { color: var(--ink-muted); }
               <input id="delayTime" type="number" min="300" max="5000" step="100" value="900" />
             </div>
           </div>
+          <div class="field" style="margin-top: 8px;">
+            <label class="checkbox-container">
+              <input type="checkbox" id="recordVideo" checked />
+              <span class="chk-lbl">同時錄製影片（保存完整影片與時間軸）</span>
+            </label>
+          </div>
+          <div style="border-top: 1px solid var(--line); margin: 16px 0; padding-top: 16px;">
+            <label style="font-size: 13px; font-weight: 600; margin-bottom: 8px; display: block; color: var(--ink-primary);">離線影片批次校正</label>
+            <div class="field">
+              <label for="uploadVideoFile">選擇校正影片 (.webm, .mp4)</label>
+              <input id="uploadVideoFile" type="file" accept="video/*" style="min-height: auto; padding: 4px;" />
+            </div>
+            <div class="field" style="margin-top: 8px;">
+              <label for="uploadTimelineFile">選擇時間軸 JSON</label>
+              <input id="uploadTimelineFile" type="file" accept=".json" style="min-height: auto; padding: 4px;" />
+            </div>
+            <button id="btnUploadOffline" class="btn-primary" style="margin-top: 12px; width: 100%; min-height: 36px; font-size: 13px;">
+              執行離線影片校正
+            </button>
+          </div>
         </div>
         <div class="modal-footer">
           <button id="btnCancelCollect" class="btn-secondary">取消</button>
