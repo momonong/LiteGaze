@@ -208,6 +208,52 @@ class TestCognitiveInspectorIntegration(unittest.TestCase):
         self.assertIn("test_integration_user", content)
         self.assertIn("認知能力指標評估", content)
 
+    def test_flask_reports_lifecycle_endpoints(self):
+        """測試認知診斷報告完整的生命週期 API：建立 -> 列表 -> 讀取 -> 刪除。"""
+        # 1. 建立並儲存報告
+        payload = {
+            "gaze_history": [
+                {"word": "Test", "index": 0, "confidence": "high", "timestamp_ms": 1000}
+            ],
+            "participant_id": "lifecycle_test_user",
+            "lang": "en",
+            "persist": True
+        }
+        res = self.client.post("/api/inspector/report", 
+                               data=json.dumps(payload),
+                               content_type="application/json")
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertTrue(data["ok"])
+        report_path = data["analysis"]["report_path"]
+        filename = Path(report_path).name
+        
+        # 2. 列表報告，應包含剛剛建立的報告
+        res_list = self.client.get("/api/inspector/reports")
+        self.assertEqual(res_list.status_code, 200)
+        list_data = res_list.get_json()
+        self.assertTrue(list_data["ok"])
+        reports = list_data["reports"]
+        filenames = [r["filename"] for r in reports]
+        self.assertIn(filename, filenames)
+        
+        # 3. 讀取報告內容
+        res_get = self.client.get(f"/api/inspector/reports/{filename}")
+        self.assertEqual(res_get.status_code, 200)
+        get_data = res_get.get_json()
+        self.assertTrue(get_data["ok"])
+        self.assertIn("lifecycle_test_user", get_data["markdown"])
+        
+        # 4. 刪除報告
+        res_del = self.client.delete(f"/api/inspector/reports/{filename}")
+        self.assertEqual(res_del.status_code, 200)
+        del_data = res_del.get_json()
+        self.assertTrue(del_data["ok"])
+        
+        # 驗證實體檔案已被刪除
+        abs_path = ROOT / report_path
+        self.assertFalse(abs_path.exists())
+
     def test_flask_analyze_invalid_payload(self):
         """測試傳入無效 Gaze 格式時的 API 錯誤處理機制。"""
         res = self.client.post("/api/inspector/analyze", 

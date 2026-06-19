@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, jsonify, request
 
@@ -66,3 +67,69 @@ def generate_report():
         "report_md": report_md,
         "analysis": result
     })
+
+@inspector_bp.get("/reports")
+def list_reports():
+    """
+    列出所有已儲存的 Markdown 認知診斷報告。
+    """
+    reports = []
+    for f in REPORTS_DIR.glob("*.md"):
+        try:
+            name = f.name
+            parts = f.stem.rsplit("_", 1)
+            if len(parts) == 2:
+                p_id, ts_str = parts
+                try:
+                    ts = int(ts_str)
+                    dt = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    p_id = f.stem
+                    dt = datetime.fromtimestamp(f.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                p_id = f.stem
+                dt = datetime.fromtimestamp(f.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+            
+            reports.append({
+                "filename": name,
+                "participant_id": p_id,
+                "created_at": dt,
+                "size_bytes": f.stat().st_size
+            })
+        except Exception:
+            pass
+    
+    reports.sort(key=lambda x: x["created_at"], reverse=True)
+    return jsonify({"ok": True, "reports": reports})
+
+@inspector_bp.get("/reports/<filename>")
+def get_report(filename):
+    """
+    取得特定認知診斷報告的 Markdown 內容。
+    """
+    safe_name = Path(filename).name
+    file_path = REPORTS_DIR / safe_name
+    if not file_path.exists():
+        return jsonify({"ok": False, "error": "報告未找到"}), 404
+    
+    try:
+        content = file_path.read_text(encoding="utf-8")
+        return jsonify({"ok": True, "markdown": content})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+@inspector_bp.delete("/reports/<filename>")
+def delete_report(filename):
+    """
+    刪除特定的認知診斷報告。
+    """
+    safe_name = Path(filename).name
+    file_path = REPORTS_DIR / safe_name
+    if not file_path.exists():
+        return jsonify({"ok": False, "error": "報告未找到"}), 404
+    
+    try:
+        file_path.unlink()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
