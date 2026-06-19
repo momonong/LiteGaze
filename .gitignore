@@ -4,9 +4,10 @@ __pycache__/
 *$py.class
 
 # Data and Models
-*.json
+weichi/*.json
 !weichi/ridge_model.json
 !weichi/xgb_model.json
+chenghao/runs/*.json
 *.html
 *.pdf
 *.nii.gz
@@ -54,3 +55,5 @@ wasm/
 
 # ngrok binaries
 scripts/bin/
+
+xet

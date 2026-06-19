@@ -47,6 +47,10 @@ def gaze_page():
 def gaze_static_file(filename):
     return send_from_directory(SHENGWEN_STATIC, filename)
 
+@app.route('/examples/<path:filename>')
+def examples_file(filename):
+    return send_from_directory(ROOT.parent / 'examples', filename)
+
 @app.route('/<path:filename>')
 def static_file(filename):
     return send_from_directory(ROOT, filename)

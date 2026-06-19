@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import time
+import collections
 from pathlib import Path
 from flask import Blueprint, jsonify, request
 import cv2
@@ -16,38 +17,67 @@ ROOT = Path(__file__).parent
 demo_bp = Blueprint("demo", __name__, url_prefix="/api/demo")
 
 
-def extract_best_face_frame(cap, target_time_ms, preprocessor, max_search_ms=400, search_step_ms=33):
-    # Try exact timestamp first
-    cap.set(cv2.CAP_PROP_POS_MSEC, target_time_ms)
-    ret, frame = cap.read()
-    if ret:
-        try:
-            processed = preprocessor.process(frame)
-            if processed and processed.image_bgr is not None:
-                return frame, processed
-        except Exception:
-            pass
-
-    # Search window around target timestamp
-    offsets = []
-    for ms in range(search_step_ms, max_search_ms + 1, search_step_ms):
-        offsets.extend([ms, -ms])
-
-    for offset in offsets:
-        curr_time = target_time_ms + offset
-        if curr_time < 0:
-            continue
-        cap.set(cv2.CAP_PROP_POS_MSEC, curr_time)
-        ret, frame = cap.read()
-        if ret:
+def extract_all_targets_sequential(cap, targets, preprocessor, max_search_ms=400.0):
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    if fps <= 0:
+        fps = 30.0
+        
+    results = []
+    frames_buffer = collections.deque() # rolling window of frames: (timestamp_ms, frame)
+    
+    # Sort targets chronologically
+    sorted_targets = sorted(enumerate(targets), key=lambda x: float(x[1].get("timestamp_ms", 0.0)))
+    frame_count = 0
+    
+    for orig_idx, target in sorted_targets:
+        target_ms = float(target.get("timestamp_ms", 0.0))
+        
+        # 1. Read frames from video until we have frames at least up to target_ms + max_search_ms
+        while True:
+            if len(frames_buffer) > 0 and frames_buffer[-1][0] >= target_ms + max_search_ms:
+                break
+                
+            ret, frame = cap.read()
+            if not ret:
+                break
+                
+            ts_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
+            if ts_ms <= 0 and frame_count > 0:
+                ts_ms = (frame_count * 1000.0) / fps
+                
+            frames_buffer.append((ts_ms, frame))
+            frame_count += 1
+            
+        # 2. Gather candidates within [target_ms - max_search_ms, target_ms + max_search_ms]
+        candidates = []
+        for ts_ms, frame in frames_buffer:
+            if abs(ts_ms - target_ms) <= max_search_ms:
+                candidates.append((abs(ts_ms - target_ms), ts_ms, frame))
+                
+        # Sort candidates by distance (closest first)
+        candidates.sort(key=lambda x: x[0])
+        
+        # 3. Find the first frame that successfully yields a face
+        matched_frame, matched_processed = None, None
+        for dist, ts_ms, frame in candidates:
             try:
                 processed = preprocessor.process(frame)
-                if processed and processed.image_bgr is not None:
-                    return frame, processed
+                if processed and getattr(processed, 'image_bgr', None) is not None:
+                    matched_frame = frame
+                    matched_processed = processed
+                    break
             except Exception:
                 pass
                 
-    return None, None
+        results.append((orig_idx, matched_frame, matched_processed))
+        
+        # 4. Clean up frames_buffer to remove frames that are too old for future targets
+        while len(frames_buffer) > 0 and frames_buffer[0][0] < target_ms - max_search_ms:
+            frames_buffer.popleft()
+            
+    # Sort back to original order
+    results.sort(key=lambda x: x[0])
+    return [r[1:] for r in results]
 
 
 @demo_bp.route("/health", methods=["GET"])
@@ -111,8 +141,12 @@ def upload_video():
     processed_count = 0
     failed_count = 0
 
-    # 5. Extract frames and process faces
+    # 5. Extract frames and process faces sequentially
+    extracted_results = extract_all_targets_sequential(cap, targets, preprocessor)
+    cap.release()
+
     for i, target in enumerate(targets):
+        frame, processed = extracted_results[i]
         timestamp_ms = float(target.get("timestamp_ms", 0.0))
         phase = target.get("phase", "calibration")
         point_index = int(target.get("point_index", 0))
@@ -133,9 +167,6 @@ def upload_video():
         else:
             target_y_norm = float(target_y_norm)
 
-        # Robust extraction with sliding window search around target timestamp
-        frame, processed = extract_best_face_frame(cap, timestamp_ms, preprocessor)
-        
         stem = f"{processed_count:06d}_{phase}_{point_index:02d}_{repeat_index:02d}"
         
         if frame is not None and processed is not None:
@@ -178,8 +209,6 @@ def upload_video():
             processed_count += 1
         else:
             failed_count += 1
-
-    cap.release()
 
     if processed_count == 0:
         return jsonify({

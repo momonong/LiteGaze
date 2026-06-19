@@ -1470,6 +1470,15 @@
             <p>點擊此處 或 拖曳檔案至此開始分析</p>
             <div class="upload-formats">支援格式: PDF · DOCX · HTML · TXT · MD</div>
           </div>
+          <div class="quick-examples" style="margin-top: 1.5rem; text-align: center; z-index: 200;">
+            <div style="font-size: 0.85rem; color: var(--ink-secondary); margin-bottom: 0.6rem; font-weight: 500;">快速載入內建閱讀範本：</div>
+            <div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
+              <button class="btn btn-secondary" onclick="loadExampleText('/examples/easy_en.md', 'easy_en.md')" style="padding: 0.45rem 0.9rem; font-size: 0.8rem; border-radius: var(--radius-md); background: #f4f4f5; border: 1px solid #e4e4e7; cursor: pointer; color: #09090b; font-weight: 500; transition: background 0.2s;">英文簡單 (Easy EN)</button>
+              <button class="btn btn-secondary" onclick="loadExampleText('/examples/hard_en.md', 'hard_en.md')" style="padding: 0.45rem 0.9rem; font-size: 0.8rem; border-radius: var(--radius-md); background: #f4f4f5; border: 1px solid #e4e4e7; cursor: pointer; color: #09090b; font-weight: 500; transition: background 0.2s;">英文挑戰 (Hard EN)</button>
+              <button class="btn btn-secondary" onclick="loadExampleText('/examples/easy_zh.md', 'easy_zh.md')" style="padding: 0.45rem 0.9rem; font-size: 0.8rem; border-radius: var(--radius-md); background: #f4f4f5; border: 1px solid #e4e4e7; cursor: pointer; color: #09090b; font-weight: 500; transition: background 0.2s;">中文簡單 (Easy ZH)</button>
+              <button class="btn btn-secondary" onclick="loadExampleText('/examples/hard_zh.md', 'hard_zh.md')" style="padding: 0.45rem 0.9rem; font-size: 0.8rem; border-radius: var(--radius-md); background: #f4f4f5; border: 1px solid #e4e4e7; cursor: pointer; color: #09090b; font-weight: 500; transition: background 0.2s;">中文挑戰 (Hard ZH)</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1718,6 +1727,20 @@
       // Trigger auto-parse
       parseBtn.click();
     }
+
+    async function loadExampleText(url, filename) {
+      try {
+        log(`正在從系統載入內建範本: ${filename}...`);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP 錯誤: ${res.status}`);
+        const text = await res.text();
+        const file = new File([text], filename, { type: 'text/markdown' });
+        loadFile(file);
+      } catch (err) {
+        log(`載入範本失敗: ${err.message}`, 'err');
+      }
+    }
+    window.loadExampleText = loadExampleText;
 
     function formatBytes(b) {
       if (b < 1024)    return `${b} B`;
