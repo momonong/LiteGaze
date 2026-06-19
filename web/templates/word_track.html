@@ -1122,6 +1122,14 @@
     </div>
     
     <div class="header-actions">
+      <button class="btn btn-secondary" id="helpTutorialBtn" style="padding: 0.35rem 0.85rem; font-size: 0.8rem; display: flex; align-items: center; gap: 4px; min-height: auto;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+        使用說明 / Guide
+      </button>
       <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="開啟選單">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="3" y1="12" x2="21" y2="12"></line>
@@ -3109,6 +3117,32 @@
 
     refreshHistoryBtn.addEventListener('click', loadHistory);
 
+    // ── Help Tutorial Modal Logic ──
+    const helpTutorialBtn = document.getElementById('helpTutorialBtn');
+    const helpTutorialModal = document.getElementById('helpTutorialModal');
+    const closeHelpTutorialBtn = document.getElementById('closeHelpTutorialBtn');
+    const closeHelpTutorialFooterBtn = document.getElementById('closeHelpTutorialFooterBtn');
+
+    function openHelpTutorial() {
+      helpTutorialModal.classList.add('open');
+    }
+    function closeHelpTutorial() {
+      helpTutorialModal.classList.remove('open');
+    }
+
+    helpTutorialBtn.addEventListener('click', openHelpTutorial);
+    closeHelpTutorialBtn.addEventListener('click', closeHelpTutorial);
+    closeHelpTutorialFooterBtn.addEventListener('click', closeHelpTutorial);
+    helpTutorialModal.addEventListener('click', (e) => {
+      if (e.target === helpTutorialModal) closeHelpTutorial();
+    });
+
+    // Auto open tutorial on first-time load
+    if (!localStorage.getItem('lexigaze_tutorial_shown')) {
+      openHelpTutorial();
+      localStorage.setItem('lexigaze_tutorial_shown', 'true');
+    }
+
     // Load history on start
     loadHistory();
     loadReportsHistory();
@@ -3157,6 +3191,68 @@
       </div>
       <div style="padding: 1rem 1.5rem; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; background: var(--bg-elevated); flex-shrink: 0;">
         <button class="btn btn-secondary" id="closeCogReportFooterBtn">關閉</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Help Tutorial Modal -->
+  <div class="modal-backdrop" id="helpTutorialModal">
+    <div class="modal-card" style="max-width: 680px; max-height: 90vh;">
+      <div class="modal-header">
+        <h3>📖 LexiGaze 使用說明 / User Guide</h3>
+        <button class="modal-close-btn" id="closeHelpTutorialBtn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-content" style="padding: 1.5rem; font-size: 14px; line-height: 1.6; color: var(--ink-primary); overflow-y: auto;">
+        
+        <h4 style="margin-top:0; color:var(--accent); display:flex; align-items:center; gap:6px;">
+          <span style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; background:var(--accent-soft); color:var(--accent); border-radius:50%; font-size:11px; font-weight:700;">1</span>
+          第一步：影片相機校正與個人化訓練 (Calibration)
+        </h4>
+        <ol style="margin-left: 1.5rem; margin-bottom: 1.5rem;">
+          <li>點擊左側<b>「眼動追蹤」</b>面板中的<b>「相機校正與訓練 ↗」</b>，這將開啟獨立的校正頁面。</li>
+          <li>輸入您的<b>受試者 ID</b>，然後點擊<b>「開始」</b>。</li>
+          <li><b>眼睛注視著螢幕上跳動的黑色圓點</b>。鏡頭會同時錄影記錄眼球移動位置。</li>
+          <li>點點全部跑完後，系統將自動於後台開始訓練個人化模型（約需 2~3 秒）。完成後，您可以回到主頁面。</li>
+        </ol>
+
+        <h4 style="color:var(--accent); display:flex; align-items:center; gap:6px;">
+          <span style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; background:var(--accent-soft); color:var(--accent); border-radius:50%; font-size:11px; font-weight:700;">2</span>
+          第二步：載入文章與啟用眼動追蹤 (Reading)
+        </h4>
+        <ol style="margin-left: 1.5rem; margin-bottom: 1.5rem;">
+          <li>在左側<b>「文件與分析」</b>面板中上傳您的文件，或在下方<b>「範例文件」</b>直接選擇文章載入。</li>
+          <li>點選左側<b>「眼動追蹤」</b>面板：
+            <ul style="margin-left: 1.25rem; margin-top: 0.25rem;">
+              <li>在<b>「推論模型」</b>選單中，選擇您剛剛訓練的個人化模型（如：<code>anonymous_video_model</code>）。</li>
+              <li>點擊<b>「啟用眼動推論」</b>開啟視訊。此時會出現一個代表您視線的藍色注視點。</li>
+              <li>確認<b>「Gaze Mapping」</b>也是開啟狀態，開始像平常一樣閱讀文章。</li>
+            </ul>
+          </li>
+        </ol>
+
+        <h4 style="color:var(--accent); display:flex; align-items:center; gap:6px;">
+          <span style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; background:var(--accent-soft); color:var(--accent); border-radius:50%; font-size:11px; font-weight:700;">3</span>
+          第三步：生成認知分析診斷報告 (Diagnostic Report)
+        </h4>
+        <ol style="margin-left: 1.5rem; margin-bottom: 1rem;">
+          <li>閱讀完成後，打開右側的<b>「認知能力診斷」</b>面板。</li>
+          <li>輸入您的<b>受試者 ID</b>，並選擇文本的對應語言。</li>
+          <li>點擊<b>「開始診斷認知能力」</b>，系統會統計您的閱讀速度 (WPM)、回看次數、注意力專注度及閱讀疲勞度。</li>
+          <li>點擊<b>「產生與儲存診斷報告」</b>，即可產生精緻的文件認知能力評估報告，並提供個人化的學習建議。</li>
+        </ol>
+        
+        <div style="background:var(--bg-elevated); border: 1px solid var(--line); border-radius:var(--radius-sm); padding:12px; margin-top: 15px; font-size:12px; color:var(--ink-secondary); line-height: 1.5;">
+          💡 <b>小技巧：</b>如果覺得藍色圓點不夠準確，請重新執行校正，並請確保您的臉部有足夠的光源，且眼鏡無眩光，這樣能獲得最佳的預測準確度。
+        </div>
+
+      </div>
+      <div style="padding: 1rem 1.5rem; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; background: var(--bg-elevated); flex-shrink: 0;">
+        <button class="btn btn-primary" id="closeHelpTutorialFooterBtn" style="min-height:36px; padding: 0 16px;">了解並開始閱讀</button>
       </div>
     </div>
   </div>
