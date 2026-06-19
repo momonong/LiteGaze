@@ -23,12 +23,14 @@ def create_app():
     from web.routes.cognitive import cognitive_bp
     from web.routes.fusion import fusion_bp
     from web.routes.demo import demo_bp
+    from web.routes.inspector import inspector_bp
     
     app.register_blueprint(gaze_bp)
     app.register_blueprint(gaze_api_bp)
     app.register_blueprint(cognitive_bp)
     app.register_blueprint(fusion_bp)
     app.register_blueprint(demo_bp)
+    app.register_blueprint(inspector_bp)
     
     # ── Static files & Template views ─────────────────────────────────────────
     @app.route('/')

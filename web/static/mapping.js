@@ -45,7 +45,7 @@ function processGazeOnExtractedData(gazeX, gazeY) {
   // ── Feed the fusion gaze buffer ──────────────────────────────────
   // recordGazeHit is exposed by gaze_integration.js via window.recordGazeHit
   if (gazeMatch && typeof window.recordGazeHit === "function") {
-    window.recordGazeHit(gazeMatch.item.text, gazeMatch.confidence);
+    window.recordGazeHit(gazeMatch.item.text, gazeMatch.confidence, gazeMatch.item.index);
   }
 
   drawHighlights();

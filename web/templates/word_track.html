@@ -1156,6 +1156,13 @@
         <button class="icon-bar-btn" data-panel="cognitive" title="認知負荷評估">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 0 1 7.07 17.07A10 10 0 0 1 4.93 4.93 10 10 0 0 1 12 2z"/><path d="M12 6v6l4 2"/></svg>
           </button>
+        <button class="icon-bar-btn" data-panel="inspector" title="認知能力診斷">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+            <polyline points="16 11 18 13 22 9"></polyline>
+          </svg>
+        </button>
           <div class="icon-bar-spacer"></div>
           <button class="icon-bar-btn" id="mobileCloseBtn" title="關閉選單" style="display:none">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1444,6 +1451,90 @@
         <div class="field">
           <label>懸停詳情</label>
           <div class="hover-info" id="hoverInfo">移動滑鼠至頁面顯示</div>
+        </div>
+      </div>
+
+      <!-- Panel: Cognitive Capability Inspector -->
+      <div class="sidebar-panel" id="panel-inspector">
+        <div class="panel-section-title">認知能力診斷</div>
+        <p style="font-size:0.75rem; color:var(--ink-secondary); margin-bottom:0.75rem; line-height:1.4;">
+          基於眼動序列，分析使用者的閱讀理解力、英語熟練度與疲勞程度。
+        </p>
+
+        <div class="field">
+          <label for="inspectParticipantInput">受試者編號 / Participant ID</label>
+          <input type="text" id="inspectParticipantInput" value="anonymous" placeholder="例如: test01_user" autocomplete="off" />
+        </div>
+
+        <div class="field">
+          <label for="inspectLangSelect">診斷語言 / Language</label>
+          <select id="inspectLangSelect">
+            <option value="en">English (英文)</option>
+            <option value="zh">Chinese (中文)</option>
+          </select>
+        </div>
+
+        <button class="btn btn-primary" id="inspectAnalyzeBtn" style="width:100%; margin-top:8px;">開始診斷認知能力</button>
+        <button class="btn btn-secondary" id="inspectReportBtn" style="width:100%; margin-top:6px;" disabled>產生與儲存診斷報告</button>
+
+        <!-- Dynamic Diagnosis Results Card -->
+        <div class="stats-card" id="inspectResultsCard" style="margin-top:12px; display:none; flex-direction:column; gap:10px; padding: 12px; background: rgba(0,0,0,0.02); border: 1px solid var(--line-strong);">
+          <div style="font-size:0.75rem; font-weight:700; border-bottom:1px solid var(--line); padding-bottom:6px; margin-bottom:4px;">診斷結果畫像 (Diagnostics Profile)</div>
+          
+          <!-- Reading Ability Score -->
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px;">
+              <span style="font-weight:600; color:var(--ink-secondary);">閱讀理解力 (Reading Ability)</span>
+              <span id="inspectReadingScore" style="color:var(--accent); font-weight:700;">—</span>
+            </div>
+            <div style="background:var(--bg-highest); height:5px; border-radius:2.5px; margin-top:4px; overflow:hidden;">
+              <div id="inspectReadingBar" style="background:linear-gradient(90deg, var(--accent), #10b981); width:0%; height:100%; transition: width 0.4s ease;"></div>
+            </div>
+            <div id="inspectReadingLevel" style="font-size:9px; color:var(--ink-muted); margin-top:2px;">—</div>
+          </div>
+
+          <!-- English Proficiency Score -->
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px;">
+              <span style="font-weight:600; color:var(--ink-secondary);">英語熟練度 (English Proficiency)</span>
+              <span id="inspectEnglishScore" style="color:var(--accent); font-weight:700;">—</span>
+            </div>
+            <div style="background:var(--bg-highest); height:5px; border-radius:2.5px; margin-top:4px; overflow:hidden;">
+              <div id="inspectEnglishBar" style="background:linear-gradient(90deg, var(--accent), #8b5cf6); width:0%; height:100%; transition: width 0.4s ease;"></div>
+            </div>
+            <div id="inspectEnglishLevel" style="font-size:9px; color:var(--ink-muted); margin-top:2px;">—</div>
+          </div>
+
+          <!-- Cognitive Load Index -->
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px;">
+              <span style="font-weight:600; color:var(--ink-secondary);">心智認知負荷 (Cognitive Load)</span>
+              <span id="inspectLoadScore" style="color:var(--warning); font-weight:700;">—</span>
+            </div>
+            <div style="background:var(--bg-highest); height:5px; border-radius:2.5px; margin-top:4px; overflow:hidden;">
+              <div id="inspectLoadBar" style="background:linear-gradient(90deg, var(--warning), var(--danger)); width:0%; height:100%; transition: width 0.4s ease;"></div>
+            </div>
+          </div>
+
+          <!-- Dwell & Fixations Row -->
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; border-top:1px solid var(--line); padding-top:8px; margin-top:2px;">
+            <div>
+              <span style="font-size:9px; color:var(--ink-muted); display:block;">閱讀速度 (WPM)</span>
+              <span id="inspectWpm" style="font-size:11px; font-weight:600; color:var(--ink-primary);">—</span>
+            </div>
+            <div>
+              <span style="font-size:9px; color:var(--ink-muted); display:block;">回看率 (Reg. Rate)</span>
+              <span id="inspectRegRate" style="font-size:11px; font-weight:600; color:var(--ink-primary);">—</span>
+            </div>
+            <div>
+              <span style="font-size:9px; color:var(--ink-muted); display:block;">注意力穩定 (Attention)</span>
+              <span id="inspectAttention" style="font-size:11px; font-weight:600; color:var(--success);">—</span>
+            </div>
+            <div>
+              <span style="font-size:9px; color:var(--ink-muted); display:block;">疲勞狀態 (Fatigue)</span>
+              <span id="inspectFatigue" style="font-size:11px; font-weight:600; color:var(--ink-primary);">—</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -2770,6 +2861,147 @@
       }
     };
 
+    // ── Cognitive Capability Inspector Integration ────────────────────────────────
+    const inspectParticipantInput = document.getElementById('inspectParticipantInput');
+    const inspectLangSelect        = document.getElementById('inspectLangSelect');
+    const inspectAnalyzeBtn        = document.getElementById('inspectAnalyzeBtn');
+    const inspectReportBtn         = document.getElementById('inspectReportBtn');
+    const inspectResultsCard       = document.getElementById('inspectResultsCard');
+
+    const inspectReadingScore      = document.getElementById('inspectReadingScore');
+    const inspectReadingBar        = document.getElementById('inspectReadingBar');
+    const inspectReadingLevel      = document.getElementById('inspectReadingLevel');
+
+    const inspectEnglishScore      = document.getElementById('inspectEnglishScore');
+    const inspectEnglishBar        = document.getElementById('inspectEnglishBar');
+    const inspectEnglishLevel      = document.getElementById('inspectEnglishLevel');
+
+    const inspectLoadScore         = document.getElementById('inspectLoadScore');
+    const inspectLoadBar           = document.getElementById('inspectLoadBar');
+
+    const inspectWpm               = document.getElementById('inspectWpm');
+    const inspectRegRate           = document.getElementById('inspectRegRate');
+    const inspectAttention         = document.getElementById('inspectAttention');
+    const inspectFatigue           = document.getElementById('inspectFatigue');
+
+    const cogReportModal           = document.getElementById('cogReportModal');
+    const cogReportContent         = document.getElementById('cogReportContent');
+    const closeCogReportBtn        = document.getElementById('closeCogReportBtn');
+    const closeCogReportFooterBtn  = document.getElementById('closeCogReportFooterBtn');
+
+    let lastInspectorAnalysisGazeHistory = null;
+
+    async function runCognitiveInspectorAnalysis() {
+      const gazeHistoryData = typeof window.flushGazeHistory === 'function' ? window.flushGazeHistory() : [];
+      if (!gazeHistoryData || gazeHistoryData.length === 0) {
+        log('眼動歷史軌跡為空，請先啟用眼動追蹤並進行閱讀！', 'err');
+        alert('請先在左側面板啟用眼動追蹤，閱讀部分文字後，再點擊此按鈕進行診斷。');
+        return;
+      }
+
+      inspectAnalyzeBtn.disabled = true;
+      inspectAnalyzeBtn.textContent = '分析中…';
+
+      try {
+        const res = await fetch('/api/inspector/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gaze_history: gazeHistoryData,
+            lang: inspectLangSelect.value
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || '分析失敗');
+
+        const profile = data.analysis.user_profile;
+        const summary = data.analysis.summary;
+
+        // Populate Dashboard UI
+        inspectReadingScore.textContent = profile.reading_ability_score.toFixed(1);
+        inspectReadingBar.style.width = `${profile.reading_ability_score}%`;
+        inspectReadingLevel.textContent = profile.reading_ability_level;
+
+        inspectEnglishScore.textContent = profile.english_proficiency_score.toFixed(1);
+        inspectEnglishBar.style.width = `${profile.english_proficiency_score}%`;
+        inspectEnglishLevel.textContent = profile.english_proficiency_level;
+
+        inspectLoadScore.textContent = profile.cognitive_load_index.toFixed(1);
+        inspectLoadBar.style.width = `${profile.cognitive_load_index}%`;
+
+        inspectWpm.textContent = `${summary.words_per_minute.toFixed(1)} 字/分`;
+        inspectRegRate.textContent = `${(summary.regression_rate * 100).toFixed(1)}%`;
+        inspectAttention.textContent = `${profile.attention_index}%`;
+        inspectFatigue.textContent = profile.fatigue_label;
+
+        // Display results
+        inspectResultsCard.style.display = 'flex';
+        inspectReportBtn.disabled = false;
+        lastInspectorAnalysisGazeHistory = gazeHistoryData;
+        log('認知能力診斷分析完成！', 'ok');
+
+      } catch (err) {
+        log(`認知能力診斷失敗：${err.message}`, 'err');
+        alert(`診斷失敗：${err.message}`);
+      } finally {
+        inspectAnalyzeBtn.disabled = false;
+        inspectAnalyzeBtn.textContent = '開始診斷認知能力';
+      }
+    }
+
+    async function generateAndShowCognitiveReport() {
+      if (!lastInspectorAnalysisGazeHistory) return;
+
+      inspectReportBtn.disabled = true;
+      inspectReportBtn.textContent = '產生報告中…';
+
+      try {
+        const participantId = inspectParticipantInput.value.trim() || 'anonymous';
+        const res = await fetch('/api/inspector/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gaze_history: lastInspectorAnalysisGazeHistory,
+            participant_id: participantId,
+            lang: inspectLangSelect.value,
+            persist: true
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || '報告生成失敗');
+
+        // Render Markdown to HTML using marked.js
+        cogReportContent.innerHTML = typeof marked !== 'undefined' ? marked.parse(data.report_md) : `<pre style="white-space:pre-wrap;">${data.report_md}</pre>`;
+        
+        // Show Modal
+        cogReportModal.classList.add('open');
+        log(`診斷報告已生成並保存至：${data.analysis.report_path}`, 'ok');
+
+      } catch (err) {
+        log(`產生診斷報告失敗：${err.message}`, 'err');
+        alert(`產生報告失敗：${err.message}`);
+      } finally {
+        inspectReportBtn.disabled = false;
+        inspectReportBtn.textContent = '產生與儲存診斷報告';
+      }
+    }
+
+    inspectAnalyzeBtn.addEventListener('click', runCognitiveInspectorAnalysis);
+    inspectReportBtn.addEventListener('click', generateAndShowCognitiveReport);
+
+    function closeReportModal() {
+      cogReportModal.classList.remove('open');
+    }
+
+    closeCogReportBtn.addEventListener('click', closeReportModal);
+    closeCogReportFooterBtn.addEventListener('click', closeReportModal);
+
+    cogReportModal.addEventListener('click', (e) => {
+      if (e.target === cogReportModal) closeReportModal();
+    });
+
     refreshHistoryBtn.addEventListener('click', loadHistory);
 
     // Load history on start
@@ -2800,6 +3032,27 @@
       border-radius: 50%;
       transform: translate(-50%, -50%);
     "></div>
+  </div>
+
+  <!-- Cognitive Report Modal -->
+  <div class="modal-backdrop" id="cogReportModal">
+    <div class="modal-card" style="max-width: 720px; max-height: 90vh;">
+      <div class="modal-header">
+        <h3>認知能力診斷報告 / Cognitive Diagnostic Report</h3>
+        <button class="modal-close-btn" id="closeCogReportBtn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-content" id="cogReportContent" style="padding: 1.5rem; font-size: 14px; line-height: 1.6; color: var(--ink-primary); overflow-y: auto;">
+        <!-- Marked report content will be loaded here -->
+      </div>
+      <div style="padding: 1rem 1.5rem; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; background: var(--bg-elevated); flex-shrink: 0;">
+        <button class="btn btn-secondary" id="closeCogReportFooterBtn">關閉</button>
+      </div>
+    </div>
   </div>
 
   <!-- External Gaze & Mapping Scripts -->

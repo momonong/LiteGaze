@@ -27,13 +27,14 @@
     filterY: null,
   };
 
-  // ── Gaze Buffer (for fusion) ─────────────────────────────────────────────
+  // ── Gaze Buffer & History ─────────────────────────────────────────────
   // Accumulates per-word dwell and fixation counts during a reading session.
   // Flushed to POST /api/fuse when the user triggers "Export" or session ends.
   const gazeBuffer = {};   // { wordKey: { word, dwell_count, fixation_count, confidence } }
+  const gazeHistory = [];  // Chronological trace: [ { word, index, confidence, timestamp_ms } ]
   let _lastGazeWord = null;  // tracks previous word to detect new fixations
 
-  function recordGazeHit(word, confidence) {
+  function recordGazeHit(word, confidence, index) {
     const key = word.toLowerCase();
     if (!gazeBuffer[key]) {
       gazeBuffer[key] = { word, dwell_count: 0, fixation_count: 0, confidence };
@@ -47,6 +48,14 @@
     if ((rank[confidence] || 0) > (rank[gazeBuffer[key].confidence] || 0)) {
       gazeBuffer[key].confidence = confidence;
     }
+
+    // Append to chronological sequence log
+    gazeHistory.push({
+      word: word,
+      index: typeof index === "number" ? index : -1,
+      confidence: confidence,
+      timestamp_ms: Date.now()
+    });
   }
 
   function flushGazeBuffer() {
@@ -59,13 +68,20 @@
     }));
   }
 
+  function flushGazeHistory() {
+    return [...gazeHistory];
+  }
+
   function clearGazeBuffer() {
     Object.keys(gazeBuffer).forEach(k => delete gazeBuffer[k]);
     _lastGazeWord = null;
+    gazeHistory.length = 0;
   }
 
   window.gazeBuffer        = gazeBuffer;
+  window.gazeHistory       = gazeHistory;
   window.flushGazeBuffer   = flushGazeBuffer;
+  window.flushGazeHistory  = flushGazeHistory;
   window.clearGazeBuffer   = clearGazeBuffer;
   window.recordGazeHit     = recordGazeHit;
 

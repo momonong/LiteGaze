@@ -1,0 +1,83 @@
+from datetime import datetime
+from typing import Dict, Any
+
+def generate_markdown_report(result: Dict[str, Any], participant_id: str) -> str:
+    """
+    根據認知診斷分析結果，產生一份精緻的 Markdown 報告。
+    """
+    summary = result.get("summary", {})
+    profile = result.get("user_profile", {})
+
+    # 定義負荷等級標籤顏色與警報級別
+    load_score = profile.get("cognitive_load_index", 0)
+    if load_score >= 70:
+        load_alert = "> [!WARNING]\n> **高認知負荷狀態**：此閱讀階段的資訊處理成本偏高，可能遇到較多理解阻礙。"
+    elif load_score >= 40:
+        load_alert = "> [!NOTE]\n> **中度認知負荷狀態**：使用者正在主動思考與吸收資訊，學習效果最佳。"
+    else:
+        load_alert = "> [!TIP]\n> **低認知負荷狀態**：文本閱讀非常流暢，理解輕鬆無負擔。"
+
+    # 疲勞等級警報
+    fatigue_level = profile.get("fatigue_level", "low")
+    if fatigue_level == "high":
+        fatigue_alert = "> [!CAUTION]\n> **注意力衰退警報**：後半段注視時間拉長超過 20%，注意力流失顯著，建議適度休息。"
+    else:
+        fatigue_alert = "> [!NOTE]\n> **疲勞診斷**：持續注意力正常，無明顯疲勞特徵。"
+
+    report = f"""# 🧠 LexiGaze 認知與閱讀能力診斷報告
+
+* **受試者 ID** : `{participant_id}`
+* **產生時間** : `{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}`
+* **診斷版本** : `LexiGaze Cognitive Inspector v1.0`
+
+---
+
+## 📊 認知能力指標評估 (Cognitive Capability Profiles)
+
+這裡結合了眼動追蹤行為（Perception）與語言先驗特徵（Cognition），為使用者建立的個人化認知能力畫像。
+
+| 能力維度 | 診斷分數 (0-100) | 評估等級 | 說明與指標含意 |
+| :--- | :---: | :---: | :--- |
+| **閱讀流暢度 (Reading Ability)** | `{profile.get("reading_ability_score")}` | `{profile.get("reading_ability_level")}` | 反映閱讀速度 WPM 與注視效率。高分代表具備快速掃視與高資訊吸納力。 |
+| **英語語言水準 (English Proficiency)** | `{profile.get("english_proficiency_score")}` | `{profile.get("english_proficiency_level")}` | 交叉比對「受阻單字」的詞頻。高分代表只在罕見字停頓，已掌握基礎常用字彙。 |
+| **當前認知負荷 (Cognitive Load)** | `{profile.get("cognitive_load_index")}` | — | 由單字停留時長與回看比例共同決定，反映當前文本理解難度。 |
+| **注意力專注度 (Attention Index)** | `{profile.get("attention_index")}` / 100 | — | 基於命中分佈與注視跳躍，分數越低代表分心或反覆困惑。 |
+
+### 🔍 當前認知負荷警報
+{load_alert}
+
+---
+
+## 📈 眼動特徵統計摘要 (Eye-Tracking Metrics Summary)
+
+統計數據來自使用者於本段落閱讀的即時眼動行為序列：
+
+| 測量指標 | 數值 | 心理/認知代表意義 |
+| :--- | :---: | :--- |
+| **閱讀速度 (WPM)** | `{summary.get("words_per_minute")} words/min` | 閱讀效率指標。一般母語者或高階讀者通常在 200-300 WPM。 |
+| **平均注視時間 (Fixation Duration)** | `{summary.get("avg_fixation_duration_ms")} ms` | 反映單字層級的資訊加工難度（資訊負荷）。 |
+| **總注視次數 (Fixation Count)** | `{summary.get("total_fixations")} 次` | 視覺注意力分配與密度。 |
+| **回看次數 (Regression Count)** | `{summary.get("regression_count")} 次` | 當遇到複雜文法結構或句意前後矛盾時，會觸發眼動倒退（理解困難）。 |
+| **重讀次數 (Reread Count)** | `{summary.get("reread_count")} 次` | 對特定生詞或關鍵術語的反覆閱讀行為（單字困難）。 |
+| **閱讀總時長 (Total Dwell)** | `{round(summary.get("total_dwell_time_ms", 0)/1000, 1)} 秒` | 本段落閱讀所花費的實際視線累計時間。 |
+
+---
+
+## 🧠 疲勞度與注意力趨勢診斷
+
+{fatigue_alert}
+
+* **閱讀後半段注視變動比例**：`{round((profile.get("fatigue_ratio", 1.0) - 1.0) * 100, 1)}%`（以後半段平均注視時長 vs 前半段平均注視時長計算）
+
+---
+
+## 💡 個人化學習與閱讀建議 (Personalized Recommendations)
+
+1. {"**維持流暢閱讀**：您的閱讀速度與理解能力卓越。建議挑戰學術期刊或高難度文獻，維持較高的資訊吸收頻寬。" if profile.get("reading_ability_score", 0) >= 80 else "**增強掃視與流暢度**：您的回看頻率偏高。建議嘗試「無跳回眼動訓練」，利用手指或卡片遮擋已讀內容，迫使大腦維持向前流暢閱讀。"}
+2. {"**擴充生字庫**：您對基礎字彙非常熟悉，閱讀卡頓多發生在罕見單字（Zipf 頻率 < 3.5）。建議透過上下文猜字，並將常卡住的專業學術詞彙（如 surprisal）存入生字本。" if profile.get("english_proficiency_score", 0) >= 70 else "**鞏固基礎詞彙與常見 POS**：您的停頓點多發生在常見字詞上。建議多閱讀簡單的故事或對話，培養對常见動詞、介系詞及轉折詞的快速識別直覺。"}
+3. {"**適時小憩**：高疲勞度特徵已觸發。建議閉眼休息 2 分鐘，或起立活動，因為疲勞狀態下的持續閱讀會顯著降低理解率與記憶力。" if fatigue_level == "high" else "**專注狀態佳**：您正處於高效率的專注區間，可繼續進行當前的高強度閱讀學習任務。"}
+
+---
+*報告由 LexiGaze Multi-modal Cognitive System 自動產生，供學習診斷與個人化研究參考。*
+"""
+    return report
