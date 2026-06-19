@@ -16,6 +16,11 @@ lexigaze/
 │   │   ├── ridge_model.json   # Pretrained Ridge regression models
 │   │   └── xgb_model.json     # Pretrained XGBoost model
 │   │
+│   ├── cognitive_inspector/   # 🧠 COGNITIVE CAPABILITY INSPECTOR
+│   │   ├── __init__.py        # Exports inspector & report generator
+│   │   ├── inspector.py       # Sequence analyzer (fixations, WPM, regressions)
+│   │   └── report_generator.py # Formats metrics into GFM reports
+│   │
 │   ├── gaze_core/             # Gaze prediction filters & model registries
 │   │   ├── inference.py       # Preprocesses frames & feeds to ONNX model
 │   │   ├── training.py        # Trains polynomial regression on calibration datasets
@@ -33,7 +38,8 @@ lexigaze/
 │   │   ├── cognitive.py       # Blueprints for text difficulty analysis
 │   │   ├── gaze.py            # Blueprints for gaze prediction & models
 │   │   ├── demo.py            # Blueprints for offline video-calibration
-│   │   └── fusion.py          # Blueprints for combining gaze metrics & load
+│   │   ├── fusion.py          # Blueprints for combining gaze metrics & load
+│   │   └── inspector.py       # Blueprints for user capability diagnostics
 │   ├── static/                # Client-side JavaScript, CSS, & model weights
 │   │   ├── mapping.js         # Gaze cursor smoothing and word mapping
 │   │   ├── gaze_integration.js # Live loop & camera capture in browser
@@ -44,7 +50,6 @@ lexigaze/
 │       └── gaze_page.html     # Live calibration view
 │
 ├── run.py                     # 🚀 Clean entrypoint at root (runs web)
-├── refactor.md                # 📄 Refactoring documentation
 ├── archive/                   # 🗄️ ARCHIVED LEGACY MODULES (weichi, shengwen, BoWei)
 │
 ├── scripts/                   # 🧪 RESEARCH SANDBOX & EXPERIMENTAL UTILITIES
@@ -54,10 +59,13 @@ lexigaze/
 │   ├── experiment_fusion.py   # Validation correlation tests on GECO corpus
 │   ├── inspect_performance_demo.py # Joint pipeline (Viterbi/EM/Fusion) terminal inspection dashboard
 │   ├── generate_web_demo_data.py   # Mock calibration session and model JSON generator
+│   ├── test_cognitive_inspector.py # Unit & integration test suite for diagnostics
 │   └── setup_remote_collection.py # Cross-platform ngrok tunnel launcher for remote laptops
 │
 ├── docs/                      # 📄 SYSTEM DOCUMENTATION
+│   ├── refactor.md            # Refactoring documentation (moved)
 │   ├── demo_integration_guide.md  # Demo walkthrough and integration architecture
+│   ├── cognitive_reports/     # Persisted capability diagnostic reports (Markdown)
 │   └── fusion_reports/        # Saved joint gaze-cognitive fusion analysis logs
 │
 ├── pyproject.toml             # Project dependency registry (Flask, Torch, OpenCV, Transformers)

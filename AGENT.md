@@ -49,12 +49,19 @@ Ensure OpenCV face extraction processes do not rely on X11 display environments,
 
 ---
 
-## 🧠 Planned Feature: Cognitive Ability Inspector Agent
+## 🧠 Core Feature: Cognitive Ability Inspector Agent (Fully Implemented)
 
-We are designing a specialized **Cognitive Ability Inspector** agent that operates on LexiGaze reading logs to evaluate and guide readers.
+The **Cognitive Ability Inspector** is a fully realized, integrated core module that analyzes sequential reading trajectories to assess user cognitive load, vocabulary level, reading ability, and fatigue.
 
-### Core Responsibilities
-1. **Gaze Trajectory Analysis**: Scan gaze coordinate time series to detect abnormal dwell spikes, frequent regression steps (saccades jumping backward), and slow reading speed segments.
-2. **Linguistic Diagnostic Mapping**: Analyze reading logs against different paragraphs (comparing behavior on easy vs. hard text templates in `examples/`) to locate the specific syntactic structures or vocabulary lists triggering cognitive overload.
-3. **User Profile Generation**: Score the reader's attention retention, fatigue levels, vocabulary tier, and reading speed.
-4. **Actionable Remedial Reporting**: Compile report documents offering tailored feedback, such as target reading speed exercises, readability suggestions, or text simplifications based on the user's implicit vocabulary capture logs.
+### Features & Capabilities
+1. **Gaze Trajectory & Saccade Sequence Analysis**: Evaluates chronological eye-tracking streams to compute:
+   * **Fixation Duration** (dwell time per word group) $\rightarrow$ Reflects **Cognitive Load**.
+   * **Fixation Count** (hit counts) $\rightarrow$ Reflects **Attention/Focus**.
+   * **Regression Count** (backtracking transitions) $\rightarrow$ Reflects **Comprehension Difficulty**.
+   * **Reread Count** (returning to previously read words) $\rightarrow$ Reflects **Vocabulary Difficulty**.
+   * **Dwell Time** (total region/paragraph duration) $\rightarrow$ Reflects **Overall Burden**.
+2. **Linguistic Diagnostic Profiles**: Correlates long fixations and regressions against word lexical characteristics (Zipf frequency) to determine:
+   * **Reading Ability Score & Level**: Measures words per minute (WPM), regression rates, and avg fixation duration.
+   * **English Proficiency Score & Level**: Evaluates if reader pauses are on rare technical words vs. common basic syntax.
+   * **Fatigue Level (Low/Medium/High)**: Compares average fixation times in the second half of reading vs. the first half.
+3. **Reports History & CRUD Panel**: Generates and persists detailed Markdown reports with actionable remedial advice to [`docs/cognitive_reports/`](file:///home/ubuntu/projects/lexigaze/docs/cognitive_reports/). The reading dashboard includes a history manager to reload, delete, or download reports.

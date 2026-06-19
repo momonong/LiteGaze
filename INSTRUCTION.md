@@ -244,6 +244,18 @@ GET  /api/fuse/reports/<id>       → Retrieve a specific fusion report
 
 Fusion reports (optional) are saved to `docs/fusion_reports/`.
 
+### Cognitive Capability Inspector
+
+```
+POST   /api/inspector/analyze      → Analyze chronological gaze history and generate user profile
+POST   /api/inspector/report       → Compile detailed Markdown report (optional persist flag)
+GET    /api/inspector/reports      → List all saved diagnostic reports
+GET    /api/inspector/reports/<f>  → Get markdown content of a specific report
+DELETE /api/inspector/reports/<f>  → Delete a specific report file
+```
+
+Persisted diagnostic reports are saved to `docs/cognitive_reports/`.
+
 ---
 
 ## 8. Research & Standalone Scripts
@@ -379,26 +391,32 @@ lexigaze/
 │
 ├── core/                         ← Core Business Logic Container
 │   ├── cognition/                ← Cognitive load NLP pipeline & model weights
+│   ├── cognitive_inspector/      ← User capability & reading diagnostics module
 │   ├── gaze_core/                ← Gaze backend (inference, training, registry)
 │   └── unigaze_personalization/  ← Preprocessing and deep learning transforms
 │
 ├── web/                          ← Integrated web platform package
-│   ├── routes/                   # Blueprints (cognitive, demo, fusion, gaze)
+│   ├── routes/                   # Blueprints (cognitive, demo, fusion, gaze, inspector)
 │   ├── static/                   # JS/CSS assets and MediaPipe landmarker task
 │   └── templates/                # HTML layout templates (word_track, gaze_page)
 │
 ├── data/                         # Saved document layout sessions
 ├── examples/models/              # Calibration datasets & personalization models
 │
-├── scripts/fusion/               ← Gaze×cognitive fusion orchestrator
-│   └── orchestrator.py
+├── scripts/                      ← Diagnostic sandbox and test utilities
+│   ├── test_cognitive_inspector.py # Unit and integration test suite
+│   └── fusion/                   # Gaze×cognitive fusion orchestrator
+│       └── orchestrator.py
 │
 ├── archive/                      ← Archived legacy developer subdirectories
-├── docs/fusion_reports/          ← Persisted fusion RDS reports
+├── docs/                         ← Documentation directory
+│   ├── refactor.md               # Moved refactoring guide
+│   ├── cognitive_reports/        # Saved user diagnostic Markdown reports
+│   └── fusion_reports/           # Persisted fusion RDS reports
 │
 ├── .env                          ← Local secrets (never commit)
 ├── .env.example                  ← Template — copy to .env
-├── pyproject.toml                ← Project metadata & dependencies
+├── pyproject.toml                <!-- Project metadata & dependencies -->
 ├── requirements.txt              ← Pinned dependency list
 └── uv.lock                       ← Exact lock file for uv
 ```
