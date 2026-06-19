@@ -19,11 +19,11 @@ from typing import Optional
 from flask import Blueprint, jsonify, request
 
 ROOT        = Path(__file__).parent
-REPORTS_DIR = ROOT.parent / "docs" / "fusion_reports"
+REPORTS_DIR = ROOT / "docs" / "fusion_reports"
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── Bootstrap orchestrator on sys.path ──────────────────────────────────────
-SCRIPTS_DIR = ROOT.parent / "scripts" / "fusion"
+SCRIPTS_DIR = ROOT / "scripts" / "fusion"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 

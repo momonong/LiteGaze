@@ -8,10 +8,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-# Ensure local packages in chenghao/ can be found
+# Ensure local packages in the root can be found
 ROOT = Path(__file__).parent.parent
-CHENGHAO_DIR = ROOT / "chenghao"
-sys.path.insert(0, str(CHENGHAO_DIR))
+CHENGHAO_DIR = ROOT
+sys.path.insert(0, str(ROOT))
 
 from gaze_core.sample_store import ensure_sessions_dir, create_session, get_preprocessor
 from gaze_core.model_registry import ensure_runs_dir

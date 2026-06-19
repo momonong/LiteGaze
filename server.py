@@ -21,7 +21,7 @@ from fusion_routes import fusion_bp
 from gaze_routes import gaze_api_bp, gaze_bp
 
 ROOT     = Path(__file__).parent
-SHENGWEN_STATIC = ROOT.parent / 'shengwen' / 'web' / 'static'
+SHENGWEN_STATIC = ROOT / 'archive' / 'shengwen' / 'web' / 'static'
 DATA_DIR = ROOT / 'data'
 DATA_DIR.mkdir(exist_ok=True)
 mimetypes.add_type('text/javascript', '.js')
@@ -49,7 +49,7 @@ def gaze_static_file(filename):
 
 @app.route('/examples/<path:filename>')
 def examples_file(filename):
-    return send_from_directory(ROOT.parent / 'examples', filename)
+    return send_from_directory(ROOT / 'examples', filename)
 
 @app.route('/<path:filename>')
 def static_file(filename):

@@ -35,12 +35,11 @@ from typing import Optional
 
 # ── Path bootstrap ────────────────────────────────────────────────────────────
 ROOT       = Path(__file__).resolve().parents[2]   # lexigaze/
-WEICHI_DIR = ROOT / "weichi"
 REPORTS_DIR = ROOT / "docs" / "fusion_reports"
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
-if str(WEICHI_DIR) not in sys.path:
-    sys.path.insert(0, str(WEICHI_DIR))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

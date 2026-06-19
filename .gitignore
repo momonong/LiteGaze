@@ -4,10 +4,10 @@ __pycache__/
 *$py.class
 
 # Data and Models
-weichi/*.json
-!weichi/ridge_model.json
-!weichi/xgb_model.json
-chenghao/runs/*.json
+archive/weichi/*.json
+!archive/weichi/ridge_model.json
+!archive/weichi/xgb_model.json
+archive/weichi/runs/*.json
 *.html
 *.pdf
 *.nii.gz
@@ -18,11 +18,11 @@ Data/
 Model/
 
 # Eye-tracking corpora (raw data, not committed)
-weichi/GECO_data/
-weichi/PROVO_data/
+archive/weichi/GECO_data/
+archive/weichi/PROVO_data/
 
 # Generated / large cached files
-weichi/test_predictions.csv
+archive/weichi/test_predictions.csv
 
 # Environment
 .env

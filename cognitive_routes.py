@@ -86,12 +86,8 @@ for _name in ('transformers', 'huggingface_hub', 'filelock', ''):
             _h.stream = _SafeWriter(_h.stream)
 
 ROOT = Path(__file__).parent
-WEICHI_DIR = ROOT.parent / "weichi"
-ARCHIVE_DIR = ROOT.parent / "archive" / "analysis_results"
+ARCHIVE_DIR = ROOT / "archive" / "analysis_results"
 ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
-
-if str(WEICHI_DIR) not in sys.path:
-    sys.path.insert(0, str(WEICHI_DIR))
 
 cognitive_bp = Blueprint("cognitive", __name__, url_prefix="/api/cognitive")
 
