@@ -13,7 +13,7 @@ from gaze_core.model_registry import ensure_runs_dir, model_path
 from gaze_core.sample_store import ensure_sessions_dir, create_session
 from gaze_core.training import train_placeholder
 
-ROOT = Path(__file__).parent
+ROOT = Path(__file__).resolve().parents[2]
 demo_bp = Blueprint("demo", __name__, url_prefix="/api/demo")
 
 

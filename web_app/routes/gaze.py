@@ -10,7 +10,7 @@ from gaze_core.sample_store import create_session, list_datasets, save_sample, d
 from gaze_core.training import train_placeholder
 
 
-ROOT = Path(__file__).parent
+ROOT = Path(__file__).resolve().parents[2]
 gaze_bp = Blueprint("gaze", __name__, url_prefix="/api/gaze")
 gaze_api_bp = Blueprint("gaze_api", __name__, url_prefix="/api")
 

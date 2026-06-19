@@ -173,8 +173,9 @@ class MediaPipeUniGazePreprocessor:
         from mediapipe.tasks.python.core import base_options
         import os
 
-        model_path = os.path.join(os.path.dirname(__file__), "..", "face_landmarker.task")
+        model_path = os.path.join(os.path.dirname(__file__), "..", "web_app", "static", "face_landmarker.task")
         if not os.path.exists(model_path):
+            os.makedirs(os.path.dirname(model_path), exist_ok=True)
             import urllib.request
             url = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
             urllib.request.urlretrieve(url, model_path)

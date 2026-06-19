@@ -11,7 +11,7 @@ print("=== Refactoring Diagnostic Tests ===")
 # Test 1: Import cognitive load pipeline
 try:
     print("Testing Test 1: CognitiveLoadPipeline import...")
-    from cognitive_load_pipeline import CognitiveLoadPipeline
+    from cognition import CognitiveLoadPipeline
     print("✓ Successfully imported CognitiveLoadPipeline.")
 except Exception as e:
     print(f"✗ Failed Test 1: {e}")
@@ -66,6 +66,6 @@ try:
 except Exception as e:
     print(f"✗ Failed Test 4: {e} (Is the Flask server running on port 8080?)")
     # We do not crash the tests if the server isn't running, but we warn the user.
-    print("  Note: Flask server query skipped or failed. Ensure `server.py` is running.")
+    print("  Note: Flask server query skipped or failed. Ensure `run.py` is running.")
 
 print("\n🎉 All refactoring diagnostic tests completed successfully!")

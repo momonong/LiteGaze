@@ -85,7 +85,7 @@ for _name in ('transformers', 'huggingface_hub', 'filelock', ''):
         if hasattr(_h, 'stream') and not isinstance(_h.stream, _SafeWriter):
             _h.stream = _SafeWriter(_h.stream)
 
-ROOT = Path(__file__).parent
+ROOT = Path(__file__).resolve().parents[2]
 ARCHIVE_DIR = ROOT / "archive" / "analysis_results"
 ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -115,7 +115,7 @@ def _get_pipeline(lang: str):
                 del os.environ["SSL_CERT_FILE"]
             model_type = _DEFAULT_MODELS[lang]
             print(f"[Cognitive] 首次載入 pipeline (lang={lang}, model={model_type})...")
-            from cognitive_load_pipeline import CognitiveLoadPipeline
+            from cognition import CognitiveLoadPipeline
             _pipelines[lang] = CognitiveLoadPipeline(model_type=model_type, lang=lang)
 
             print(f"[Cognitive] pipeline ({lang}) 載入完成")

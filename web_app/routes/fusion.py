@@ -18,7 +18,7 @@ from typing import Optional
 
 from flask import Blueprint, jsonify, request
 
-ROOT        = Path(__file__).parent
+ROOT        = Path(__file__).resolve().parents[2]
 REPORTS_DIR = ROOT / "docs" / "fusion_reports"
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
