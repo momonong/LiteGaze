@@ -6,18 +6,21 @@ This document details the architectural cleanup, modularization, and code unific
 
 ## 1. Directory Restructuring & Best Practices
 
-Rather than placing all files in the root folder, the project has been refactored into structured, cohesive Python packages and layout templates following Flask application factory best practices.
+Rather than placing packages and layouts directly on the root repository directory, the codebase has been structured into:
+1. A container package `core/` for business logic (eye-tracking gaze math, MediaPipe preprocessing, and NLP cognitive models).
+2. A Flask frontend package `web/` following modular blueprints and template views patterns.
 
 ### Core Changes
-* **Application Factory Pattern**: Moved Flask app initialization and route blueprint registrations into `web_app/__init__.py`. 
-* **Views & Templates Separation**:
-  * Moved HTML views (`word_track.html`, `gaze_page.html`) to the `web_app/templates/` folder.
-  * Moved CSS, JS (`mapping.js`, `gaze_integration.js`, `gaze_page.js`), and model weights (`face_landmarker.task`) into the `web_app/static/` folder.
-  * Corrected HTML script src paths to reference `/static/<filename>`.
-* **Cognitive Module Clean-up**:
-  * Moved the active cognition pipeline and trained JSON model weights to a dedicated `cognition/` Python package (`cognition/pipeline.py`, `cognition/ridge_model.json`, `cognition/xgb_model.json`).
-  * Simplified paths to automatically locate sibling model json weights.
-* **Unified Entry Point**: Removed the redundant `server.py` and created a streamlined `run.py` entry point at the repository root.
+* **`core/` logic package**:
+  * **`core/cognition/`**: Cognition pipeline and trained JSON model weights (`pipeline.py`, `ridge_model.json`, `xgb_model.json`).
+  * **`core/gaze_core/`**: Custom UniGaze prediction filters, model registries, and personalization trainers.
+  * **`core/unigaze_personalization/`**: Image normalization, datasets creation, and face parsing preprocessors.
+* **`web/` presentation package**:
+  * **`web/__init__.py`**: Flask application factory setup (`create_app()`), registering blueprints and templates.
+  * **`web/routes/`**: Blueprints for `cognitive`, `demo`, `fusion`, and `gaze` routes.
+  * **`web/static/`**: Client-side CSS, JavaScript, and face landmarks detect assets (`mapping.js`, `gaze_integration.js`, `gaze_page.js`, `face_landmarker.task`).
+  * **`web/templates/`**: Views (`word_track.html`, `gaze_page.html`).
+* **Root Unified Entrypoint**: Streamlined run script [run.py](file:///home/ubuntu/projects/lexigaze/run.py) at the repository root.
 
 ### Directory Layout
 ```
@@ -26,39 +29,20 @@ lexigaze/
 ├── data/                        # 📊 Sessions and logs database
 ├── docs/                        # 📝 System documentation & design reports
 ├── examples/                    # 📂 Calibration data examples, reading passages, and models
-├── scripts/                     # ⚙️ Offline scripts (calibration importer, fusion orchestrator, etc.)
+├── scripts/                     # ⚙️ Offline scripts (calibration importer, fusion orchestrator, test suite)
 │   ├── import_offline_calibration.py
 │   ├── fusion/
 │   │   ├── orchestrator.py
 │   │   └── __init__.py
 │   └── test_refactoring.py
 │
-├── gaze_core/                   # 👁️ Gaze tracking filters, inference, registry, & training
+├── core/                        # 🧠 CORE BUSINESS LOGIC CONTAINER
 │   ├── __init__.py
-│   ├── filters.py
-│   ├── inference.py
-│   ├── model_registry.py
-│   ├── sample_store.py
-│   └── training.py
+│   ├── cognition/               # Cognition pipeline & model JSON weights
+│   ├── gaze_core/               # Gaze prediction filters & model registries
+│   └── unigaze_personalization/ # MediaPipe preprocessing and model loading
 │
-├── unigaze_personalization/     # 🤖 Preprocessing pipelines and deep learning transforms
-│   ├── assets/
-│   │   ├── __init__.py
-│   │   └── face_model.txt
-│   ├── __init__.py
-│   ├── dataset.py
-│   ├── model.py
-│   ├── preprocess.py
-│   ├── server.py
-│   └── transforms.py
-│
-├── cognition/                   # 🧠 COGNITIVE LOAD PIPELINE & MODELS
-│   ├── __init__.py
-│   ├── pipeline.py              # (contains CognitiveLoadPipeline)
-│   ├── ridge_model.json         # Trained ridge regression weights
-│   └── xgb_model.json           # Trained XGBoost model weights
-│
-├── web_app/                     # 🌐 THE MAIN FLASK WEB APPLICATION PACKAGE
+├── web/                         # 🌐 THE MAIN FLASK WEB APPLICATION PACKAGE
 │   ├── __init__.py              # Flask app factory (defines create_app)
 │   ├── routes/                  # Modular backend endpoints (blueprints)
 │   │   ├── __init__.py
@@ -75,7 +59,7 @@ lexigaze/
 │       ├── gaze_page.html       # Eye-tracking calibration view
 │       └── word_track.html      # Integrated reading dashboard
 │
-├── run.py                       # 🚀 Clean entrypoint at root (runs web_app)
+├── run.py                       # 🚀 Clean entrypoint at root (runs web)
 └── refactor.md                  # 📄 [This file] Refactoring documentation
 ```
 
@@ -84,11 +68,11 @@ lexigaze/
 ## 2. Path and Blueprint Resolutions
 
 1. **Blueprints**:
-   - `web_app/routes/*.py` define the blueprints.
+   - `web/routes/*.py` define the blueprints.
    - `ROOT` inside the route scripts is updated to point to the repository root directory using `Path(__file__).resolve().parents[2]`.
-   - References to the cognitive load pipeline now import directly from the unified package:
+   - References to the cognitive load pipeline now import from `core.cognition`:
      ```python
-     from cognition import CognitiveLoadPipeline
+     from core.cognition import CognitiveLoadPipeline
      ```
 
 2. **Frontend Routing**:

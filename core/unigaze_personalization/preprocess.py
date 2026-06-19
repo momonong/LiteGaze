@@ -31,7 +31,7 @@ class NormalizedFace:
 
 
 def _load_face_model() -> np.ndarray:
-    with resources.files("unigaze_personalization.assets").joinpath("face_model.txt").open(
+    with resources.files("core.unigaze_personalization.assets").joinpath("face_model.txt").open(
         "r", encoding="utf-8"
     ) as handle:
         return np.loadtxt(handle)
@@ -173,7 +173,7 @@ class MediaPipeUniGazePreprocessor:
         from mediapipe.tasks.python.core import base_options
         import os
 
-        model_path = os.path.join(os.path.dirname(__file__), "..", "web_app", "static", "face_landmarker.task")
+        model_path = os.path.join(os.path.dirname(__file__), "..", "..", "web", "static", "face_landmarker.task")
         if not os.path.exists(model_path):
             os.makedirs(os.path.dirname(model_path), exist_ok=True)
             import urllib.request

@@ -13,10 +13,10 @@ ROOT = Path(__file__).parent.parent
 CHENGHAO_DIR = ROOT
 sys.path.insert(0, str(ROOT))
 
-from gaze_core.sample_store import ensure_sessions_dir, create_session, get_preprocessor
-from gaze_core.model_registry import ensure_runs_dir
-from gaze_core.training import train_placeholder
-from web_app.routes.demo import extract_all_targets_sequential
+from core.gaze_core.sample_store import ensure_sessions_dir, create_session, get_preprocessor
+from core.gaze_core.model_registry import ensure_runs_dir
+from core.gaze_core.training import train_placeholder
+from web.routes.demo import extract_all_targets_sequential
 
 def main():
     if len(sys.argv) < 3:

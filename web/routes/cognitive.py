@@ -115,7 +115,7 @@ def _get_pipeline(lang: str):
                 del os.environ["SSL_CERT_FILE"]
             model_type = _DEFAULT_MODELS[lang]
             print(f"[Cognitive] 首次載入 pipeline (lang={lang}, model={model_type})...")
-            from cognition import CognitiveLoadPipeline
+            from core.cognition import CognitiveLoadPipeline
             _pipelines[lang] = CognitiveLoadPipeline(model_type=model_type, lang=lang)
 
             print(f"[Cognitive] pipeline ({lang}) 載入完成")

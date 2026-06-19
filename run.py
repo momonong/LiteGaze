@@ -10,7 +10,7 @@ ROOT = Path(__file__).parent
 DATA_DIR = ROOT / 'data'
 
 # Import and build Flask application factory
-from web_app import create_app
+from web import create_app
 app = create_app()
 
 if __name__ == '__main__':

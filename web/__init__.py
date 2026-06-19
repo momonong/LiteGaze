@@ -19,10 +19,10 @@ def create_app():
     app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB upload limit
     
     # Register blueprints from submodules
-    from web_app.routes.gaze import gaze_api_bp, gaze_bp
-    from web_app.routes.cognitive import cognitive_bp
-    from web_app.routes.fusion import fusion_bp
-    from web_app.routes.demo import demo_bp
+    from web.routes.gaze import gaze_api_bp, gaze_bp
+    from web.routes.cognitive import cognitive_bp
+    from web.routes.fusion import fusion_bp
+    from web.routes.demo import demo_bp
     
     app.register_blueprint(gaze_bp)
     app.register_blueprint(gaze_api_bp)

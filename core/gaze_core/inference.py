@@ -22,7 +22,7 @@ def get_preprocessor():
     if _preprocessor is None:
         with _preprocessor_lock:
             if _preprocessor is None:
-                from unigaze_personalization.preprocess import MediaPipeUniGazePreprocessor
+                from core.unigaze_personalization.preprocess import MediaPipeUniGazePreprocessor
                 _preprocessor = MediaPipeUniGazePreprocessor()
     return _preprocessor
 
@@ -32,7 +32,7 @@ def get_base_model():
         base_model = _model_cache.get("base_model")
         if base_model is None:
             import torch
-            from unigaze_personalization.model import UniGazeFeatureWrapper, load_unigaze_b16
+            from core.unigaze_personalization.model import UniGazeFeatureWrapper, load_unigaze_b16
 
             device = "cuda" if torch.cuda.is_available() else "cpu"
             base_model = UniGazeFeatureWrapper(load_unigaze_b16(device)).to(device).eval()
@@ -72,7 +72,7 @@ def predict(root: Path, payload: dict) -> tuple[dict, int]:
     # 3. Extract baseline prediction using UniGaze neural network
     try:
         import torch
-        from unigaze_personalization.transforms import to_unigaze_tensor
+        from core.unigaze_personalization.transforms import to_unigaze_tensor
 
         # Run MediaPipe face detection and facial normalization
         preprocessor = get_preprocessor()

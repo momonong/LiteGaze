@@ -4,10 +4,10 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
-from gaze_core.inference import predict
-from gaze_core.model_registry import ensure_runs_dir, list_models, delete_model, rename_model
-from gaze_core.sample_store import create_session, list_datasets, save_sample, delete_dataset, rename_dataset
-from gaze_core.training import train_placeholder
+from core.gaze_core.inference import predict
+from core.gaze_core.model_registry import ensure_runs_dir, list_models, delete_model, rename_model
+from core.gaze_core.sample_store import create_session, list_datasets, save_sample, delete_dataset, rename_dataset
+from core.gaze_core.training import train_placeholder
 
 
 ROOT = Path(__file__).resolve().parents[2]

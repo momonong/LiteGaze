@@ -24,9 +24,9 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
         return {"ok": False, "error": "dataset session or manifest not found"}, 404
 
     try:
-        from unigaze_personalization.dataset import read_manifest
-        from unigaze_personalization.transforms import to_unigaze_tensor
-        from unigaze_personalization.model import UniGazeFeatureWrapper, load_unigaze_b16
+        from core.unigaze_personalization.dataset import read_manifest
+        from core.unigaze_personalization.transforms import to_unigaze_tensor
+        from core.unigaze_personalization.model import UniGazeFeatureWrapper, load_unigaze_b16
 
         # 1. Load calibration data records
         records = read_manifest(manifest_path)

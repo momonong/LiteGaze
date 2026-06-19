@@ -11,7 +11,7 @@ print("=== Refactoring Diagnostic Tests ===")
 # Test 1: Import cognitive load pipeline
 try:
     print("Testing Test 1: CognitiveLoadPipeline import...")
-    from cognition import CognitiveLoadPipeline
+    from core.cognition import CognitiveLoadPipeline
     print("✓ Successfully imported CognitiveLoadPipeline.")
 except Exception as e:
     print(f"✗ Failed Test 1: {e}")
@@ -20,8 +20,8 @@ except Exception as e:
 # Test 2: Import gaze core module
 try:
     print("Testing Test 2: Gaze Core imports...")
-    from gaze_core.model_registry import ensure_runs_dir
-    from gaze_core.sample_store import ensure_sessions_dir
+    from core.gaze_core.model_registry import ensure_runs_dir
+    from core.gaze_core.sample_store import ensure_sessions_dir
     
     runs_dir = ensure_runs_dir(ROOT)
     sessions_dir = ensure_sessions_dir(ROOT)

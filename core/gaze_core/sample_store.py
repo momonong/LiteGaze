@@ -21,7 +21,7 @@ def get_preprocessor():
     if _preprocessor is None:
         with _preprocessor_lock:
             if _preprocessor is None:
-                from unigaze_personalization.preprocess import MediaPipeUniGazePreprocessor
+                from core.unigaze_personalization.preprocess import MediaPipeUniGazePreprocessor
                 _preprocessor = MediaPipeUniGazePreprocessor()
     return _preprocessor
 
