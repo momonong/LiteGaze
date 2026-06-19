@@ -10,35 +10,42 @@ The repository is structured into modular subsystems representing different rese
 
 ```
 lexigaze/
-├── chenghao/                  # 🌐 WEB INTEGRATION & CORE DATABASE
-│   ├── server.py              # Flask server entry point (routes: sessions, templates, etc.)
-│   ├── gaze_routes.py         # Blueprints for gaze calibration, prediction, and models
-│   ├── cognitive_routes.py    # Blueprints for BERT/GPT-2 text difficulty analysis
-│   ├── fusion_routes.py       # Blueprints for combining gaze metrics and cognitive load
-│   ├── demo_routes.py         # Blueprints for offline video-calibration batch processing
-│   ├── word_track.html        # Main SPA: PDF coordinate extraction, reading dashboard, RDS overlay
-│   ├── gaze_page.html         # Live calibration and testing UI dashboard
-│   ├── gaze_page.js           # Client-side calibration, video recording, and timeline logic
-│   ├── gaze_integration.js    # Inference loop: webcam frame-capture and smoothing filters
-│   ├── mapping.js             # Gaze cursor smoothing and word bounding-box highlight mapping
-│   ├── gaze_core/             # Python package for gaze processing
-│   │   ├── inference.py       # UniGaze ONNX inference + MediaPipe landmarks preprocessor
-│   │   ├── training.py        # Polynomial regression calibration models training
+├── core/                      # 🧠 CORE BUSINESS LOGIC CONTAINER
+│   ├── cognition/             # Cognition pipeline & model JSON weights
+│   │   ├── pipeline.py        # NLP Pipeline surprisal (GPT-2/BERT) calculation
+│   │   ├── ridge_model.json   # Pretrained Ridge regression models
+│   │   └── xgb_model.json     # Pretrained XGBoost model
+│   │
+│   ├── gaze_core/             # Gaze prediction filters & model registries
+│   │   ├── inference.py       # Preprocesses frames & feeds to ONNX model
+│   │   ├── training.py        # Trains polynomial regression on calibration datasets
 │   │   ├── sample_store.py    # Dataset sessions, manifests, and image saving
-│   │   └── model_registry.py  # Model version listing, naming, and deleting
-│   └── data/                  # Server-side Database (document sessions and calibration data)
-│       ├── sessions/          # Calibration datasets (images and manifests)
-│       └── runs/              # Saved personalization regression models (.json)
+│   │   └── model_registry.py  # Manages and lists trained per-user models
+│   │
+│   └── unigaze_personalization/ # MediaPipe preprocessing & model loading
+│       ├── preprocess.py      # Face cropping & head pose estimation
+│       ├── model.py           # Frozen UniGaze-B16 ViT model weights wrapper
+│       ├── dataset.py         # Manifest helper for loading calibration sessions
+│       └── transforms.py      # Image transformation pipeline
 │
-├── shengwen/                  # 👁️ PERCEPTION MODULE (Gaze Tracking)
-│   ├── src/                   # Face landmark extraction scripts
-│   ├── web/static/            # Web assets (WASM face landmarker task, MediaPipe JS SDKs)
-│   └── face_landmarker.task   # MediaPipe pretrained face landmark task bundle
+├── web/                       # 🌐 THE MAIN FLASK WEB APPLICATION PACKAGE
+│   ├── routes/                # Modular backend endpoints (blueprints)
+│   │   ├── cognitive.py       # Blueprints for text difficulty analysis
+│   │   ├── gaze.py            # Blueprints for gaze prediction & models
+│   │   ├── demo.py            # Blueprints for offline video-calibration
+│   │   └── fusion.py          # Blueprints for combining gaze metrics & load
+│   ├── static/                # Client-side JavaScript, CSS, & model weights
+│   │   ├── mapping.js         # Gaze cursor smoothing and word mapping
+│   │   ├── gaze_integration.js # Live loop & camera capture in browser
+│   │   ├── gaze_page.js       # Calibration and timeline logic
+│   │   └── face_landmarker.task # MediaPipe pretrained landmark task bundle
+│   └── templates/             # Client-side HTML views
+│       ├── word_track.html    # Main SPA: PDF coordinate extraction & reading dashboard
+│       └── gaze_page.html     # Live calibration view
 │
-├── weichi/                    # 🧠 COGNITION MODULE (NLP Cognitive Load)
-│   ├── GECO_data/             # Reading trial corpora for difficulty modeling
-│   ├── ridge_model.json       # Pretrained Ridge regression models for feature weight mapping
-│   └── xgb_model.json         # Pretrained XGBoost model for difficulty estimation
+├── run.py                     # 🚀 Clean entrypoint at root (runs web)
+├── refactor.md                # 📄 Refactoring documentation
+├── archive/                   # 🗄️ ARCHIVED LEGACY MODULES (weichi, shengwen, BoWei)
 │
 ├── scripts/                   # 🧪 RESEARCH SANDBOX & EXPERIMENTAL UTILITIES
 │   ├── fusion/                # Core mathematical fusion helper modules
@@ -112,7 +119,7 @@ At the end of a reading session, the frontend gathers tracked gaze logs and send
 ## 📊 Database Schemas & File Structures
 
 ### 1. Calibration Session Manifest (`manifest.jsonl`)
-Located in `chenghao/data/sessions/<session_id>/manifest.jsonl`. Each line represents a recorded gaze calibration sample:
+Located in data/sessions/<session_id>/manifest.jsonl. Each line represents a recorded gaze calibration sample:
 ```json
 {
   "ok": true,
@@ -135,7 +142,7 @@ Located in `chenghao/data/sessions/<session_id>/manifest.jsonl`. Each line repre
 ```
 
 ### 2. Personalization Model JSON
-Located in `chenghao/runs/<model_name>.json`. Contains weights for mapping raw gaze angles (`[pitch, yaw]`) to screen locations:
+Located in examples/models/<model_name>.json. Contains weights for mapping raw gaze angles (`[pitch, yaw]`) to screen locations:
 ```json
 {
   "name": "subject_laptop_model",
@@ -160,7 +167,7 @@ Located in `chenghao/runs/<model_name>.json`. Contains weights for mapping raw g
 ```
 
 ### 3. Document Coordinate Layout Session
-Located in `chenghao/data/<session_id>.json`. Extracted layout session generated during document uploading:
+Located in data/<session_id>.json. Extracted layout session generated during document uploading:
 ```json
 {
   "id": "72c20283-7bd7-49cd-bbaa-b9d5d9ba5567",

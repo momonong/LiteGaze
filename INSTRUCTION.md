@@ -1,4 +1,4 @@
-﻿# 🔭 LexiGaze — How to Run
+# 🔭 LexiGaze — How to Run
 
 LexiGaze is a Flask web application that fuses three research pipelines into one tool:
 
@@ -6,7 +6,7 @@ LexiGaze is a Flask web application that fuses three research pipelines into one
 - **Gaze tracking** — real-time UniGaze-B neural network + MediaPipe face detection via webcam
 - **Cognitive load analysis** — GPT-2 (English) or BERT (Chinese) word-difficulty scoring
 
-Everything lives inside `chenghao/` as a single Flask server. `weichi/` (cognitive pipeline) and `shengwen/src/` (gaze model) are wired in automatically via `sys.path` injection — you do **not** need to install them separately.
+The server logic lives inside the `web/` package, and the core modules live under the `core/` package. The entry point of the project is the `run.py` script at the root of the repository.
 
 ---
 
@@ -93,9 +93,8 @@ Required for the English cognitive load pipeline:
 python -m spacy download en_core_web_sm
 ```
 
-> **No need to install `shengwen/` separately.**
-> `chenghao/gaze_core/__init__.py` automatically adds `shengwen/src/` to `sys.path` at runtime.
-> Similarly, `chenghao/cognitive_routes.py` automatically adds `weichi/` to `sys.path`.
+> **Core and Web logic packages are auto-discoverable.**
+> All core logic submodules under `core/` and views under `web/` are loaded using standard Python import resolutions.
 
 > **First-run download:** On the first cognitive load request, Hugging Face downloads GPT-2 (~500 MB for English) or BERT (~400 MB for Chinese) automatically into your `HF_HOME` directory.
 
@@ -131,22 +130,22 @@ Get a free Gemini API key at: https://aistudio.google.com/apikey
 
 ## 5. Run the Server
 
-The single entry point for the entire integrated application is `chenghao/server.py`.
+The single entry point for the entire integrated application is `run.py`.
 
 **Always run from the project root** (`D:\projects\lexigaze`), with the `-X utf8` flag:
 
 ```powershell
-python -X utf8 chenghao/server.py
+python -X utf8 run.py
 ```
 
 On success you'll see:
 
 ```
 ================================================
-  文件座標擷取工具  —  Flask Backend
+  文件座標擷取工具  —  Flask Backend (Refactored)
 ================================================
-  網址  : http://localhost:8080/word_track.html
-  資料  : chenghao\data
+  網址  : http://localhost:8080/
+  資料  : data
   API   : http://localhost:8080/api/sessions
   認知負荷 : http://localhost:8080/api/cognitive/health
   停止  : Ctrl + C
@@ -180,7 +179,7 @@ The gaze tracking page (`gaze_page.html`). Features:
 
 - **Live inference** — webcam → MediaPipe face detection → UniGaze-B → screen coordinates
 - **9-point calibration grid** — collect samples (configurable repeats per point)
-- **Train personalization model** — polynomial regression calibration stored in `chenghao/gaze_data/runs/`
+- **Train personalization model** — polynomial regression calibration stored in `examples/models/`
 - **Model selector** — switch between the frozen baseline and any trained personalization version
 - **Filtering modes** — None, OneEuro, horizontal corridor lock, dwell/fixation detection, or combined
 
@@ -206,7 +205,7 @@ GET    /api/sessions/<id>         → Retrieve full session data
 DELETE /api/sessions/<id>         → Delete a session
 ```
 
-Sessions are stored as JSON files in `chenghao/data/`.
+Sessions are stored as JSON files in `data/`.
 
 ### Gaze Tracking
 
@@ -219,7 +218,7 @@ POST /api/gaze/train              → Train personalization model from a dataset
 POST /api/gaze/predict            → Run gaze prediction on a webcam frame (base64)
 ```
 
-Calibration data is stored in `chenghao/gaze_data/`.
+Calibration data is stored in `data/sessions/`.
 
 ### Cognitive Load
 
@@ -265,32 +264,32 @@ python run_visualize_bert.py
 python visualize_load.py
 ```
 
-### From the weichi/ module (cognitive load research):
+### From the weichi/ module (cognitive load research - archived):
 
 ```powershell
 # Quick demo with a few sentences
-python weichi/quick_demo.py
+python archive/weichi/quick_demo.py
 
 # Visualize load scores
-python weichi/visualize_load.py
+python archive/weichi/visualize_load.py
 
 # Retrain XGBoost scoring model on GECO corpus
-python weichi/train_xgb_geco.py
+python archive/weichi/train_xgb_geco.py
 
 # Retrain Ridge fallback model
-python weichi/train_ridge_geco.py
+python archive/weichi/train_ridge_geco.py
 ```
 
 ### Validation Scripts (require GECO / PROVO corpus data)
 
-> ⚠️ These scripts need corpus files that are **not committed** to the repo (`weichi/GECO_data/`, `weichi/PROVO_data/`). Ask a team member for these files.
+> ⚠️ These scripts need corpus files that are **not committed** to the repo (`archive/weichi/GECO_data/`, `archive/weichi/PROVO_data/`). Ask a team member for these files.
 
 ```powershell
-python weichi/validate_geco.py          # Core GECO validation
-python weichi/full_validation.py        # Full paper-level (2000 train / 1000 test)
-python weichi/validate_provo.py         # Zero-shot PROVO cross-corpus test
-python weichi/robustness_analysis.py    # Bootstrap CI + LOSO per-reader
-python weichi/compare_models.py         # GPT-2 vs GPT-2-Large vs TinyLlama, etc.
+python archive/weichi/validate_geco.py          # Core GECO validation
+python archive/weichi/full_validation.py        # Full paper-level (2000 train / 1000 test)
+python archive/weichi/validate_provo.py         # Zero-shot PROVO cross-corpus test
+python archive/weichi/robustness_analysis.py    # Bootstrap CI + LOSO per-reader
+python archive/weichi/compare_models.py         # GPT-2 vs GPT-2-Large vs TinyLlama, etc.
 ```
 
 ---
@@ -303,31 +302,31 @@ python weichi/compare_models.py         # GPT-2 vs GPT-2-Large vs TinyLlama, etc
 **Fix:** Launch with `-X utf8`:
 
 ```powershell
-python -X utf8 chenghao/server.py
+python -X utf8 run.py
 ```
 
 The server already wraps stdout/stderr with a safe fallback, but `-X utf8` is more robust.
 
 ---
 
-### `ModuleNotFoundError: No module named 'cognitive_routes'` (or `gaze_routes`, `fusion_routes`)
+### `ModuleNotFoundError: No module named 'web'`
 
-**Cause:** You ran the server from inside `chenghao/` instead of the project root.  
-**Fix:** Always run from `D:\projects\lexigaze`:
+**Cause:** You ran the server from inside a subdirectory instead of the project root.  
+**Fix:** Always run from the project root (`D:\projects\lexigaze`):
 
 ```powershell
 # Correct ✅
-python -X utf8 chenghao/server.py
+python -X utf8 run.py
 
-# Wrong ❌ — do NOT cd into chenghao first
+# Wrong ❌ — do NOT cd into subdirectories first
 ```
 
 ---
 
-### `ModuleNotFoundError: No module named 'unigaze_personalization'`
+### `ModuleNotFoundError: No module named 'core.unigaze_personalization'`
 
-**Cause:** The `shengwen/src/` package path wasn't injected (very unusual — it's automatic).  
-**Fix:** Check that `shengwen/src/unigaze_personalization/` exists. If missing, the gaze submodule may not have been initialized:
+**Cause:** The core modules directory structure is missing or corrupt.  
+**Fix:** Check that `core/unigaze_personalization/` exists. If missing, please do a fresh clone:
 
 ```powershell
 git submodule update --init --recursive
@@ -376,35 +375,25 @@ taskkill /PID <PID_NUMBER> /F
 ```
 lexigaze/
 │
-├── chenghao/                     ← Integrated Flask app — the main system
-│   ├── server.py                 ← Entry point (run this)
-│   ├── word_track.html           ← Main SPA (document upload, overlay, export)
-│   ├── gaze_page.html            ← Gaze calibration & live inference UI
-│   ├── gaze_page.js              ← Calibration logic (data collection, training)
-│   ├── gaze_integration.js       ← Live gaze inference loop
-│   ├── mapping.js                ← Gaze-to-word overlay
-│   ├── cognitive_routes.py       ← /api/cognitive/* (pulls from weichi/)
-│   ├── gaze_routes.py            ← /api/gaze/* (pulls from shengwen/ via gaze_core)
-│   ├── fusion_routes.py          ← /api/fuse/* (pulls from scripts/fusion/)
+├── run.py                        ← Main server entry point (run this)
+│
+├── core/                         ← Core Business Logic Container
+│   ├── cognition/                ← Cognitive load NLP pipeline & model weights
 │   ├── gaze_core/                ← Gaze backend (inference, training, registry)
-│   │   └── __init__.py           ← Auto-injects shengwen/src into sys.path
-│   ├── data/                     ← Saved document sessions (JSON)
-│   └── gaze_data/                ← Calibration sessions & trained models
-│       ├── sessions/
-│       └── runs/
+│   └── unigaze_personalization/  ← Preprocessing and deep learning transforms
 │
-├── weichi/                       ← Cognitive load NLP pipeline (auto-imported)
-│   ├── cognitive_load_pipeline.py
-│   ├── xgb_model.json            ← Trained XGBoost weights
-│   └── ridge_model.json          ← Ridge fallback weights
+├── web/                          ← Integrated web platform package
+│   ├── routes/                   # Blueprints (cognitive, demo, fusion, gaze)
+│   ├── static/                   # JS/CSS assets and MediaPipe landmarker task
+│   └── templates/                # HTML layout templates (word_track, gaze_page)
 │
-├── shengwen/                     ← UniGaze-B personalization (auto-imported)
-│   └── src/unigaze_personalization/
+├── data/                         # Saved document layout sessions
+├── examples/models/              # Calibration datasets & personalization models
 │
 ├── scripts/fusion/               ← Gaze×cognitive fusion orchestrator
 │   └── orchestrator.py
 │
-├── archive/analysis_results/     ← Cognitive load analysis archives
+├── archive/                      ← Archived legacy developer subdirectories
 ├── docs/fusion_reports/          ← Persisted fusion RDS reports
 │
 ├── .env                          ← Local secrets (never commit)

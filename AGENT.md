@@ -17,27 +17,27 @@ LexiGaze is built to be a next-generation English learning system that merges **
 ## 🏛️ System Architecture Overview
 
 LexiGaze is divided into four main subsystems:
-1. **Perception Module (`shengwen/`)**: Captures video frames via webcam, runs MediaPipe face mesh and landmark preprocessing, passes normalized face crops to the UniGaze-B16 ViT neural net, and fits polynomial calibration models to correct systematic eye-tracking offsets.
-2. **Cognition Module (`weichi/`)**: Computes word-level linguistic complexity metrics (surprisal, contextual entropy, zipf frequency) to determine text difficulty.
+1. **Perception Module (`core/unigaze_personalization/`)**: Captures video frames via webcam, runs MediaPipe face mesh and landmark preprocessing, passes normalized face crops to the UniGaze-B16 ViT neural net, and fits polynomial calibration models to correct systematic eye-tracking offsets.
+2. **Cognition Module (`core/cognition/`)**: Computes word-level linguistic complexity metrics (surprisal, contextual entropy, zipf frequency) to determine text difficulty.
 3. **Fusion & Orchestrator (`scripts/`)**: Integrates raw gaze dwell duration and cognitive load weights using math fusion models (RRF, Bayesian Integration, etc.) to yield a final Reading Difficulty Score (RDS).
-4. **Web UI & Server (`chenghao/`)**: Renders the document reading dashboard (word layout mapping and highlight overlay) and handles calibration recording and automated post-calibration training.
+4. **Web UI & Server (`web/`)**: Renders the document reading dashboard (word layout mapping and highlight overlay) and handles calibration recording and automated post-calibration training.
 
 ---
 
 ## ⚙️ Coding Standards & Constraints
 
-### 1. Module Path Injection
-Do NOT install `shengwen` or `weichi` as global or editable packages in `pyproject.toml`. Instead, load them dynamically at runtime by injecting their paths into `sys.path`:
-* Gaze submodules append `shengwen/src/` inside [chenghao/gaze_core/__init__.py](file:///home/ubuntu/projects/lexigaze/chenghao/gaze_core/__init__.py).
-* Cognitive submodules insert `weichi/` inside [chenghao/cognitive_routes.py](file:///home/ubuntu/projects/lexigaze/chenghao/cognitive_routes.py).
+### 1. Unified Modular Packages
+Do NOT use legacy path-injection hacks inside Python files. All modules must be imported natively using the consolidated package layouts:
+* Core logic and submodules (gaze calculation, deep learning preprocessing, NLP pipelines) are imported from the `core` package.
+* Flask routes and web application elements are imported from the `web` package.
 
 ### 2. Relative API Routes
-All API endpoints inside HTML or Javascript files under `chenghao/` must use relative paths (e.g., `/api/gaze/predict`). This allows the frontend to run seamlessly through public `ngrok` tunnels without domain rewrites.
+All API endpoints inside HTML or Javascript files under `web/` must use relative paths (e.g., `/api/gaze/predict`). This allows the frontend to run seamlessly through public `ngrok` tunnels without domain rewrites.
 
 ### 3. Unicode & Console Printing
 * Always launch Python scripts containing non-ASCII print outputs using the UTF-8 flag:
   ```bash
-  python -X utf8 chenghao/server.py
+  python -X utf8 run.py
   ```
 * Always open project text files with explicit UTF-8 encoding:
   ```python

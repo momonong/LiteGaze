@@ -12,40 +12,19 @@ The project is structured into three main research modules and an integration hu
 
 ```
 lexigaze/
-├── chenghao/                      # MAIN INTEGRATION HUB (Chenghao)
-│   ├── server.py                  # Single Flask entry point serving all SPA and REST APIs
-│   ├── word_track.html            # Main SPA: PDF/doc viewer, text rendering, gaze & cognitive heatmaps
-│   ├── gaze_page.html             # Gaze calibration & model personalization collection UI
-│   ├── gaze_page.js               # Calibration logic (grid display, sample collection, prediction check)
-│   ├── gaze_integration.js        # Live inference loop & camera capturing in the browser
-│   ├── mapping.js                 # Gaze-to-word coordinate matching and overlay rendering
-│   ├── gaze_routes.py             # REST API for calibration session, samples, and model prediction
-│   ├── cognitive_routes.py        # REST API for BERT/GPT-2 difficulty and evaluation
-│   ├── fusion_routes.py           # REST API for real-time gaze-cognitive data fusion (/api/fuse)
-│   └── gaze_core/                 # Backend python module for UniGaze inference & training
-│       ├── inference.py           # Preprocesses frames & feeds to ONNX model
-│       ├── training.py            # Trains polynomial regression on calibration datasets
-│       ├── sample_store.py        # Stores raw, cropped, and normalized calibration frames
-│       └── model_registry.py      # Manages and lists trained per-user personalization models
+├── core/                          # 🧠 CORE BUSINESS LOGIC CONTAINER
+│   ├── cognition/                 # Cognition pipeline & model JSON weights
+│   ├── gaze_core/                 # Gaze prediction filters & model registries
+│   └── unigaze_personalization/   # MediaPipe preprocessing & model loading
 │
-├── shengwen/                      # EYE-GAZE BASILINE & PREPROCESSING (Shengwen)
-│   ├── face_landmarker.task       # MediaPipe face marker model (3.6 MB)
-│   └── src/unigaze_personalization/
-│       ├── preprocess.py          # MediaPipe preprocessor (face cropping & head pose estimation)
-│       ├── model.py               # Frozen UniGaze-B16 ViT model weights wrapper
-│       ├── dataset.py             # Manifest helper for loading calibration sessions
-│       └── transforms.py          # Image transformation pipeline (224x224 RGB normalization)
+├── web/                           # 🌐 THE MAIN FLASK WEB APPLICATION PACKAGE
+│   ├── routes/                    # Modular backend endpoints (blueprints)
+│   ├── static/                    # Client-side JavaScript, CSS, & model weights
+│   └── templates/                 # Client-side HTML views
 │
-├── weichi/                        # COGNITIVE LOAD PIPELINE & VALIDATION (Weichi)
-│   ├── cognitive_load_pipeline.py # NLP Pipeline: surprisal (GPT-2/BERT) + Rényi entropy + AoA + dep_load
-│   ├── xgb_model.json             # Trained XGBoost model (trained on 2,000 GECO sentences)
-│   ├── ridge_model.json           # Ridge regression model (fallback weights)
-│   ├── train_xgb_geco.py          # Training scripts for XGBoost cognitive model
-│   └── validate_geco.py           # Validates pipeline predictions against human reading data
-│
-├── BoWei/                         # SUPPLEMENTARY VISUALIZATION (BoWei)
-│   ├── mapping.html               # Multi-document overlay viewer
-│   └── mapping.js                 # Coordinate-to-gaze mapping experiments
+├── run.py                         # 🚀 Clean entrypoint at root (runs web)
+├── refactor.md                    # 📄 Refactoring documentation
+├── archive/                       # 🗄️ ARCHIVED LEGACY MODULES (weichi, shengwen, BoWei)
 │
 ├── scripts/                       # BENCHMARKS & EXPERIMENTS
 │   ├── fusion_module.py           # Reusable module with 6 different gaze-cognitive fusion algorithms
@@ -108,10 +87,10 @@ GEMINI_API_KEY=your_gemini_api_key_here
 Start the Flask server from the project root with UTF-8 encoding enabled (required for Windows terminals to avoid crashes due to library logs):
 
 ```bash
-python -X utf8 chenghao/server.py
+python -X utf8 run.py
 ```
 
-The browser will open automatically at `http://localhost:8080/word_track.html`.
+The browser will open automatically at `http://localhost:8080/`.
 
 ---
 
@@ -187,7 +166,7 @@ You can run experiments, benchmarks, and training routines offline:
 python scripts/experiment_fusion.py
 
 # Retrain the cognitive XGBoost model on GECO corpus
-python weichi/train_xgb_geco.py
+python archive/weichi/train_xgb_geco.py
 
 # Run Viterbi gaze decoding correction algorithms on pp01 trial data
 python scripts/geco/tasks/evaluate_pipeline.py
