@@ -499,7 +499,7 @@
       background: rgba(15, 23, 42, 0.35);
       backdrop-filter: blur(8px);
       -webkit-backdrop-filter: blur(8px);
-      z-index: 1000;
+      z-index: 999999;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1122,6 +1122,11 @@
     </div>
     
     <div class="header-actions">
+      <button class="btn btn-secondary" id="gazePerfChangeBtn" onclick="if(window.lexiOpenPerfModal) window.lexiOpenPerfModal(); else document.getElementById('perfModeModal').classList.add('open');" style="padding: 0.35rem 0.85rem; font-size: 0.8rem; display: flex; align-items: center; gap: 4px; min-height: auto; border-color: #8b5cf6; color: #7c3aed;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        效能模式
+        <span id="gazePerfModeTagHeader" class="perf-mode-tag video" style="margin-left:2px;">🎬 錄影</span>
+      </button>
       <button class="btn btn-secondary" id="helpTutorialBtn" style="padding: 0.35rem 0.85rem; font-size: 0.8rem; display: flex; align-items: center; gap: 4px; min-height: auto;">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10"></circle>
@@ -1147,7 +1152,13 @@
       
       <!-- Icon Bar -->
       <div class="icon-bar">
-        <button class="icon-bar-btn active" data-panel="file" title="文件與分析">
+        <button class="icon-bar-btn active" data-panel="guide" title="步驟指南 / Stepper Guide">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 11 12 14 22 4"></polyline>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+          </svg>
+        </button>
+        <button class="icon-bar-btn" data-panel="file" title="文件與分析">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
             <polyline points="14 2 14 8 20 8"/>
@@ -1180,8 +1191,164 @@
           </button>
         </div>
 
+      <!-- Panel: Guide -->
+      <div class="sidebar-panel active" id="panel-guide">
+        <div class="panel-section-title" style="font-size:0.75rem; color:var(--accent);">步驟指南 / Step Guide</div>
+        
+        <div class="guide-welcome">
+          <div style="font-size: 0.76rem; font-weight: 700; color: var(--accent); margin-bottom: 2px;">📖 歡迎使用 LexiGaze !</div>
+          <div style="font-size: 0.65rem; color: var(--ink-secondary); line-height: 1.4;">
+            請跟隨以下步驟進行硬體配置、相機校正、閱讀錄影，最後生成詳細的認知負荷診斷報告。
+          </div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          
+          <!-- Step 1: Mode Selection -->
+          <div class="guide-step-card active" id="guideStep1">
+            <div class="guide-step-header">
+              <div class="guide-step-title-wrap">
+                <span class="guide-step-number">1</span>
+                <span class="guide-step-title">硬體與效能模式</span>
+              </div>
+              <span class="guide-step-badge active" id="guideStep1Badge">進行中</span>
+            </div>
+            <div class="guide-step-desc">
+              評估您的設備效能，選擇<b>錄影分析</b>（省電無延遲）或<b>即時推論</b>模式。
+            </div>
+            <div class="guide-step-content">
+              <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-highest); padding:4px 8px; border-radius:4px; font-size:10px; margin-bottom:4px;">
+                <span>目前模式：</span>
+                <strong id="guideCurrentModeTxt">🎬 錄影模式</strong>
+              </div>
+              <button class="btn btn-secondary" onclick="if(window.lexiOpenPerfModal) window.lexiOpenPerfModal();" style="width:100%; font-size:11px; min-height:28px;">
+                ⚙ 選擇效能模式與效能測試
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 2: Calibration -->
+          <div class="guide-step-card" id="guideStep2">
+            <div class="guide-step-header">
+              <div class="guide-step-title-wrap">
+                <span class="guide-step-number">2</span>
+                <span class="guide-step-title">眼動相機校正</span>
+              </div>
+              <span class="guide-step-badge" id="guideStep2Badge">待執行</span>
+            </div>
+            <div class="guide-step-desc">
+              開啟獨立校正視窗，注視跳動黑色圓點進行臉部與個人化眼動基準校正。
+            </div>
+            <div class="guide-step-content">
+              <button class="btn btn-secondary open-gaze-page-btn" style="width:100%; font-size:11px; min-height:28px;">
+                🎯 前往校正與訓練頁面 ↗
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 3: Load Article -->
+          <div class="guide-step-card" id="guideStep3">
+            <div class="guide-step-header">
+              <div class="guide-step-title-wrap">
+                <span class="guide-step-number">3</span>
+                <span class="guide-step-title">載入閱讀文件</span>
+              </div>
+              <span class="guide-step-badge" id="guideStep3Badge">待執行</span>
+            </div>
+            <div class="guide-step-desc">
+              載入您要閱讀的文章。您可以上傳 PDF/TXT，或載入系統的內建範例。
+            </div>
+            <div class="guide-step-content">
+              <!-- Upload Custom Document -->
+              <button class="btn btn-primary" id="guideUploadBtn" style="width:100%; font-size:11px; min-height:28px; margin-bottom:6px;">
+                📁 選擇或拖放文件上傳
+              </button>
+              
+              <!-- Quick Example Selector -->
+              <div style="font-size: 9px; color: var(--ink-secondary); margin: 2px 0;">快速載入範本：</div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px;">
+                <button class="btn btn-secondary" onclick="loadExampleText('/examples/easy_en.md', 'easy_en.md')" style="font-size:9px; min-height:24px; padding:2px;">Easy EN (英)</button>
+                <button class="btn btn-secondary" onclick="loadExampleText('/examples/hard_en.md', 'hard_en.md')" style="font-size:9px; min-height:24px; padding:2px;">Hard EN (英)</button>
+                <button class="btn btn-secondary" onclick="loadExampleText('/examples/easy_zh.md', 'easy_zh.md')" style="font-size:9px; min-height:24px; padding:2px;">Easy ZH (中)</button>
+                <button class="btn btn-secondary" onclick="loadExampleText('/examples/hard_zh.md', 'hard_zh.md')" style="font-size:9px; min-height:24px; padding:2px;">Hard ZH (中)</button>
+              </div>
+              <div id="guideFileLoadedTxt" style="display:none; font-size:10px; color:var(--success); font-weight:600; margin-top:4px;">
+                ✅ 已載入：<span id="guideFileName">—</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 4: Eye Tracking Reading -->
+          <div class="guide-step-card" id="guideStep4">
+            <div class="guide-step-header">
+              <div class="guide-step-title-wrap">
+                <span class="guide-step-number">4</span>
+                <span class="guide-step-title">開始閱讀與追蹤</span>
+              </div>
+              <span class="guide-step-badge" id="guideStep4Badge">待執行</span>
+            </div>
+            
+            <!-- Video Mode UI inside Step 4 -->
+            <div id="guideVmControls" style="display:flex; flex-direction:column; gap:4px; margin-top:2px;">
+              <div class="guide-step-desc">
+                點擊「開始錄影」，專注並自然地往下閱讀。完畢後，點擊「停止」再點「分析」。
+              </div>
+              <div id="guideVmStatus" style="font-size:9px; padding:4px 8px; border-radius:4px; background:var(--bg-highest); margin:4px 0; color:var(--ink-secondary);">狀態: 尚未開始</div>
+              <div style="display:flex; gap:4px;">
+                <button class="btn btn-success" id="guideVmStartBtn" onclick="startVideoRecording()" style="flex:1; font-size:10px; min-height:26px;">▶ 開始錄影</button>
+                <button class="btn btn-danger" id="guideVmStopBtn" onclick="stopVideoRecording()" style="flex:1; font-size:10px; min-height:26px;" disabled>■ 停止錄影</button>
+              </div>
+              <button class="btn btn-primary" id="guideVmProcessBtn" onclick="processVideoRecording()" style="width:100%; font-size:10px; min-height:28px; margin-top:2px;" disabled>⬆ 上傳並分析影片</button>
+            </div>
+
+            <!-- Real-Time Mode UI inside Step 4 -->
+            <div id="guideRtControls" style="display:none; flex-direction:column; gap:4px; margin-top:2px;">
+              <div class="guide-step-desc">
+                請點擊「開啟推論」，您的注視點將即時顯示在文件上，讀完後將其關閉。
+              </div>
+              <div style="display:flex; gap:6px; margin:4px 0; justify-content:space-between; align-items:center;">
+                <span style="font-size:10px; font-weight:600;">眼動追蹤推論</span>
+                <button class="btn btn-secondary" id="guideRtToggleBtn" style="font-size:10px; min-height:26px; padding:0 8px;">開啟相機</button>
+              </div>
+              <div id="guideRtStatus" style="font-size:9px; padding:4px 8px; border-radius:4px; background:var(--bg-highest); color:var(--ink-muted);">狀態: 尚未啟用</div>
+            </div>
+            
+            <div id="guideTrackingDoneTxt" style="display:none; font-size:10px; color:var(--success); font-weight:600; margin-top:4px;">
+              ✅ 視線軌跡已記錄：<span id="guideTrackingHitsCount">0</span> 點
+            </div>
+          </div>
+
+          <!-- Step 5: Diagnostics Report -->
+          <div class="guide-step-card" id="guideStep5">
+            <div class="guide-step-header">
+              <div class="guide-step-title-wrap">
+                <span class="guide-step-number">5</span>
+                <span class="guide-step-title">認知分析診斷</span>
+              </div>
+              <span class="guide-step-badge" id="guideStep5Badge">待執行</span>
+            </div>
+            <div class="guide-step-desc">
+              系統將依據您在閱讀期間的視線軌跡，計算認知負荷、閱讀理解力及生成個人化診斷報告。
+            </div>
+            <div class="guide-step-content">
+              <div style="display:flex; flex-direction:column; gap:2px; margin-bottom:4px;">
+                <label style="font-size:9px; color:var(--ink-muted);">受試者編號 / Participant ID</label>
+                <input type="text" id="guideParticipantInput" value="anonymous" style="font-size:11px; padding:4px; min-height:26px; border-radius:var(--radius-sm); border:1px solid var(--line-strong);" autocomplete="off">
+              </div>
+              <button class="btn btn-primary" id="guideAnalyzeBtn" onclick="runCognitiveInspectorAnalysis()" style="width:100%; font-size:11px; min-height:28px; margin-top:2px;">
+                📊 開始認知能力診斷
+              </button>
+              <button class="btn btn-secondary" id="guideReportBtn" onclick="generateAndShowCognitiveReport()" style="width:100%; font-size:11px; min-height:28px; margin-top:4px;" disabled>
+                📖 產生與儲存診斷報告
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
       <!-- Panel: File -->
-      <div class="sidebar-panel active" id="panel-file">
+      <div class="sidebar-panel" id="panel-file">
         <div class="panel-section-title">文件</div>
         
         <div class="file-badge card visible" id="fileInfoCard">
@@ -1255,42 +1422,75 @@
 
       <!-- Panel: Eye Tracking -->
       <div class="sidebar-panel" id="panel-gaze">
-        <div class="panel-section-title">眼動追蹤</div>
-        
-        <div class="switch-row">
-          <div class="switch-info">
-            <div class="switch-lbl">啟用眼動推論</div>
-            <div class="switch-desc">開啟視訊鏡頭與推論模型</div>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.4rem;">
+          <div class="panel-section-title" style="margin-bottom:0;">眼動追蹤</div>
+          <span id="gazePerfModeTag" class="perf-mode-tag video" onclick="if(window.lexiOpenPerfModal) window.lexiOpenPerfModal();" title="點擊切換效能模式">🎬 錄影模式</span>
+        </div>
+
+        <!-- ── Video-Record Mode Controls (shown when mode = video) ── -->
+        <div id="gazeVmControls">
+          <div class="video-mode-banner visible" id="vmBanner">
+            <div class="vmb-title">
+              <span class="vmb-rec-dot" id="vmRecDot"></span>
+              🎬 錄影分析模式
+            </div>
+            <div style="font-size:0.7rem; color:rgba(255,255,255,0.7); line-height:1.4;">
+              開始閱讀前，點擊「開始錄影」。閱讀完畢後，點擊「停止」再點「上傳分析」，系統將在伺服器批次還原您的視線軌跡。
+            </div>
+            <div id="vmStatus" style="font-size:0.7rem; color:rgba(255,255,255,0.85); background:rgba(255,255,255,0.08); padding:5px 8px; border-radius:5px;">尚未開始</div>
+            <button class="vmb-btn vmb-btn-start" id="vmStartBtn" onclick="startVideoRecording()">▶ 開始錄影</button>
+            <button class="vmb-btn vmb-btn-stop"  id="vmStopBtn"  onclick="stopVideoRecording()"  disabled>■ 停止錄影</button>
+            <button class="vmb-btn vmb-btn-process" id="vmProcessBtn" onclick="processVideoRecording()" disabled>⬆ 上傳並分析影片</button>
           </div>
-          <button class="toggle-btn" id="gazeToggle" type="button">
-            <div class="sw-track"></div>
-            <span id="gazeToggleLabel" style="display:none">啟用眼動推論（關閉）</span>
+
+          <!-- Model selector also available in video mode -->
+          <div class="field" style="margin-top:8px;">
+            <label>推論模型 (分析時使用)</label>
+            <select id="gazeModelSelect" class="gaze-model-select">
+              <option value="before">原始 / before</option>
+            </select>
+          </div>
+          <button class="btn btn-secondary open-gaze-page-btn" id="openGazePageBtnVm" type="button" style="width:100%; margin-top:4px;">
+            相機校正與訓練 ↗
           </button>
         </div>
 
-        <div class="switch-row">
-          <div class="switch-info">
-            <div class="switch-lbl">Gaze Mapping</div>
-            <div class="switch-desc">比對注視點與滑鼠</div>
+        <!-- ── Real-time Mode Controls (shown when mode = realtime) ── -->
+        <div id="gazeRtControls" style="display:none;">
+          <div class="switch-row">
+            <div class="switch-info">
+              <div class="switch-lbl">啟用眼動推論</div>
+              <div class="switch-desc">開啟視訊鏡頭與推論模型</div>
+            </div>
+            <button class="toggle-btn" id="gazeToggle" type="button">
+              <div class="sw-track"></div>
+              <span id="gazeToggleLabel" style="display:none">啟用眼動推論（關閉）</span>
+            </button>
           </div>
-          <button class="toggle-btn" id="gazeMappingToggle" type="button">
-            <div class="sw-track"></div>
-            <span id="gazeMappingLabel" style="display:none">啟用 Gaze Mapping（關閉）</span>
+
+          <div class="switch-row">
+            <div class="switch-info">
+              <div class="switch-lbl">Gaze Mapping</div>
+              <div class="switch-desc">比對注視點與滑鼠</div>
+            </div>
+            <button class="toggle-btn" id="gazeMappingToggle" type="button">
+              <div class="sw-track"></div>
+              <span id="gazeMappingLabel" style="display:none">啟用 Gaze Mapping（關閉）</span>
+            </button>
+          </div>
+          
+          <button class="btn btn-secondary open-gaze-page-btn" id="openGazePageBtnRt" type="button" style="width:100%">
+            相機校正與訓練 ↗
           </button>
-        </div>
-        
-        <button class="btn btn-secondary" id="openGazePageBtn" type="button" style="width:100%">
-          相機校正與訓練 ↗
-        </button>
-        
-        <div class="gaze-status" id="gazeStatus">尚未啟用</div>
+          
+          <div class="gaze-status" id="gazeStatus">尚未啟用</div>
 
         <!-- Gaze Filter Settings -->
         <hr style="border:none; border-top:1px solid var(--line); margin:0.25rem 0">
         <div class="panel-section-title">濾波設定</div>
         <div class="field">
           <label>推論模型</label>
-          <select id="gazeModelSelect">
+          <select id="gazeModelSelectRt" class="gaze-model-select">
             <option value="before">原始 / before</option>
           </select>
         </div>
@@ -1321,7 +1521,24 @@
             <input type="number" id="gazeDwellInput" value="180" min="60" max="800" step="20">
           </div>
         </div>
+
+        <!-- Performance: Inference Interval -->
+        <hr style="border:none; border-top:1px solid var(--line); margin:0.25rem 0">
+        <div class="panel-section-title">效能設定 (Performance)</div>
+        <div class="field">
+          <div class="field-label-row">
+            <label>推論間隔 (Inference Interval)</label>
+            <span id="gazeIntervalValue" class="field-val">90 ms</span>
+          </div>
+          <input type="range" id="gazeIntervalSlider" min="90" max="600" step="30" value="90">
+          <div style="font-size:0.65rem; color:var(--ink-muted); margin-top:2px; line-height:1.4;">
+            ⚡ 較舊硬體建議設定 300–600 ms 以減少 CPU 負擔。數值越高，追蹤頻率越低但 CPU 用量越少。
+            <br>For older hardware (e.g. 2019 MacBook i5), use 300–600 ms to reduce lag.
+          </div>
+        </div>
+        </div><!-- /gazeRtControls -->
       </div>
+
 
       <!-- Panel: Cognitive Load -->
       <div class="sidebar-panel" id="panel-cognitive">
@@ -1704,7 +1921,7 @@
     // ── VS Code Sidebar: Panel Switching ──────────────────────────────────────────
     const iconBtns      = document.querySelectorAll('.icon-bar-btn[data-panel]');
     const sidebarPanels = document.querySelectorAll('.sidebar-panel');
-    let activePanel     = 'file'; // default
+    let activePanel     = 'guide'; // default
 
     function switchPanel(name) {
       if (activePanel === name) {
@@ -1741,7 +1958,7 @@
       sidebar.classList.add('mobile-open');
       sidebarBackdrop.classList.add('visible');
       document.body.style.overflow = 'hidden';
-      switchPanel('file');
+      switchPanel('guide');
     }
 
     mobileMenuBtn.addEventListener('click', () => {
@@ -1815,7 +2032,7 @@
 
       // Reveal sidebar
       // Sidebar is always visible; ensure default panel active
-      if (!activePanel) switchPanel('file');
+      if (!activePanel) switchPanel('guide');
 
       // Clear existing page blocks and trigger parsing
       [...previewArea.children].forEach(c => { if (c.id !== 'emptyState') c.remove(); });
@@ -1836,6 +2053,8 @@
       
       // Trigger auto-parse
       parseBtn.click();
+
+      if (typeof updateGuideUI === 'function') updateGuideUI();
     }
 
     async function loadExampleText(url, filename) {
@@ -2903,11 +3122,6 @@
     const inspectAttention         = document.getElementById('inspectAttention');
     const inspectFatigue           = document.getElementById('inspectFatigue');
 
-    const cogReportModal           = document.getElementById('cogReportModal');
-    const cogReportContent         = document.getElementById('cogReportContent');
-    const closeCogReportBtn        = document.getElementById('closeCogReportBtn');
-    const closeCogReportFooterBtn  = document.getElementById('closeCogReportFooterBtn');
-
     let lastInspectorAnalysisGazeHistory = null;
 
     async function runCognitiveInspectorAnalysis() {
@@ -2959,6 +3173,7 @@
         inspectReportBtn.disabled = false;
         lastInspectorAnalysisGazeHistory = gazeHistoryData;
         log('認知能力診斷分析完成！', 'ok');
+        if (typeof updateGuideUI === 'function') updateGuideUI();
 
       } catch (err) {
         log(`認知能力診斷失敗：${err.message}`, 'err');
@@ -2992,10 +3207,16 @@
         if (!res.ok || !data.ok) throw new Error(data.error || '報告生成失敗');
 
         // Render Markdown to HTML using marked.js
-        cogReportContent.innerHTML = typeof marked !== 'undefined' ? marked.parse(data.report_md) : `<pre style="white-space:pre-wrap;">${data.report_md}</pre>`;
+        const reportContentEl = document.getElementById('cogReportContent');
+        const reportModalEl   = document.getElementById('cogReportModal');
+        if (reportContentEl) {
+          reportContentEl.innerHTML = typeof marked !== 'undefined' ? marked.parse(data.report_md) : `<pre style="white-space:pre-wrap;">${data.report_md}</pre>`;
+        }
         
         // Show Modal
-        cogReportModal.classList.add('open');
+        if (reportModalEl) {
+          reportModalEl.classList.add('open');
+        }
         log(`診斷報告已生成並保存至：${data.analysis.report_path}`, 'ok');
         loadReportsHistory();
 
@@ -3104,48 +3325,220 @@
     inspectAnalyzeBtn.addEventListener('click', runCognitiveInspectorAnalysis);
     inspectReportBtn.addEventListener('click', generateAndShowCognitiveReport);
 
-    function closeReportModal() {
-      cogReportModal.classList.remove('open');
-    }
+    // Wrap DOM-dependent modal handlers in DOMContentLoaded to prevent null references during early load
+    window.addEventListener('DOMContentLoaded', () => {
+      const cogReportModal           = document.getElementById('cogReportModal');
+      const closeCogReportBtn        = document.getElementById('closeCogReportBtn');
+      const closeCogReportFooterBtn  = document.getElementById('closeCogReportFooterBtn');
 
-    closeCogReportBtn.addEventListener('click', closeReportModal);
-    closeCogReportFooterBtn.addEventListener('click', closeReportModal);
+      function closeReportModal() {
+        if (cogReportModal) cogReportModal.classList.remove('open');
+      }
 
-    cogReportModal.addEventListener('click', (e) => {
-      if (e.target === cogReportModal) closeReportModal();
+      closeCogReportBtn?.addEventListener('click', closeReportModal);
+      closeCogReportFooterBtn?.addEventListener('click', closeReportModal);
+
+      cogReportModal?.addEventListener('click', (e) => {
+        if (e.target === cogReportModal) closeReportModal();
+      });
+
+      // ── Help Tutorial Modal Logic ──
+      const helpTutorialBtn = document.getElementById('helpTutorialBtn');
+      const helpTutorialModal = document.getElementById('helpTutorialModal');
+      const closeHelpTutorialBtn = document.getElementById('closeHelpTutorialBtn');
+      const closeHelpTutorialFooterBtn = document.getElementById('closeHelpTutorialFooterBtn');
+
+      function openHelpTutorial() {
+        if (helpTutorialModal) helpTutorialModal.classList.add('open');
+      }
+      function closeHelpTutorial() {
+        if (helpTutorialModal) helpTutorialModal.classList.remove('open');
+      }
+
+      helpTutorialBtn?.addEventListener('click', openHelpTutorial);
+      closeHelpTutorialBtn?.addEventListener('click', closeHelpTutorial);
+      closeHelpTutorialFooterBtn?.addEventListener('click', closeHelpTutorial);
+      helpTutorialModal?.addEventListener('click', (e) => {
+        if (e.target === helpTutorialModal) closeHelpTutorial();
+      });
+
+      // Auto open tutorial on first-time load
+      if (!localStorage.getItem('lexigaze_tutorial_shown')) {
+        openHelpTutorial();
+        localStorage.setItem('lexigaze_tutorial_shown', 'true');
+      }
+
+      // Load history on start
+      loadHistory();
+      loadReportsHistory();
     });
 
-    refreshHistoryBtn.addEventListener('click', loadHistory);
+    refreshHistoryBtn?.addEventListener('click', loadHistory);
 
-    // ── Help Tutorial Modal Logic ──
-    const helpTutorialBtn = document.getElementById('helpTutorialBtn');
-    const helpTutorialModal = document.getElementById('helpTutorialModal');
-    const closeHelpTutorialBtn = document.getElementById('closeHelpTutorialBtn');
-    const closeHelpTutorialFooterBtn = document.getElementById('closeHelpTutorialFooterBtn');
+    // ── Stepper Guide JavaScript Logic ──
+    function updateGuideUI() {
+      // Step 1: Hardware Performance Mode
+      const step1 = document.getElementById('guideStep1');
+      const step1Badge = document.getElementById('guideStep1Badge');
+      const modeTxt = document.getElementById('guideCurrentModeTxt');
+      
+      const mode = window.lexiPerfMode || 'video';
+      if (modeTxt) {
+        modeTxt.textContent = mode === 'realtime' ? '🎯 即時推論模式' : '🎬 錄影分析模式';
+      }
+      
+      const vmCtrls = document.getElementById('guideVmControls');
+      const rtCtrls = document.getElementById('guideRtControls');
+      if (vmCtrls) vmCtrls.style.display = (mode === 'video') ? 'flex' : 'none';
+      if (rtCtrls) rtCtrls.style.display = (mode === 'realtime') ? 'flex' : 'none';
+      
+      if (step1Badge) {
+        step1Badge.textContent = '已設定';
+        step1Badge.className = 'guide-step-badge completed';
+      }
+      if (step1) {
+        step1.classList.remove('active');
+        step1.classList.add('completed');
+      }
 
-    function openHelpTutorial() {
-      helpTutorialModal.classList.add('open');
+      // Step 2: Calibration
+      const step2 = document.getElementById('guideStep2');
+      const step2Badge = document.getElementById('guideStep2Badge');
+      const modelSelect = document.querySelector('.gaze-model-select');
+      const modelSelected = modelSelect && modelSelect.value !== 'before';
+      
+      if (step2 && step2Badge) {
+        if (modelSelected) {
+          step2Badge.textContent = '已套用';
+          step2Badge.className = 'guide-step-badge completed';
+          step2.classList.remove('active');
+          step2.classList.add('completed');
+        } else {
+          step2Badge.textContent = '待執行';
+          step2Badge.className = 'guide-step-badge';
+          step2.classList.remove('completed');
+          step2.classList.add('active');
+        }
+      }
+
+      // Step 3: Load Article
+      const step3 = document.getElementById('guideStep3');
+      const step3Badge = document.getElementById('guideStep3Badge');
+      const fileTxt = document.getElementById('guideFileLoadedTxt');
+      const fileNameSpan = document.getElementById('guideFileName');
+      
+      if (step3 && step3Badge) {
+        if (currentFile) {
+          step3Badge.textContent = '已載入';
+          step3Badge.className = 'guide-step-badge completed';
+          step3.classList.remove('active');
+          step3.classList.add('completed');
+          if (fileTxt) fileTxt.style.display = 'block';
+          if (fileNameSpan) fileNameSpan.textContent = currentFile.name;
+        } else {
+          step3Badge.textContent = '待執行';
+          step3Badge.className = 'guide-step-badge';
+          step3.classList.remove('completed');
+          if (fileTxt) fileTxt.style.display = 'none';
+          
+          if (!modelSelected) {
+            step3.classList.remove('active');
+          } else {
+            step3.classList.add('active');
+          }
+        }
+      }
+
+      // Step 4: Eye Tracking Reading
+      const step4 = document.getElementById('guideStep4');
+      const step4Badge = document.getElementById('guideStep4Badge');
+      const trackTxt = document.getElementById('guideTrackingDoneTxt');
+      const trackHits = document.getElementById('guideTrackingHitsCount');
+      
+      const hasData = (typeof window.flushGazeHistory === 'function' && window.flushGazeHistory().length > 0);
+      
+      if (step4 && step4Badge) {
+        if (hasData) {
+          step4Badge.textContent = '已完成';
+          step4Badge.className = 'guide-step-badge completed';
+          step4.classList.remove('active');
+          step4.classList.add('completed');
+          if (trackTxt) trackTxt.style.display = 'block';
+          if (trackHits) trackHits.textContent = window.flushGazeHistory().length;
+        } else {
+          step4Badge.textContent = '待執行';
+          step4Badge.className = 'guide-step-badge';
+          step4.classList.remove('completed');
+          if (trackTxt) trackTxt.style.display = 'none';
+          
+          if (!currentFile) {
+            step4.classList.remove('active');
+          } else {
+            step4.classList.add('active');
+          }
+        }
+      }
+
+      // Step 5: Diagnostics Report
+      const step5 = document.getElementById('guideStep5');
+      const step5Badge = document.getElementById('guideStep5Badge');
+      const guideReportBtn = document.getElementById('guideReportBtn');
+      
+      const hasAnalysis = lastInspectorAnalysisGazeHistory !== null;
+      
+      if (step5 && step5Badge) {
+        if (hasAnalysis) {
+          step5Badge.textContent = '已完成';
+          step5Badge.className = 'guide-step-badge completed';
+          step5.classList.remove('active');
+          step5.classList.add('completed');
+          if (guideReportBtn) guideReportBtn.disabled = false;
+        } else {
+          step5Badge.textContent = '待執行';
+          step5Badge.className = 'guide-step-badge';
+          step5.classList.remove('completed');
+          if (guideReportBtn) guideReportBtn.disabled = true;
+          
+          if (!hasData) {
+            step5.classList.remove('active');
+          } else {
+            step5.classList.add('active');
+          }
+        }
+      }
     }
-    function closeHelpTutorial() {
-      helpTutorialModal.classList.remove('open');
-    }
+    window.updateGuideUI = updateGuideUI;
 
-    helpTutorialBtn.addEventListener('click', openHelpTutorial);
-    closeHelpTutorialBtn.addEventListener('click', closeHelpTutorial);
-    closeHelpTutorialFooterBtn.addEventListener('click', closeHelpTutorial);
-    helpTutorialModal.addEventListener('click', (e) => {
-      if (e.target === helpTutorialModal) closeHelpTutorial();
+    // Stepper bindings and sync
+    window.addEventListener('DOMContentLoaded', () => {
+      // Upload Document click bridge
+      const guideUploadBtn = document.getElementById('guideUploadBtn');
+      if (guideUploadBtn) {
+        guideUploadBtn.addEventListener('click', () => {
+          document.getElementById('fileInput').click();
+        });
+      }
+
+      // Sync participant IDs
+      const guidePartInput = document.getElementById('guideParticipantInput');
+      const sidePartInput = document.getElementById('inspectParticipantInput');
+      if (guidePartInput && sidePartInput) {
+        guidePartInput.addEventListener('input', (e) => { sidePartInput.value = e.target.value; });
+        sidePartInput.addEventListener('input', (e) => { guidePartInput.value = e.target.value; });
+      }
+
+      // Bridge Real-time Mode Toggle button in Step 4
+      const guideRtBtn = document.getElementById('guideRtToggleBtn');
+      if (guideRtBtn) {
+        guideRtBtn.addEventListener('click', () => {
+          const mainToggle = document.getElementById('gazeToggle');
+          if (mainToggle) mainToggle.click();
+        });
+      }
+
+      // Auto update guide layout
+      updateGuideUI();
     });
-
-    // Auto open tutorial on first-time load
-    if (!localStorage.getItem('lexigaze_tutorial_shown')) {
-      openHelpTutorial();
-      localStorage.setItem('lexigaze_tutorial_shown', 'true');
-    }
-
-    // Load history on start
-    loadHistory();
-    loadReportsHistory();
 
   </script>
   
@@ -3250,12 +3643,689 @@
           💡 <b>小技巧：</b>如果覺得藍色圓點不夠準確，請重新執行校正，並請確保您的臉部有足夠的光源，且眼鏡無眩光，這樣能獲得最佳的預測準確度。
         </div>
 
+        <div style="background:#fff8e1; border: 1px solid #f59e0b; border-radius:var(--radius-sm); padding:12px; margin-top: 10px; font-size:12px; color:#92400e; line-height: 1.5;">
+          ⚡ <b>效能提示 (Performance)：</b>系統的眼動推論使用您的本機 CPU 運算。若您的電腦較舊（例如 2019 MacBook i5），建議在左側<b>「眼動追蹤」→「效能設定」</b>中，將<b>「推論間隔」</b>調高至 300–600 ms，可大幅降低 CPU 負擔並減少延遲感。
+          <br><br>
+          <b>Performance tip:</b> Gaze inference runs on your local CPU. On older machines (e.g. 2019 MacBook i5 with Intel Iris Plus), set the <b>Inference Interval to 300–600 ms</b> in the Eye Tracking panel to reduce CPU load and lag.
+        </div>
+
       </div>
       <div style="padding: 1rem 1.5rem; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; background: var(--bg-elevated); flex-shrink: 0;">
         <button class="btn btn-primary" id="closeHelpTutorialFooterBtn" style="min-height:36px; padding: 0 16px;">了解並開始閱讀</button>
       </div>
     </div>
   </div>
+  <!-- ══ PERFORMANCE MODE SELECTION MODAL ══ -->
+  <div class="modal-backdrop" id="perfModeModal" style="align-items: center;">
+    <div class="modal-card" style="max-width: 680px; max-height: 92vh; width: 95%;">
+
+      <!-- Header -->
+      <div class="modal-header" style="background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%); border-bottom: none; padding: 1.5rem 1.75rem;">
+        <div style="display:flex; align-items:center; gap: 12px;">
+          <div style="width:40px; height:40px; background: rgba(59,130,246,0.2); border: 1px solid rgba(59,130,246,0.4); border-radius: 10px; display:flex; align-items:center; justify-content:center; font-size:20px;">⚡</div>
+          <div>
+            <h3 style="color:#fff; font-size:1.15rem; margin:0;">選擇效能模式 / Select Performance Mode</h3>
+            <p style="color:rgba(255,255,255,0.55); font-size:0.78rem; margin:2px 0 0 0;">LexiGaze 將根據您的硬體選擇最佳的眼動分析方式</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hardware Benchmark Panel -->
+      <div id="perfBenchPanel" style="background: #f8fafc; border-bottom: 1px solid var(--line); padding: 1rem 1.75rem;">
+        <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-secondary); margin-bottom: 0.6rem;">🔍 硬體偵測 / Hardware Detection</div>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 0.75rem;" id="hwInfoGrid">
+          <div class="hw-chip" id="hwCores"><span class="hw-icon">💻</span><span class="hw-val">—</span><span class="hw-lbl">CPU Cores</span></div>
+          <div class="hw-chip" id="hwMemory"><span class="hw-icon">🧠</span><span class="hw-val">—</span><span class="hw-lbl">RAM (approx)</span></div>
+          <div class="hw-chip" id="hwBench"><span class="hw-icon">⏱</span><span class="hw-val">—</span><span class="hw-lbl">JS Benchmark</span></div>
+        </div>
+        <div id="hwRecommendBanner" style="display:none; border-radius: 6px; padding: 8px 12px; font-size: 0.78rem; font-weight: 600; line-height: 1.4;"></div>
+        <div id="hwBenchProgress" style="margin-top:6px; display:flex; align-items:center; gap:8px; font-size:0.75rem; color:var(--ink-secondary);">
+          <div style="flex:1; height:4px; background:var(--bg-highest); border-radius:2px; overflow:hidden;">
+            <div id="hwBenchBar" style="height:100%; width:0%; background: linear-gradient(90deg, var(--accent), #8b5cf6); transition: width 0.3s ease;"></div>
+          </div>
+          <span id="hwBenchStatus">正在偵測硬體...</span>
+        </div>
+      </div>
+
+      <!-- Mode Cards -->
+      <div style="padding: 1.25rem 1.75rem; overflow-y:auto; flex:1;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;" id="perfModeCards">
+
+          <!-- Card: Real-time Mode -->
+          <div class="perf-card" id="cardRealtime" onclick="selectPerfMode('realtime')" data-mode="realtime">
+            <div class="perf-card-icon">🎯</div>
+            <div class="perf-card-title">即時推論模式<br><span style="font-weight:400; font-size:0.72rem; opacity:0.7;">Real-time Mode</span></div>
+            <div class="perf-card-desc">
+              鏡頭畫面即時推論，注視點即時顯示。<br>
+              <b>推薦硬體：</b>M1/M2/M3 Mac、近期 Intel i7+、Ryzen 7+。
+            </div>
+            <div class="perf-card-specs">
+              <div class="spec-row"><span class="spec-dot good"></span>注視點即時可見</div>
+              <div class="spec-row"><span class="spec-dot good"></span>即時 RDS 融合</div>
+              <div class="spec-row"><span class="spec-dot warn"></span>較高 CPU/GPU 佔用</div>
+              <div class="spec-row"><span class="spec-dot warn"></span>較舊硬體可能卡頓</div>
+            </div>
+            <div class="perf-card-badge" id="badgeRealtime">—</div>
+          </div>
+
+          <!-- Card: Video-Record Mode -->
+          <div class="perf-card selected" id="cardVideo" onclick="selectPerfMode('video')" data-mode="video">
+            <div class="perf-card-icon">🎬</div>
+            <div class="perf-card-title">錄影分析模式<br><span style="font-weight:400; font-size:0.72rem; opacity:0.7;">Video-Record Mode</span></div>
+            <div class="perf-card-desc">
+              錄製閱讀全程影片，結束後批次分析。讀書時無任何 CPU 負擔。<br>
+              <b>推薦硬體：</b>任何硬體皆適用，尤其 2019 MacBook 以前機型。
+            </div>
+            <div class="perf-card-specs">
+              <div class="spec-row"><span class="spec-dot good"></span>閱讀時零 CPU 負擔</div>
+              <div class="spec-row"><span class="spec-dot good"></span>任何硬體皆可用</div>
+              <div class="spec-row"><span class="spec-dot warn"></span>需在閱讀後等待處理</div>
+              <div class="spec-row"><span class="spec-dot warn"></span>閱讀中無即時注視點</div>
+            </div>
+            <div class="perf-card-badge" id="badgeVideo">—</div>
+          </div>
+        </div>
+
+        <!-- Selected Mode Summary -->
+        <div id="perfModeSummary" style="margin-top: 12px; background: var(--accent-soft); border: 1px solid rgba(37,99,235,0.2); border-radius: 8px; padding: 10px 14px; font-size: 0.8rem; color: var(--accent); line-height: 1.5; display:none;"></div>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding: 1rem 1.75rem; border-top: 1px solid var(--line); display:flex; justify-content:space-between; align-items:center; background: var(--bg-elevated); flex-shrink:0; gap:8px;">
+        <label style="display:flex; align-items:center; gap:6px; font-size:0.78rem; color:var(--ink-secondary); cursor:pointer;">
+          <input type="checkbox" id="perfModeRemember" style="width:auto; min-height:auto;"> 記住我的選擇 / Remember choice
+        </label>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-secondary" id="perfModeSkipBtn" style="min-height:36px;">稍後再說</button>
+          <button class="btn btn-primary" id="perfModeConfirmBtn" style="min-height:36px; padding: 0 20px;">確認並開始 →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Performance Mode CSS -->
+  <style>
+    .hw-chip {
+      background: #fff;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      text-align: center;
+    }
+    .hw-icon { font-size: 1.1rem; }
+    .hw-val  { font-size: 0.88rem; font-weight: 700; color: var(--ink-primary); font-family: 'JetBrains Mono', monospace; }
+    .hw-lbl  { font-size: 0.62rem; color: var(--ink-muted); font-weight: 500; }
+
+    .perf-card {
+      background: #fff;
+      border: 2px solid var(--line-strong);
+      border-radius: 12px;
+      padding: 1.1rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .perf-card:hover { border-color: var(--accent-2); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(37,99,235,0.1); }
+    .perf-card.selected { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
+    .perf-card.recommended::after {
+      content: '✨ 推薦';
+      position: absolute; top: 10px; right: 10px;
+      background: #10b981; color: #fff;
+      font-size: 0.6rem; font-weight: 700;
+      padding: 2px 7px; border-radius: 20px;
+      letter-spacing: 0.04em;
+    }
+    .perf-card-icon { font-size: 1.8rem; margin-bottom: 6px; }
+    .perf-card-title { font-size: 0.88rem; font-weight: 700; color: var(--ink-primary); margin-bottom: 8px; line-height: 1.3; }
+    .perf-card-desc { font-size: 0.75rem; color: var(--ink-secondary); line-height: 1.5; margin-bottom: 10px; }
+    .perf-card-specs { display: flex; flex-direction: column; gap: 4px; }
+    .spec-row { display: flex; align-items: center; gap: 6px; font-size: 0.7rem; color: var(--ink-secondary); }
+    .spec-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .spec-dot.good { background: var(--success); }
+    .spec-dot.warn { background: var(--warning); }
+    .spec-dot.bad  { background: var(--danger); }
+    .perf-card-badge {
+      margin-top: 10px; padding: 4px 10px;
+      border-radius: 20px; font-size: 0.65rem; font-weight: 700;
+      text-align: center; display: inline-block;
+      background: var(--bg-highest); color: var(--ink-muted);
+      transition: all 0.3s ease;
+    }
+    .perf-card-badge.good { background: #dcfce7; color: #15803d; }
+    .perf-card-badge.warn { background: #fef3c7; color: #92400e; }
+
+    /* Video-record mode indicator in gaze panel */
+    .video-mode-banner {
+      background: linear-gradient(135deg, #1e3a5f, #0f172a);
+      color: #fff;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 0.75rem;
+      line-height: 1.5;
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .video-mode-banner.visible { display: flex; }
+    .video-mode-banner .vmb-title { font-weight: 700; font-size: 0.82rem; display: flex; align-items: center; gap: 6px; }
+    .vmb-rec-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--danger);
+      box-shadow: 0 0 6px var(--danger);
+      animation: rec-pulse 1s infinite alternate;
+      display: none;
+    }
+    .vmb-rec-dot.recording { display: inline-block; }
+    @keyframes rec-pulse { 0% { opacity: 1; } 100% { opacity: 0.3; } }
+
+    .vmb-btn {
+      width: 100%; padding: 7px; border-radius: 6px;
+      font-size: 0.78rem; font-weight: 600;
+      border: none; cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .vmb-btn-start { background: var(--accent); color: #fff; }
+    .vmb-btn-start:hover { background: var(--accent-hover); }
+    .vmb-btn-stop  { background: var(--danger); color: #fff; }
+    .vmb-btn-stop:hover { opacity: 0.85; }
+    .vmb-btn-process { background: var(--success); color: #fff; }
+    .vmb-btn-process:hover { opacity: 0.85; }
+    .vmb-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .perf-mode-tag {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 0.62rem; font-weight: 700;
+      padding: 2px 7px; border-radius: 20px;
+      cursor: pointer; transition: all 0.15s ease;
+    }
+    .perf-mode-tag.realtime { background: #dbeafe; color: #1d4ed8; }
+    .perf-mode-tag.video    { background: #fce7f3; color: #be185d; }
+    .perf-mode-tag:hover { opacity: 0.8; }
+
+    /* ── Stepper Guide Styles ── */
+    .guide-welcome {
+      background: linear-gradient(135deg, rgba(37,99,235,0.06) 0%, rgba(139,92,246,0.06) 100%);
+      border: 1px dashed rgba(37,99,235,0.25);
+      border-radius: var(--radius-md);
+      padding: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+    .guide-step-card {
+      background: var(--bg-base);
+      border: 1px solid var(--line-strong);
+      border-left: 4px solid var(--ink-muted);
+      border-radius: var(--radius-md);
+      padding: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+    .guide-step-card.active {
+      border-left-color: var(--accent);
+      background: var(--accent-soft);
+      box-shadow: 0 4px 12px rgba(37,99,235,0.05);
+    }
+    .guide-step-card.completed {
+      border-left-color: var(--success);
+      background: rgba(16, 185, 129, 0.02);
+    }
+    .guide-step-card.completed .guide-step-number {
+      background: var(--success);
+      color: #fff;
+    }
+    .guide-step-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .guide-step-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .guide-step-number {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--bg-highest);
+      color: var(--ink-secondary);
+      font-size: 0.65rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.25s ease;
+      flex-shrink: 0;
+    }
+    .guide-step-card.active .guide-step-number {
+      background: var(--accent);
+      color: #fff;
+    }
+    .guide-step-title {
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: var(--ink-primary);
+    }
+    .guide-step-badge {
+      font-size: 0.58rem;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 10px;
+      background: var(--bg-highest);
+      color: var(--ink-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+    .guide-step-badge.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: 1px solid rgba(37,99,235,0.15);
+    }
+    .guide-step-badge.completed {
+      background: var(--success-soft);
+      color: var(--success);
+      border: 1px solid rgba(16,185,129,0.15);
+    }
+    .guide-step-desc {
+      font-size: 0.7rem;
+      color: var(--ink-secondary);
+      line-height: 1.4;
+    }
+    .guide-step-content {
+      margin-top: 2px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    @media (max-width: 600px) {
+      #perfModeCards { grid-template-columns: 1fr; }
+      #hwInfoGrid    { grid-template-columns: repeat(3, 1fr); }
+    }
+  </style>
+
+  <!-- Performance Mode + Video Record Logic -->
+  <script>
+  (function() {
+    'use strict';
+
+    // ── State ──────────────────────────────────────────────────────────────
+    let currentPerfMode     = 'video'; // 'realtime' | 'video'
+    let vmRecorder          = null;
+    let vmRecordedChunks    = [];
+    let vmRecordingStart    = 0;
+    let vmReadingTimeline   = []; // [{word, index, timestamp_ms, viewport_x, viewport_y}]
+    let vmStream            = null;
+    let vmIsRecording       = false;
+    let vmGazeEventsResult  = null;
+
+    // ── DOM refs ───────────────────────────────────────────────────────────
+    const perfModal        = document.getElementById('perfModeModal');
+    const perfConfirmBtn   = document.getElementById('perfModeConfirmBtn');
+    const perfSkipBtn      = document.getElementById('perfModeSkipBtn');
+    const perfRemember     = document.getElementById('perfModeRemember');
+
+    // ── Hardware Benchmark ─────────────────────────────────────────────────
+    async function runHardwareBenchmark() {
+      const cores  = navigator.hardwareConcurrency || 1;
+      const memory = navigator.deviceMemory || null;
+
+      document.querySelector('#hwCores .hw-val').textContent   = cores + ' cores';
+      document.querySelector('#hwMemory .hw-val').textContent  = memory ? memory + ' GB' : 'N/A';
+      document.getElementById('hwBenchStatus').textContent     = '執行效能測試...';
+
+      // Simple floating-point benchmark
+      const N = 2_000_000;
+      const t0 = performance.now();
+      let acc = 0;
+      for (let i = 0; i < N; i++) { acc += Math.sqrt(i) * Math.sin(i * 0.001); }
+      const benchMs = performance.now() - t0;
+      const _ = acc; // prevent dead-code elimination
+
+      document.getElementById('hwBenchBar').style.width = '100%';
+      document.getElementById('hwBenchStatus').textContent = '偵測完成';
+      document.querySelector('#hwBench .hw-val').textContent = Math.round(benchMs) + ' ms';
+
+      // Score: lower is faster. < 80ms = powerful, 80-200ms = medium, >200ms = slow
+      let score, recommendation, hwClass;
+      if (benchMs < 80) {
+        score = 'fast';
+        recommendation = '您的硬體效能優異 ✅ — 建議使用<b>即時推論模式</b>，可獲得最佳即時注視點體驗。';
+        hwClass = 'good';
+      } else if (benchMs < 200) {
+        score = 'medium';
+        recommendation = '您的硬體效能中等 ⚠️ — 兩種模式皆可，建議調高推論間隔（300 ms）或使用<b>錄影分析模式</b>。';
+        hwClass = 'warn';
+      } else {
+        score = 'slow';
+        recommendation = '您的硬體效能較舊（如 2019 MacBook i5）🔴 — 強烈建議使用<b>錄影分析模式</b>，閱讀時不佔 CPU，結束後再分析。';
+        hwClass = 'warn';
+      }
+
+      // Update recommendation banner
+      const banner = document.getElementById('hwRecommendBanner');
+      const colors = { good: { bg: '#dcfce7', border: '#16a34a', color: '#15803d' }, warn: { bg: '#fef9c3', border: '#ca8a04', color: '#854d0e' } };
+      const c = colors[hwClass] || colors.warn;
+      banner.style.cssText = `display:block; background:${c.bg}; border: 1px solid ${c.border}; color:${c.color};`;
+      banner.innerHTML = recommendation;
+
+      // Auto-select recommended mode
+      if (score === 'fast') {
+        selectPerfMode('realtime');
+        document.getElementById('badgeRealtime').textContent = '✅ 推薦您的硬體';
+        document.getElementById('badgeRealtime').className   = 'perf-card-badge good';
+        document.getElementById('badgeVideo').textContent    = '也可選用';
+        document.getElementById('badgeVideo').className      = 'perf-card-badge';
+        document.getElementById('cardRealtime').classList.add('recommended');
+      } else {
+        selectPerfMode('video');
+        document.getElementById('badgeVideo').textContent    = '✅ 推薦您的硬體';
+        document.getElementById('badgeVideo').className      = 'perf-card-badge good';
+        document.getElementById('badgeRealtime').textContent = score === 'medium' ? '可嘗試（可能略頓）' : '不建議（會卡頓）';
+        document.getElementById('badgeRealtime').className   = 'perf-card-badge warn';
+        document.getElementById('cardVideo').classList.add('recommended');
+      }
+
+      // Store hardware info globally
+      window.lexiHardwareScore = score;
+      window.lexiBenchMs       = benchMs;
+      window.lexiCpuCores      = cores;
+    }
+
+    window.selectPerfMode = function(mode) {
+      currentPerfMode = mode;
+      document.getElementById('cardRealtime').classList.toggle('selected', mode === 'realtime');
+      document.getElementById('cardVideo').classList.toggle('selected', mode === 'video');
+      const summary = document.getElementById('perfModeSummary');
+      summary.style.display = 'block';
+      if (mode === 'realtime') {
+        summary.innerHTML = '🎯 <b>即時模式：</b>啟用眼動後，鏡頭每隔幾毫秒推論一次，注視點即時顯示在文件上。若感到卡頓，請在「眼動追蹤 → 效能設定」調高推論間隔。';
+      } else {
+        summary.innerHTML = '🎬 <b>錄影模式：</b>閱讀期間後台錄製鏡頭影片。閱讀結束後，點擊「上傳分析」，系統將自動分析影片並生成注視軌跡。閱讀中 CPU 佔用幾乎為零。';
+      }
+    };
+
+    function applyPerfMode(mode) {
+      currentPerfMode = mode;
+      window.lexiPerfMode = mode;
+
+      // Update gaze panel UI visibility
+      const rtControls = document.getElementById('gazeRtControls');
+      const vmControls = document.getElementById('gazeVmControls');
+      if (rtControls) rtControls.style.display = (mode === 'realtime') ? '' : 'none';
+      if (vmControls) vmControls.style.display  = (mode === 'video')    ? '' : 'none';
+
+      // Update mode tag in gaze panel header
+      const modeTag = document.getElementById('gazePerfModeTag');
+      if (modeTag) {
+        modeTag.className   = `perf-mode-tag ${mode}`;
+        modeTag.textContent = mode === 'realtime' ? '⚡ 即時模式' : '🎬 錄影模式';
+      }
+
+      // If switching away from video, stop any active recording
+      if (mode !== 'video' && vmIsRecording) stopVideoRecording();
+      if (typeof updateGuideUI === 'function') updateGuideUI();
+    }
+
+    // ── Modal open/close ───────────────────────────────────────────────────
+    window.openPerfModeModal = function() {
+      perfModal.classList.add('open');
+    };
+    function closePerfModal() {
+      perfModal.classList.remove('open');
+    }
+
+    perfConfirmBtn.addEventListener('click', () => {
+      if (perfRemember.checked) {
+        localStorage.setItem('lexigaze_perf_mode', currentPerfMode);
+      }
+      applyPerfMode(currentPerfMode);
+      closePerfModal();
+    });
+    perfSkipBtn.addEventListener('click', () => {
+      applyPerfMode(currentPerfMode); // apply default (video)
+      closePerfModal();
+    });
+    perfModal.addEventListener('click', (e) => {
+      if (e.target === perfModal) { applyPerfMode(currentPerfMode); closePerfModal(); }
+    });
+
+    // ── Video Recording Logic ──────────────────────────────────────────────
+    window.startVideoRecording = async function() {
+      if (vmIsRecording) return;
+      try {
+        vmStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+          audio: false
+        });
+        vmRecordedChunks = [];
+        vmReadingTimeline = [];
+        const opts = { mimeType: 'video/webm;codecs=vp8' };
+        if (!MediaRecorder.isTypeSupported(opts.mimeType)) opts.mimeType = 'video/webm';
+        vmRecorder = new MediaRecorder(vmStream, opts);
+        vmRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) vmRecordedChunks.push(e.data); };
+        vmRecorder.start(500); // collect every 500ms chunk
+        vmRecordingStart = performance.now();
+        vmIsRecording = true;
+
+        // Sync with global window variables for Step Guide
+        window.lexiVmIsRecording = vmIsRecording;
+        window.lexiVmRecordedChunks = vmRecordedChunks;
+        window.lexiVmReadingTimeline = vmReadingTimeline;
+
+        // Update UI
+        const dot  = document.getElementById('vmRecDot');
+        const status = document.getElementById('vmStatus');
+        const startBtn   = document.getElementById('vmStartBtn');
+        const stopBtn    = document.getElementById('vmStopBtn');
+        const processBtn = document.getElementById('vmProcessBtn');
+        if (dot)      dot.classList.add('recording');
+        if (status)   status.textContent = '🎬 錄影中... 請開始閱讀文件';
+        if (startBtn) { startBtn.disabled = true; }
+        if (stopBtn)  { stopBtn.disabled = false; }
+        if (processBtn) { processBtn.disabled = true; }
+
+        // Start scroll-based word timeline tracker
+        startWordTimeline();
+        log('📹 錄影模式啟動，開始錄製鏡頭影片', 'ok');
+
+        if (typeof updateGuideUI === 'function') updateGuideUI();
+      } catch (err) {
+        log(`錄影啟動失敗：${err.message}`, 'err');
+        alert(`無法存取鏡頭：${err.message}`);
+      }
+    };
+
+    window.stopVideoRecording = function() {
+      if (!vmIsRecording || !vmRecorder) return;
+      vmRecorder.stop();
+      if (vmStream) { vmStream.getTracks().forEach(t => t.stop()); vmStream = null; }
+      vmIsRecording = false;
+      stopWordTimeline();
+
+      // Sync with global window variables for Step Guide
+      window.lexiVmIsRecording = vmIsRecording;
+      window.lexiVmRecordedChunks = vmRecordedChunks;
+      window.lexiVmReadingTimeline = vmReadingTimeline;
+
+      const dot     = document.getElementById('vmRecDot');
+      const status  = document.getElementById('vmStatus');
+      const startBtn   = document.getElementById('vmStartBtn');
+      const stopBtn    = document.getElementById('vmStopBtn');
+      const processBtn = document.getElementById('vmProcessBtn');
+      if (dot)      dot.classList.remove('recording');
+      if (status)   status.textContent = `✅ 錄影完成 (${vmReadingTimeline.length} 個時間點) — 請點擊「上傳分析」`;
+      if (startBtn) startBtn.disabled = false;
+      if (stopBtn)  stopBtn.disabled = true;
+      if (processBtn && vmReadingTimeline.length > 0) processBtn.disabled = false;
+      log(`錄影結束，共記錄 ${vmReadingTimeline.length} 個閱讀事件`, 'ok');
+
+      if (typeof updateGuideUI === 'function') updateGuideUI();
+    };
+
+    window.processVideoRecording = async function() {
+      if (vmRecordedChunks.length === 0) {
+        alert('尚無錄影資料，請先開始錄影並閱讀文件。');
+        return;
+      }
+      if (vmReadingTimeline.length === 0) {
+        alert('尚無閱讀時間軸資料。請確認已解析文件且滾動閱讀過文件內容。');
+        return;
+      }
+
+      const processBtn = document.getElementById('vmProcessBtn');
+      const status     = document.getElementById('vmStatus');
+      if (processBtn) processBtn.disabled = true;
+      if (status) status.textContent = '⏳ 上傳影片並分析中，請稍候...';
+      log('📡 上傳閱讀影片進行伺服器分析...', 'hi');
+
+      // Set global uploading state for Step Guide
+      window.lexiVmIsUploading = true;
+      if (typeof updateGuideUI === 'function') updateGuideUI();
+
+      const videoBlob = new Blob(vmRecordedChunks, { type: 'video/webm' });
+      const modelName = document.querySelector('.gaze-model-select')?.value || 'before';
+
+      const formData = new FormData();
+      formData.append('video', videoBlob, 'reading_session.webm');
+      formData.append('reading_timeline', JSON.stringify(vmReadingTimeline));
+      formData.append('model_name', modelName);
+      formData.append('viewport_width', String(window.innerWidth));
+      formData.append('viewport_height', String(window.innerHeight));
+
+      try {
+        const res  = await fetch('/api/gaze/analyze_reading_video', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || '分析失敗');
+
+        vmGazeEventsResult = data.gaze_events;
+
+        // Clear existing buffers
+        if (typeof window.clearGazeBuffer === 'function') window.clearGazeBuffer();
+
+        // Inject gaze_events directly into gazeBuffer
+        if (data.gaze_events && window.gazeBuffer) {
+          data.gaze_events.forEach(ev => {
+            const key = ev.word.toLowerCase();
+            window.gazeBuffer[key] = {
+              word:           ev.word,
+              dwell_count:    ev.dwell_count,
+              fixation_count: ev.fixation_count,
+              confidence:     ev.confidence,
+            };
+          });
+        }
+
+        // Inject gaze_history directly into gazeHistory
+        if (data.gaze_history && window.gazeHistory) {
+          data.gaze_history.forEach(h => {
+            window.gazeHistory.push({
+              word:         h.word,
+              index:        h.index,
+              confidence:   h.confidence,
+              timestamp_ms: h.timestamp_ms,
+            });
+          });
+        }
+
+        if (status) status.textContent = `✅ 分析完成！${data.event_count} 個詞彙軌跡已注入 — 可進行診斷`;
+        log(`影片分析完成：${data.event_count} 個詞彙事件已還原`, 'ok');
+        if (processBtn) processBtn.disabled = false;
+        if (typeof updateGuideUI === 'function') updateGuideUI();
+      } catch (err) {
+        if (status) status.textContent = `❌ 分析失敗：${err.message}`;
+        log(`影片分析失敗：${err.message}`, 'err');
+        if (processBtn) processBtn.disabled = false;
+      } finally {
+        window.lexiVmIsUploading = false;
+        if (typeof updateGuideUI === 'function') updateGuideUI();
+      }
+    };
+
+    // ── Word Timeline Tracker (scroll-based) ──────────────────────────────
+    // Samples visible words every 800ms during recording
+    let _wordTimelineInterval = null;
+
+    function startWordTimeline() {
+      _wordTimelineInterval = setInterval(sampleVisibleWords, 800);
+    }
+    function stopWordTimeline() {
+      clearInterval(_wordTimelineInterval);
+      _wordTimelineInterval = null;
+    }
+
+    function sampleVisibleWords() {
+      if (!vmIsRecording || typeof extractedData === 'undefined') return;
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const now = performance.now() - vmRecordingStart;
+      const SAMPLE_MAX = 8; // max words per sample tick to avoid giant timelines
+
+      // Collect visible word elements from overlays
+      const hits = [];
+      document.querySelectorAll('.word-hit, [data-word-idx]').forEach(el => {
+        const r = el.getBoundingClientRect();
+        if (r.top >= 0 && r.bottom <= vh && r.left >= 0 && r.right <= vw) {
+          const idx  = parseInt(el.dataset.wordIdx ?? el.dataset.idx ?? '-1', 10);
+          const word = el.dataset.word ?? el.textContent.trim().split(/\s+/)[0] ?? '';
+          if (word && idx >= 0) hits.push({ word, index: idx, cx: (r.left + r.right) / 2, cy: (r.top + r.bottom) / 2 });
+        }
+      });
+
+      // Fallback: if no overlay hit elements, sample from extractedData by viewport position
+      if (hits.length === 0 && window.extractedData && window.extractedData.length > 0) {
+        window.extractedData.forEach((item, i) => {
+          const absTop = item.top + (document.querySelector('.page-block')?.getBoundingClientRect().top ?? 0);
+          if (absTop >= 0 && absTop <= vh) {
+            hits.push({ word: item.text, index: item.index ?? i, cx: item.left + item.width / 2, cy: absTop + item.height / 2 });
+          }
+        });
+      }
+
+      // Sample up to SAMPLE_MAX evenly
+      const step = Math.max(1, Math.floor(hits.length / SAMPLE_MAX));
+      for (let i = 0; i < hits.length; i += step) {
+        const h = hits[i];
+        vmReadingTimeline.push({
+          word:         h.word,
+          index:        h.index,
+          timestamp_ms: Math.round(now),
+          viewport_x:   Math.round(h.cx),
+          viewport_y:   Math.round(h.cy),
+          confidence:   'medium'
+        });
+      }
+    }
+
+    // ── Initialise on page load ────────────────────────────────────────────
+    window.addEventListener('DOMContentLoaded', () => {}, false); // no-op guard
+
+    // Check saved preference
+    const saved = localStorage.getItem('lexigaze_perf_mode');
+    if (saved === 'realtime' || saved === 'video') {
+      currentPerfMode = saved;
+      applyPerfMode(saved);
+    } else {
+      // Show modal after a short delay (let page render first)
+      setTimeout(() => {
+        perfModal.classList.add('open');
+        runHardwareBenchmark();
+      }, 800);
+    }
+
+    // Expose globals
+    window.lexiPerfMode          = currentPerfMode;
+    window.lexiOpenPerfModal     = window.openPerfModeModal;
+    window.lexiRunBenchmark      = runHardwareBenchmark;
+  })();
+  </script>
 
   <!-- External Gaze & Mapping Scripts -->
   <script src="/static/mapping.js"></script>

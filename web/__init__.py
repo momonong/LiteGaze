@@ -24,6 +24,7 @@ def create_app():
     from web.routes.fusion import fusion_bp
     from web.routes.demo import demo_bp
     from web.routes.inspector import inspector_bp
+    from web.routes.gaze_video import gaze_video_bp
     
     app.register_blueprint(gaze_bp)
     app.register_blueprint(gaze_api_bp)
@@ -31,6 +32,7 @@ def create_app():
     app.register_blueprint(fusion_bp)
     app.register_blueprint(demo_bp)
     app.register_blueprint(inspector_bp)
+    app.register_blueprint(gaze_video_bp)
     
     # ── Static files & Template views ─────────────────────────────────────────
     @app.route('/')
