@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import time
+import traceback
 import collections
 from pathlib import Path
 from flask import Blueprint, jsonify, request
@@ -127,7 +128,7 @@ def upload_video():
     # 4. Open video using OpenCV
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
-        return jsonify({"ok": False, "error": f"Failed to open video file: {video_path.name}"}), 400
+        return jsonify({"ok": False, "error": f"Failed to open video file: {video_path.name}. Ensure the file is a valid WebM/MP4 video."}), 400
 
     # Read preprocessor (MediaPipe UniGazePreprocessor)
     try:
@@ -226,12 +227,16 @@ def upload_video():
     
     train_res, train_status = train_placeholder(ROOT, train_payload)
 
-    return jsonify({
-        "ok": True,
-        "session_id": session_id,
-        "processed_samples": processed_count,
-        "failed_samples": failed_count,
-        "model_name": output_model_name,
-        "training": train_res,
-        "video_saved_path": video_path.name
-    })
+    try:
+        return jsonify({
+            "ok": True,
+            "session_id": session_id,
+            "processed_samples": processed_count,
+            "failed_samples": failed_count,
+            "model_name": output_model_name,
+            "training": train_res,
+            "video_saved_path": video_path.name
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"ok": False, "error": f"upload_video pipeline failed: {exc}"}), 500

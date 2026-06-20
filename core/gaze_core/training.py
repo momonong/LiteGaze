@@ -249,4 +249,6 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
         }, 200
 
     except Exception as exc:
+        import traceback
+        traceback.print_exc()
         return {"ok": False, "error": f"training pipeline failed: {exc}"}, 500
