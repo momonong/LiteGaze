@@ -8,6 +8,13 @@ import argparse
 
 sys.dont_write_bytecode = True
 
+# Fix HF_HOME if it's set to a Windows drive path on a non-Windows OS
+import os
+if os.name != 'nt' and os.environ.get("HF_HOME"):
+    _hf_home = os.environ["HF_HOME"]
+    if ":" in _hf_home or _hf_home.startswith("D:") or _hf_home.startswith("C:"):
+        del os.environ["HF_HOME"]
+
 ROOT = Path(__file__).parent
 DATA_DIR = ROOT / 'data'
 
