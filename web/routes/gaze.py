@@ -69,6 +69,65 @@ def dataset_ops(session_id):
     return jsonify(rename_dataset(ROOT, session_id, new_name))
 
 
+@gaze_bp.post("/datasets/<session_id>/reprocess")
+def reprocess_dataset(session_id):
+    """Re-run MediaPipe on raw frames for sessions that had face detection failures."""
+    import json as _json
+    import cv2 as _cv2
+    from core.gaze_core.sample_store import get_preprocessor, ensure_sessions_dir
+
+    session_dir = ensure_sessions_dir(ROOT) / session_id
+    manifest_path = session_dir / "manifest.jsonl"
+    if not session_dir.exists() or not manifest_path.exists():
+        return jsonify({"ok": False, "error": "session not found"}), 404
+
+    try:
+        preprocessor = get_preprocessor()
+        records = [_json.loads(l) for l in manifest_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+        fixed = 0
+        still_failed = 0
+        updated = []
+        for rec in records:
+            if rec.get("normalized_face_path"):  # already processed
+                updated.append(rec)
+                continue
+            raw_p = session_dir / rec.get("raw_path", "")
+            img = _cv2.imread(str(raw_p), _cv2.IMREAD_COLOR)
+            if img is None:
+                still_failed += 1
+                updated.append(rec)
+                continue
+            try:
+                processed = preprocessor.process(img)
+                stem = Path(rec["raw_path"]).stem
+                crop_path = session_dir / "crop" / f"{stem}.jpg"
+                norm_path = session_dir / "normalized_face" / f"{stem}.jpg"
+                _cv2.imwrite(str(crop_path), processed.crop_bgr)
+                _cv2.imwrite(str(norm_path), processed.image_bgr)
+                rec["crop_path"] = crop_path.relative_to(session_dir).as_posix()
+                rec["normalized_face_path"] = norm_path.relative_to(session_dir).as_posix()
+                rec["head_pose_pitch_yaw"] = processed.head_pose_pitch_yaw.tolist()
+                rec["face_bbox"] = processed.face_bbox
+                rec.pop("warning", None)
+                rec["face_detected"] = True
+                rec["ok"] = True
+                fixed += 1
+            except Exception as exc:
+                rec["warning"] = str(exc)
+                still_failed += 1
+            updated.append(rec)
+        manifest_path.write_text(
+            "\n".join(_json.dumps(r, ensure_ascii=False) for r in updated) + "\n",
+            encoding="utf-8",
+        )
+        return jsonify({"ok": True, "fixed": fixed, "still_failed": still_failed, "total": len(updated)})
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+
 @gaze_bp.route("/models/<model_name>", methods=["DELETE", "PUT"])
 def model_ops(model_name):
     if request.method == "DELETE":
