@@ -1,0 +1,163 @@
+{
+  "participant_id": "test01",
+  "viewport_width": 1258,
+  "viewport_height": 581,
+  "targets": [
+    {
+      "timestamp_ms": 663,
+      "target_x": 100.64,
+      "target_y": 58.133337402343756,
+      "target_x_norm": -0.84,
+      "target_y_norm": -0.7998852413000215,
+      "point_index": 0,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1258,
+      "screen_height": 581
+    },
+    {
+      "timestamp_ms": 1810.6000000005588,
+      "target_x": 629,
+      "target_y": 58.133337402343756,
+      "target_x_norm": 0,
+      "target_y_norm": -0.7998852413000215,
+      "point_index": 1,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1258,
+      "screen_height": 581
+    },
+    {
+      "timestamp_ms": 2883,
+      "target_x": 1157.3600000000001,
+      "target_y": 58.133337402343756,
+      "target_x_norm": 0.8400000000000003,
+      "target_y_norm": -0.7998852413000215,
+      "point_index": 2,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1258,
+      "screen_height": 581
+    },
+    {
+      "timestamp_ms": 3969.4000000003725,
+      "target_x": 100.64,
+      "target_y": 290.66668701171875,
+      "target_x_norm": -0.84,
+      "target_y_norm": 0.0005737934998923944,
+      "point_index": 3,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1258,
+      "screen_height": 581
+    },
+    {
+      "timestamp_ms": 5089.700000000186,
+      "target_x": 629,
+      "target_y": 290.66668701171875,
+      "target_x_norm": 0,
+      "target_y_norm": 0.0005737934998923944,
+      "point_index": 4,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1258,
+      "screen_height": 581
+    },
+    {
+      "timestamp_ms": 6144.600000000559,
+      "target_x": 1157.3600000000001,
+      "target_y": 290.66668701171875,
+      "target_x_norm": 0.8400000000000003,
+      "target_y_norm": 0.0005737934998923944,
+      "point_index": 5,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1258,
+      "screen_height": 581
+    },
+    {
+      "timestamp_ms": 7142.700000000186,
+      "target_x": 100.64,
+      "target_y": 523.2000366210938,
+      "target_x_norm": -0.84,
+      "target_y_norm": 0.8010328282998065,
+      "point_index": 6,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1258,
+      "screen_height": 581
+    },
+    {
+      "timestamp_ms": 8174.799999999814,
+      "target_x": 629,
+      "target_y": 523.2000366210938,
+      "target_x_norm": 0,
+      "target_y_norm": 0.8010328282998065,
+      "point_index": 7,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1258,
+      "screen_height": 581
+    },
+    {
+      "timestamp_ms": 9394.5,
+      "target_x": 1157.3600000000001,
+      "target_y": 523.2000366210938,
+      "target_x_norm": 0.8400000000000003,
+      "target_y_norm": 0.8010328282998065,
+      "point_index": 8,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1258,
+      "screen_height": 581
+    },
+    {
+      "timestamp_ms": 10433,
+      "target_x": 364.82,
+      "target_y": 174.40001220703124,
+      "target_x_norm": -0.42000000000000004,
+      "target_y_norm": -0.39965572390006454,
+      "point_index": 9,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1258,
+      "screen_height": 581
+    },
+    {
+      "timestamp_ms": 11393.799999999814,
+      "target_x": 893.18,
+      "target_y": 174.40001220703124,
+      "target_x_norm": 0.41999999999999993,
+      "target_y_norm": -0.39965572390006454,
+      "point_index": 10,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1258,
+      "screen_height": 581
+    },
+    {
+      "timestamp_ms": 12359.900000000373,
+      "target_x": 364.82,
+      "target_y": 406.9333618164062,
+      "target_x_norm": -0.42000000000000004,
+      "target_y_norm": 0.4008033108998492,
+      "point_index": 11,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1258,
+      "screen_height": 581
+    },
+    {
+      "timestamp_ms": 13389.900000000373,
+      "target_x": 893.18,
+      "target_y": 406.9333618164062,
+      "target_x_norm": 0.41999999999999993,
+      "target_y_norm": 0.4008033108998492,
+      "point_index": 12,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1258,
+      "screen_height": 581
+    }
+  ]
+}

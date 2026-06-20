@@ -1,0 +1,4334 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>文件座標擷取與眼動分析工具</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <!-- Core PDF / Conversion Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+  
+  <style>
+    :root {
+      --bg-base: #ffffff;
+      --bg-elevated: #fafafa;
+      --bg-highest: #f4f4f5;
+      --ink-primary: #09090b;
+      --ink-secondary: #52525b;
+      --ink-muted: #a1a1aa;
+      --line: rgba(0, 0, 0, 0.06);
+      --line-strong: #e4e4e7;
+
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --accent-soft: #eff6ff;
+      --accent-2: #3b82f6;
+      --accent-2-hover: #2563eb;
+      --accent-2-soft: #f0f5ff;
+
+      --success: #10b981;
+      --success-soft: #ecfdf5;
+      --danger: #ef4444;
+      --danger-soft: #fef2f2;
+      --warning: #f59e0b;
+      --warning-soft: #fffbeb;
+
+      --radius-sm: 4px;
+      --radius-md: 6px;
+      --radius-lg: 8px;
+      --shadow-sm: none;
+      --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.02);
+      --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.06);
+      
+      --z-sidebar: 100;
+      --z-header: 101;
+      --z-tooltip: 20000;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg-elevated);
+      color: var(--ink-primary);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 1.5rem;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--line);
+      flex-shrink: 0;
+      z-index: var(--z-header);
+      box-shadow: var(--shadow-sm);
+    }
+    
+    .header-title {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .header-title svg {
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+    .header-title h1 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .header-title .subtitle {
+      font-size: 0.72rem;
+      color: var(--ink-secondary);
+      margin-top: 1px;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    /* Mobile toggle button */
+    .mobile-menu-btn {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: transparent;
+      cursor: pointer;
+      color: var(--ink-secondary);
+    }
+    .mobile-menu-btn:hover {
+      background: var(--bg-highest);
+      color: var(--ink-primary);
+    }
+
+    /* ── Layout ── */
+    .layout {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* ── Sidebar (VS Code Style) ── */
+    .sidebar {
+      display: flex;
+      width: 280px;
+      flex-shrink: 0;
+      background: var(--bg-base);
+      border-right: 1px solid var(--line);
+      overflow: hidden;
+      transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: var(--z-sidebar);
+    }
+    .sidebar.collapsed {
+      width: 48px;
+    }
+    .sidebar.collapsed .sidebar-panel {
+      display: none !important;
+    }
+    .sidebar.collapsed .icon-bar-btn.active::before {
+      display: none;
+    }
+
+    /* Icon Bar */
+    .icon-bar {
+      width: 48px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0.75rem 0;
+      background: var(--bg-elevated);
+      border-right: 1px solid var(--line);
+      gap: 6px;
+    }
+    .icon-bar-btn {
+      width: 40px;
+      height: 40px;
+      border: none;
+      border-radius: var(--radius-md);
+      background: transparent;
+      color: var(--ink-secondary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      transition: all 0.15s ease;
+    }
+    .icon-bar-btn svg {
+      width: 20px;
+      height: 20px;
+    }
+    .icon-bar-btn:hover {
+      background: var(--bg-highest);
+      color: var(--ink-primary);
+    }
+    .icon-bar-btn:hover::after {
+      content: attr(title);
+      position: absolute;
+      left: calc(100% + 8px);
+      top: 50%;
+      transform: translateY(-50%);
+      background: var(--ink-primary);
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 500;
+      white-space: nowrap;
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      pointer-events: none;
+      z-index: var(--z-tooltip);
+      box-shadow: var(--shadow-md);
+    }
+    .icon-bar-btn.active {
+      background: var(--bg-highest);
+      color: var(--accent);
+    }
+    .icon-bar-btn.active::before {
+      content: '';
+      position: absolute;
+      left: -4px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 20px;
+      background: var(--accent);
+      border-radius: 0 3px 3px 0;
+    }
+    .icon-bar-spacer {
+      flex: 1;
+    }
+
+    /* Sidebar Panels */
+    .sidebar-panel {
+      width: 232px;
+      flex-shrink: 0;
+      display: none;
+      overflow-y: auto;
+      padding: 0.75rem;
+      background: var(--bg-base);
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .sidebar-panel.active {
+      display: flex;
+    }
+
+    /* Panel sections */
+    .panel-section {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    .panel-section-title {
+      font-size: 0.6rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      color: var(--ink-secondary);
+      text-transform: uppercase;
+    }
+
+    /* Visual Cards */
+    .card {
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      padding: 0.25rem 0;
+      box-shadow: none;
+    }
+
+    /* File detail card */
+    .file-badge {
+      display: none;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    .file-badge.visible {
+      display: flex;
+    }
+    .file-card-icon {
+      font-size: 1.5rem;
+      flex-shrink: 0;
+    }
+    .file-card-details {
+      min-width: 0;
+      flex: 1;
+    }
+    .file-badge .fname {
+      font-weight: 600;
+      color: var(--ink-primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 0.82rem;
+    }
+    .file-card-details .fmeta {
+      color: var(--ink-secondary);
+      font-size: 0.68rem;
+      margin-top: 1px;
+    }
+
+    /* Stats Dashboard */
+    .stats-card {
+      display: none;
+      background: var(--bg-elevated);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 0.75rem;
+      box-shadow: var(--shadow-sm);
+    }
+    .stats-card.visible {
+      display: block;
+    }
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+    }
+    .stat-box {
+      background: var(--bg-base);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 0.4rem;
+      text-align: center;
+    }
+    .stat-lbl {
+      display: block;
+      font-size: 0.65rem;
+      color: var(--ink-secondary);
+      margin-bottom: 2px;
+    }
+    .stat-val {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75rem;
+      color: var(--ink-secondary);
+    }
+
+    /* iOS Style Switch Rows */
+    .switch-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      padding: 0.4rem 0;
+    }
+    .switch-info {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      min-width: 0;
+      flex: 1;
+      padding-right: 0.5rem;
+    }
+    .switch-lbl {
+      font-size: 0.8rem;
+      font-weight: 550;
+      color: var(--ink-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .switch-desc {
+      font-size: 0.68rem;
+      color: var(--ink-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .toggle-btn {
+      display: flex;
+      align-items: center;
+      background: transparent;
+      border: none;
+      padding: 0;
+      min-height: auto;
+      cursor: pointer;
+      width: auto;
+      outline: none;
+    }
+    .toggle-btn:hover {
+      transform: none;
+      background: transparent;
+    }
+    .sw-track {
+      width: 34px;
+      height: 18px;
+      border-radius: 9px;
+      background: var(--line-strong);
+      position: relative;
+      transition: background 0.2s ease;
+    }
+    .toggle-btn.active .sw-track {
+      background: var(--ink-primary);
+    }
+    .sw-track::after {
+      content: '';
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #fff;
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      transition: transform 0.2s cubic-bezier(0.25, 1, 0.5, 1);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    .toggle-btn.active .sw-track::after {
+      transform: translateX(16px);
+    }
+
+    /* Main Workspace */
+    .main-workspace {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      height: 100%;
+      position: relative;
+      z-index: 80;
+    }
+
+    /* ── Preview area ── */
+    .preview-area {
+      flex: 1;
+      overflow-y: auto;
+      background: var(--bg-highest);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem;
+      gap: 2rem;
+    }
+
+    /* ── Bottom Logs Drawer ── */
+    .logs-drawer {
+      border-top: 1px solid var(--line);
+      background: var(--bg-base);
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 85;
+    }
+    .logs-drawer-header {
+      padding: 0.5rem 1.2rem;
+      background: var(--bg-elevated);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: var(--ink-secondary);
+      user-select: none;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--line);
+    }
+    .logs-drawer-header:hover {
+      background: var(--bg-highest);
+      color: var(--ink-primary);
+    }
+    .logs-drawer-content {
+      padding: 0.5rem 1.2rem 1.2rem 1.2rem;
+      display: flex;
+      flex-direction: column;
+      height: 140px;
+    }
+    .logs-drawer.collapsed .logs-drawer-content {
+      display: none;
+    }
+    .drawer-chevron {
+      transition: transform 0.2s ease;
+    }
+    .logs-drawer.collapsed .drawer-chevron {
+      transform: rotate(180deg);
+    }
+    .log-box {
+      background: var(--ink-primary);
+      border-radius: var(--radius-sm);
+      padding: 0.5rem 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      flex: 1;
+      overflow-y: auto;
+      color: #9cdcfe;
+    }
+    .log-line { padding: 1px 0; }
+    .log-line.ok { color: var(--success); }
+    .log-line.err { color: var(--danger); }
+    .log-line.hi { color: var(--accent); }
+
+    /* ── Settings Modal Styles ── */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.35);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      z-index: 999999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .modal-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .modal-card {
+      width: 100%;
+      max-width: 520px;
+      max-height: 82vh;
+      background: rgba(255, 255, 255, 0.98);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transform: scale(0.95) translateY(10px);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .modal-backdrop.open .modal-card {
+      transform: scale(1) translateY(0);
+    }
+    .modal-header {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+      background: var(--bg-elevated);
+    }
+    .modal-header h3 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--ink-primary);
+    }
+    .modal-close-btn {
+      background: transparent;
+      border: none;
+      color: var(--ink-secondary);
+      cursor: pointer;
+      padding: 4px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .modal-close-btn:hover {
+      background: var(--bg-highest);
+      color: var(--ink-primary);
+    }
+    .modal-content {
+      padding: 1.25rem 1.5rem 1.5rem 1.5rem;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1.2rem;
+    }
+    
+    /* Settings groups */
+    .settings-group {
+      background: var(--bg-elevated);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 0.85rem 1.1rem;
+    }
+    .group-title {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--ink-secondary);
+      margin-bottom: 0.8rem;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 0.3rem;
+    }
+    .group-body {
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+
+    /* Form Fields */
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .field label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--ink-secondary);
+    }
+    .field-label-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .field-val {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--accent);
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .field-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+
+    /* Segmented Control for Word/Char */
+    .segmented-control {
+      display: flex;
+      background: var(--bg-highest);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 2px;
+    }
+    .segment-item {
+      flex: 1;
+      text-align: center;
+      position: relative;
+      cursor: pointer;
+    }
+    .segment-item input {
+      position: absolute;
+      opacity: 0;
+      cursor: pointer;
+      width: 0;
+      height: 0;
+    }
+    .segment-item span {
+      display: block;
+      padding: 0.4rem;
+      font-size: 0.78rem;
+      color: var(--ink-secondary);
+      font-weight: 550;
+      border-radius: var(--radius-sm);
+      transition: all 150ms ease;
+    }
+    .segment-item input:checked + span {
+      background: var(--bg-base);
+      color: var(--ink-primary);
+      box-shadow: var(--shadow-sm);
+      font-weight: 600;
+    }
+
+    input[type="number"], select, input[type="text"] {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 6px 10px;
+      font-size: 0.8rem;
+      color: var(--ink-primary);
+      background: var(--bg-base);
+      outline: none;
+      transition: all 150ms ease;
+    }
+    input[type="number"]:focus, select:focus, input[type="text"]:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+    input[type="range"] {
+      accent-color: var(--accent);
+      flex: 1;
+      cursor: pointer;
+      height: 6px;
+      border-radius: 3px;
+      outline: none;
+    }
+
+    /* Buttons */
+    .btn {
+      border: 1px solid transparent;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 500;
+      min-height: 36px;
+      padding: 6px 14px;
+      transition: all 150ms ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+    
+    .btn-success { background: var(--success); color: #fff; border: none; }
+    .btn-success:hover:not(:disabled) { background: #059669; }
+    
+    .btn-info { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); }
+    .btn-info:hover:not(:disabled) { background: #dbeafe; }
+    
+    .btn-secondary { background: #ffffff; color: var(--ink-primary); border: 1px solid var(--line-strong); }
+    .btn-secondary:hover:not(:disabled) { background: var(--bg-highest); }
+
+    .btn-row { display: flex; gap: 0.5rem; }
+    .btn-row .btn { flex: 1; }
+
+    /* Upload zone - beautiful center card before upload */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+    }
+    .upload-zone {
+      width: 100%;
+      max-width: 480px;
+      background: var(--bg-base);
+      border: 2px dashed var(--line-strong);
+      border-radius: var(--radius-lg);
+      padding: 3rem 2rem;
+      text-align: center;
+      cursor: pointer;
+      box-shadow: var(--shadow-md);
+      transition: all 0.25s ease;
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      transform: translateY(-2px);
+    }
+    .upload-zone input[type="file"] { display: none; }
+    .upload-icon {
+      margin-bottom: 1rem;
+      display: flex;
+      justify-content: center;
+    }
+    .upload-zone h3 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+    .upload-zone p {
+      font-size: 0.88rem;
+      color: var(--ink-secondary);
+      margin-bottom: 1rem;
+    }
+    .upload-formats {
+      font-size: 0.72rem;
+      color: var(--ink-muted);
+      border-top: 1px solid var(--line);
+      padding-top: 0.75rem;
+    }
+
+    /* Page Renderings */
+    .page-block {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .page-wrap {
+      position: relative;
+      display: inline-block;
+      box-shadow: var(--shadow-lg);
+      border-radius: var(--radius-sm);
+      background: #fff;
+    }
+    .page-wrap canvas { display: block; border-radius: var(--radius-sm); }
+    .page-lbl { font-size: 0.7rem; color: var(--ink-secondary); font-weight: 500; }
+
+    /* PDF.js text layer */
+    .textLayer {
+      position: absolute; top: 0; left: 0;
+      width: 100%; height: 100%; overflow: hidden;
+      line-height: 1; opacity: 1; pointer-events: none;
+    }
+    .textLayer span {
+      color: transparent; position: absolute;
+      white-space: pre; cursor: text; transform-origin: 0% 0%;
+    }
+
+    /* Overlay verifier canvas (absolutely on top) */
+    .overlay-canvas {
+      position: absolute; top: 0; left: 0;
+      pointer-events: none; display: none;
+    }
+    .overlay-canvas.visible { display: block; }
+
+    /* Hit-test overlay */
+    .hit-div {
+      position: absolute; inset: 0;
+      z-index: 10; cursor: default;
+    }
+    .hit-div.active { cursor: crosshair; }
+
+    /* Gaze Status text */
+    .gaze-status {
+      font-size: 0.72rem;
+      color: var(--ink-secondary);
+      line-height: 1.4;
+      background: var(--bg-highest);
+      padding: 0.4rem 0.6rem;
+      border-radius: var(--radius-sm);
+      border-left: 3px solid var(--accent);
+      min-height: 2rem;
+    }
+
+    /* Tooltip */
+    #vTooltip {
+      position: fixed;
+      z-index: var(--z-tooltip);
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--accent);
+      border-radius: var(--radius-md);
+      padding: 0.5rem 0.75rem;
+      font-size: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--ink-primary);
+      pointer-events: none;
+      display: none;
+      max-width: 250px;
+      line-height: 1.5;
+      box-shadow: var(--shadow-md);
+    }
+
+    /* History Cards */
+    .hist-card {
+      background: var(--bg-base);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 0.5rem 0.6rem;
+      font-size: 0.75rem;
+      box-shadow: var(--shadow-sm);
+    }
+    .hist-card .hname {
+      font-weight: 600;
+      color: var(--ink-primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .hist-card .hmeta { color: var(--ink-secondary); font-size: 0.68rem; margin: 0.15rem 0 0.35rem; }
+    .hist-card .hbtns { display: flex; gap: 0.25rem; }
+    .hist-card .hbtns .btn-sm {
+      padding: 0.25rem 0.45rem;
+      font-size: 0.7rem;
+      border: 1px solid var(--line-strong);
+      border-radius: 4px;
+      background: var(--bg-elevated);
+      cursor: pointer;
+    }
+    .hist-card .hbtns .btn-sm:hover {
+      background: var(--bg-highest);
+    }
+    .hist-card .hbtns .btn-del { color: var(--danger); }
+    .hist-card .hbtns .btn-del:hover { background: var(--danger-soft); }
+
+    /* Cognitive list */
+    .cog-list {
+      max-height: 120px;
+      overflow-y: auto;
+      background: var(--bg-base);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 0.5rem;
+      display: none;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+    }
+    .cog-list.visible { display: flex; }
+    .cog-chip {
+      background: var(--danger-soft);
+      color: var(--danger);
+      border: 1px solid rgba(239, 68, 68, 0.25);
+      border-radius: 4px;
+      padding: 0.15rem 0.35rem;
+      font-size: 0.7rem;
+      font-family: 'JetBrains Mono', monospace;
+      cursor: default;
+    }
+    .cog-empty { font-size: 0.72rem; color: var(--ink-secondary); text-align: center; }
+
+    /* Legends */
+    .legend { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.68rem;
+      color: var(--ink-secondary);
+    }
+    .chip-dot { width: 8px; height: 8px; border-radius: 2px; }
+
+    /* Details panel */
+    .hover-info {
+      background: var(--bg-base);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 0.5rem 0.6rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--ink-secondary);
+      min-height: 5rem;
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+
+    /* Document rendering adjustments */
+    .doc-page {
+      background: #fff;
+      color: #2c3e50;
+      padding: 40px 52px;
+      font-family: Georgia, serif;
+      font-size: 14px;
+      line-height: 1.7;
+      word-break: break-word;
+    }
+    .doc-page h1, .doc-page h2 { font-family: 'Inter', sans-serif; margin: 0.8em 0 0.4em; }
+    .doc-page p { margin-bottom: 0.8em; }
+
+    /* Progress block */
+    .progress-block { display: none; }
+    .progress-block.visible { display: block; }
+    .progress-bg {
+      background: var(--bg-highest);
+      border-radius: 4px;
+      height: 6px;
+      overflow: hidden;
+      margin-top: 0.4rem;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 4px;
+      transition: width 0.2s ease;
+      width: 0%;
+    }
+    .progress-txt { font-size: 0.7rem; color: var(--ink-secondary); margin-top: 0.25rem; }
+
+    /* Mobile Backdrop Overlay */
+    .sidebar-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+      z-index: 99;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+    }
+    .sidebar-backdrop.visible {
+      display: block;
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* ── Mobile Responsive (RWD) ── */
+    @media (max-width: 768px) {
+      header {
+        padding: 0.5rem 1rem;
+      }
+      .header-title .subtitle {
+        display: none;
+      }
+      .mobile-menu-btn {
+        display: flex;
+      }
+      .layout {
+        flex-direction: column;
+      }
+      /* Sidebar transforms to Mobile Bottom Sheet */
+      .sidebar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100% !important;
+        height: 85vh;
+        border-right: none;
+        border-top: 1px solid var(--line);
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        z-index: var(--z-sidebar);
+        transform: translateY(100%);
+        transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.15);
+        display: flex !important;
+        margin-left: 0 !important;
+        flex-direction: column;
+      }
+      .sidebar.mobile-open {
+        transform: translateY(0);
+      }
+      .sidebar.collapsed {
+        width: 100% !important;
+      }
+      .sidebar.collapsed .sidebar-panel {
+        display: flex !important;
+      }
+      /* Drag handle bar at top of bottom sheet */
+      .sidebar::before {
+        content: '';
+        display: block;
+        width: 40px;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--line-strong);
+        position: absolute;
+        top: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1;
+      }
+      /* Mobile: icon bar horizontal on top */
+      .icon-bar {
+        width: 100%;
+        flex-direction: row;
+        border-right: none;
+        border-bottom: 1px solid var(--line);
+        padding: 0.5rem 0.75rem;
+        flex-shrink: 0;
+        gap: 8px;
+        padding-top: 18px;
+      }
+      .icon-bar-btn {
+        width: 40px;
+        height: 40px;
+      }
+      .icon-bar-btn:hover::after {
+        display: none;
+      }
+      .icon-bar-btn.active::before {
+        left: 50%;
+        top: auto;
+        bottom: -2px;
+        transform: translateX(-50%);
+        width: 20px;
+        height: 3px;
+        border-radius: 3px 3px 0 0;
+      }
+      .icon-bar-spacer {
+        flex: 0;
+      }
+      #mobileCloseBtn {
+        display: flex !important;
+      }
+      .sidebar-panel {
+        width: 100%;
+        flex: 1;
+        overflow-y: auto;
+        padding-bottom: env(safe-area-inset-bottom, 16px);
+      }
+      .main-workspace {
+        width: 100vw;
+        height: calc(100vh - 57px);
+      }
+      .preview-area {
+        padding: 1rem 0.5rem;
+      }
+      .upload-zone {
+        margin: 1rem;
+        padding: 2rem 1rem;
+      }
+      .page-wrap {
+        max-width: 100%;
+      }
+      .page-wrap canvas {
+        max-width: 100%;
+        height: auto !important;
+      }
+      .page-block {
+        width: 100%;
+      }
+      .modal-card {
+        max-height: 90vh;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        position: fixed;
+        bottom: 0;
+      }
+      .modal-backdrop {
+        align-items: flex-end;
+      }
+      .sidebar-panel :is(.segmented-control, .field-row, div[style*="display:flex"][style*="gap"]) {
+        flex-direction: column;
+      }
+      .sidebar-panel .field-row .field,
+      .sidebar-panel div[style*="display:flex"][style*="gap"] > .field {
+        flex: none !important;
+        width: 100%;
+      }
+      .sidebar-panel input:not([type="radio"]),
+      .sidebar-panel select {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ══ HEADER ══ -->
+  <header>
+    <div class="header-title">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/>
+        <line x1="16" y1="17" x2="8" y2="17"/>
+      </svg>
+      <div>
+        <h1>文件眼動分析系統</h1>
+        <div class="subtitle">PDF Coordinate Extractor & Eye Gaze Analytics</div>
+      </div>
+    </div>
+    
+    <div class="header-actions">
+      <button class="btn btn-secondary" id="gazePerfChangeBtn" onclick="if(window.lexiOpenPerfModal) window.lexiOpenPerfModal(); else document.getElementById('perfModeModal').classList.add('open');" style="padding: 0.35rem 0.85rem; font-size: 0.8rem; display: flex; align-items: center; gap: 4px; min-height: auto; border-color: #8b5cf6; color: #7c3aed;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        效能模式
+        <span id="gazePerfModeTagHeader" class="perf-mode-tag video" style="margin-left:2px;">🎬 錄影</span>
+      </button>
+      <button class="btn btn-secondary" id="helpTutorialBtn" style="padding: 0.35rem 0.85rem; font-size: 0.8rem; display: flex; align-items: center; gap: 4px; min-height: auto;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+        使用說明 / Guide
+      </button>
+      <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="開啟選單">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="layout">
+    
+    <!-- ══ SIDEBAR (VS Code Style) ══ -->
+    <div class="sidebar" id="sidebar">
+      
+      <!-- Icon Bar -->
+      <div class="icon-bar">
+        <button class="icon-bar-btn active" data-panel="guide" title="步驟指南 / Stepper Guide">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 11 12 14 22 4"></polyline>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+          </svg>
+        </button>
+        <button class="icon-bar-btn" data-panel="file" title="文件與分析">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+        </button>
+        <button class="icon-bar-btn" data-panel="gaze" title="眼動追蹤">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
+        <button class="icon-bar-btn" data-panel="cognitive" title="認知負荷評估">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 0 1 7.07 17.07A10 10 0 0 1 4.93 4.93 10 10 0 0 1 12 2z"/><path d="M12 6v6l4 2"/></svg>
+          </button>
+        <button class="icon-bar-btn" data-panel="inspector" title="認知能力診斷">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+            <polyline points="16 11 18 13 22 9"></polyline>
+          </svg>
+        </button>
+          <div class="icon-bar-spacer"></div>
+          <button class="icon-bar-btn" id="mobileCloseBtn" title="關閉選單" style="display:none">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+
+      <!-- Panel: Guide -->
+      <div class="sidebar-panel active" id="panel-guide">
+        <div class="panel-section-title" style="font-size:0.75rem; color:var(--accent);">步驟指南 / Step Guide</div>
+        
+        <div class="guide-welcome">
+          <div style="font-size: 0.76rem; font-weight: 700; color: var(--accent); margin-bottom: 2px;">📖 歡迎使用 LexiGaze !</div>
+          <div style="font-size: 0.65rem; color: var(--ink-secondary); line-height: 1.4;">
+            請跟隨以下步驟進行硬體配置、相機校正、閱讀錄影，最後生成詳細的認知負荷診斷報告。
+          </div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          
+          <!-- Step 1: Mode Selection -->
+          <div class="guide-step-card active" id="guideStep1">
+            <div class="guide-step-header">
+              <div class="guide-step-title-wrap">
+                <span class="guide-step-number">1</span>
+                <span class="guide-step-title">硬體與效能模式</span>
+              </div>
+              <span class="guide-step-badge active" id="guideStep1Badge">進行中</span>
+            </div>
+            <div class="guide-step-desc">
+              評估您的設備效能，選擇<b>錄影分析</b>（省電無延遲）或<b>即時推論</b>模式。
+            </div>
+            <div class="guide-step-content">
+              <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-highest); padding:4px 8px; border-radius:4px; font-size:10px; margin-bottom:4px;">
+                <span>目前模式：</span>
+                <strong id="guideCurrentModeTxt">🎬 錄影模式</strong>
+              </div>
+              <button class="btn btn-secondary" onclick="if(window.lexiOpenPerfModal) window.lexiOpenPerfModal();" style="width:100%; font-size:11px; min-height:28px;">
+                ⚙ 選擇效能模式與效能測試
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 2: Calibration -->
+          <div class="guide-step-card" id="guideStep2">
+            <div class="guide-step-header">
+              <div class="guide-step-title-wrap">
+                <span class="guide-step-number">2</span>
+                <span class="guide-step-title">眼動相機校正</span>
+              </div>
+              <span class="guide-step-badge" id="guideStep2Badge">待執行</span>
+            </div>
+            <div class="guide-step-desc">
+              開啟獨立校正視窗，注視跳動黑色圓點進行臉部與個人化眼動基準校正。
+            </div>
+            <div class="guide-step-content">
+              <button class="btn btn-secondary open-gaze-page-btn" style="width:100%; font-size:11px; min-height:28px;">
+                🎯 前往校正與訓練頁面 ↗
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 3: Load Article -->
+          <div class="guide-step-card" id="guideStep3">
+            <div class="guide-step-header">
+              <div class="guide-step-title-wrap">
+                <span class="guide-step-number">3</span>
+                <span class="guide-step-title">載入閱讀文件</span>
+              </div>
+              <span class="guide-step-badge" id="guideStep3Badge">待執行</span>
+            </div>
+            <div class="guide-step-desc">
+              載入您要閱讀的文章。您可以上傳 PDF/TXT，或載入系統的內建範例。
+            </div>
+            <div class="guide-step-content">
+              <!-- Upload Custom Document -->
+              <button class="btn btn-primary" id="guideUploadBtn" style="width:100%; font-size:11px; min-height:28px; margin-bottom:6px;">
+                📁 選擇或拖放文件上傳
+              </button>
+              
+              <!-- Quick Example Selector -->
+              <div style="font-size: 9px; color: var(--ink-secondary); margin: 2px 0;">快速載入範本：</div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px;">
+                <button class="btn btn-secondary" onclick="loadExampleText('/examples/easy_en.md', 'easy_en.md')" style="font-size:9px; min-height:24px; padding:2px;">Easy EN (英)</button>
+                <button class="btn btn-secondary" onclick="loadExampleText('/examples/hard_en.md', 'hard_en.md')" style="font-size:9px; min-height:24px; padding:2px;">Hard EN (英)</button>
+                <button class="btn btn-secondary" onclick="loadExampleText('/examples/easy_zh.md', 'easy_zh.md')" style="font-size:9px; min-height:24px; padding:2px;">Easy ZH (中)</button>
+                <button class="btn btn-secondary" onclick="loadExampleText('/examples/hard_zh.md', 'hard_zh.md')" style="font-size:9px; min-height:24px; padding:2px;">Hard ZH (中)</button>
+              </div>
+              <div id="guideFileLoadedTxt" style="display:none; font-size:10px; color:var(--success); font-weight:600; margin-top:4px;">
+                ✅ 已載入：<span id="guideFileName">—</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 4: Eye Tracking Reading -->
+          <div class="guide-step-card" id="guideStep4">
+            <div class="guide-step-header">
+              <div class="guide-step-title-wrap">
+                <span class="guide-step-number">4</span>
+                <span class="guide-step-title">開始閱讀與追蹤</span>
+              </div>
+              <span class="guide-step-badge" id="guideStep4Badge">待執行</span>
+            </div>
+            
+            <!-- Video Mode UI inside Step 4 -->
+            <div id="guideVmControls" style="display:flex; flex-direction:column; gap:4px; margin-top:2px;">
+              <div class="guide-step-desc">
+                點擊「開始錄影」，專注並自然地往下閱讀。完畢後，點擊「停止」再點「分析」。
+              </div>
+              <div id="guideVmStatus" style="font-size:9px; padding:4px 8px; border-radius:4px; background:var(--bg-highest); margin:4px 0; color:var(--ink-secondary);">狀態: 尚未開始</div>
+              <div style="display:flex; gap:4px;">
+                <button class="btn btn-success" id="guideVmStartBtn" onclick="startVideoRecording()" style="flex:1; font-size:10px; min-height:26px;">▶ 開始錄影</button>
+                <button class="btn btn-danger" id="guideVmStopBtn" onclick="stopVideoRecording()" style="flex:1; font-size:10px; min-height:26px;" disabled>■ 停止錄影</button>
+              </div>
+              <button class="btn btn-primary" id="guideVmProcessBtn" onclick="processVideoRecording()" style="width:100%; font-size:10px; min-height:28px; margin-top:2px;" disabled>⬆ 上傳並分析影片</button>
+            </div>
+
+            <!-- Real-Time Mode UI inside Step 4 -->
+            <div id="guideRtControls" style="display:none; flex-direction:column; gap:4px; margin-top:2px;">
+              <div class="guide-step-desc">
+                請點擊「開啟推論」，您的注視點將即時顯示在文件上，讀完後將其關閉。
+              </div>
+              <div style="display:flex; gap:6px; margin:4px 0; justify-content:space-between; align-items:center;">
+                <span style="font-size:10px; font-weight:600;">眼動追蹤推論</span>
+                <button class="btn btn-secondary" id="guideRtToggleBtn" style="font-size:10px; min-height:26px; padding:0 8px;">開啟相機</button>
+              </div>
+              <div id="guideRtStatus" style="font-size:9px; padding:4px 8px; border-radius:4px; background:var(--bg-highest); color:var(--ink-muted);">狀態: 尚未啟用</div>
+            </div>
+            
+            <div id="guideTrackingDoneTxt" style="display:none; font-size:10px; color:var(--success); font-weight:600; margin-top:4px;">
+              ✅ 視線軌跡已記錄：<span id="guideTrackingHitsCount">0</span> 點
+            </div>
+          </div>
+
+          <!-- Step 5: Diagnostics Report -->
+          <div class="guide-step-card" id="guideStep5">
+            <div class="guide-step-header">
+              <div class="guide-step-title-wrap">
+                <span class="guide-step-number">5</span>
+                <span class="guide-step-title">認知分析診斷</span>
+              </div>
+              <span class="guide-step-badge" id="guideStep5Badge">待執行</span>
+            </div>
+            <div class="guide-step-desc">
+              系統將依據您在閱讀期間的視線軌跡，計算認知負荷、閱讀理解力及生成個人化診斷報告。
+            </div>
+            <div class="guide-step-content">
+              <div style="display:flex; flex-direction:column; gap:2px; margin-bottom:4px;">
+                <label style="font-size:9px; color:var(--ink-muted);">受試者編號 / Participant ID</label>
+                <input type="text" id="guideParticipantInput" value="anonymous" style="font-size:11px; padding:4px; min-height:26px; border-radius:var(--radius-sm); border:1px solid var(--line-strong);" autocomplete="off">
+              </div>
+              <button class="btn btn-primary" id="guideAnalyzeBtn" onclick="runCognitiveInspectorAnalysis()" style="width:100%; font-size:11px; min-height:28px; margin-top:2px;">
+                📊 開始認知能力診斷
+              </button>
+              <button class="btn btn-secondary" id="guideReportBtn" onclick="generateAndShowCognitiveReport()" style="width:100%; font-size:11px; min-height:28px; margin-top:4px;" disabled>
+                📖 產生與儲存診斷報告
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Panel: File -->
+      <div class="sidebar-panel" id="panel-file">
+        <div class="panel-section-title">文件</div>
+        
+        <div class="file-badge card visible" id="fileInfoCard">
+          <div class="file-card-details">
+            <div class="fname" id="fileCardName">未載入檔案</div>
+            <div class="fmeta" id="fileCardMeta">請選擇或拖放檔案</div>
+          </div>
+        </div>
+        
+        <div class="stats-card" id="statsCard">
+          <div class="stat-grid">
+            <div class="stat-box">
+              <span class="stat-lbl">總頁數</span>
+              <span class="stat-val" id="sPages">—</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-lbl">項目總數</span>
+              <span class="stat-val" id="sItems">—</span>
+            </div>
+          </div>
+          <div class="stat-row" style="margin-top:0.4rem; padding-top:0.3rem; border-top:1px solid var(--line)">
+            <span>格式 / 比例</span>
+            <span class="stat-val" id="sUnit">—</span>
+          </div>
+        </div>
+
+        <!-- Parsing Settings -->
+        <hr style="border:none; border-top:1px solid var(--line); margin:0.25rem 0">
+        <div class="panel-section-title">解析設定</div>
+        <div class="field">
+          <label>擷取單位</label>
+          <div class="segmented-control">
+            <label class="segment-item">
+              <input type="radio" name="granularity" value="word" checked>
+              <span>單字</span>
+            </label>
+            <label class="segment-item">
+              <input type="radio" name="granularity" value="char">
+              <span>字元</span>
+            </label>
+          </div>
+        </div>
+        <div class="field" id="scaleRow">
+          <label>渲染縮放比</label>
+          <input type="number" id="scaleInput" value="1.5" min="0.5" max="3" step="0.1">
+        </div>
+        <button class="btn btn-primary" id="parseBtn" disabled style="width:100%">套用並重新解析</button>
+        <div class="progress-block" id="progressBlock">
+          <div class="progress-bg"><div class="progress-fill" id="progressFill"></div></div>
+          <div class="progress-txt" id="progressTxt">準備中…</div>
+        </div>
+
+        <hr style="border:none; border-top:1px solid var(--line); margin:0.25rem 0">
+        <div style="display:flex; gap:4px">
+          <button class="btn btn-success" id="exportJson" disabled style="flex:1">JSON</button>
+          <button class="btn btn-info" id="exportCsv" disabled style="flex:1">CSV</button>
+        </div>
+        <button class="btn btn-primary" id="saveBtn" disabled style="width:100%">儲存至伺服器</button>
+
+        <hr style="border:none; border-top:1px solid var(--line); margin:0.25rem 0">
+
+        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.7rem; color:var(--ink-secondary)">
+          <span>歷史紀錄 <span id="historyCount"></span></span>
+          <span id="backendDot" style="width:8px; height:8px; border-radius:50%; background:var(--ink-muted); display:inline-block" title="檢查連線..."></span>
+        </div>
+        <div id="historyList" style="display:flex; flex-direction:column; gap:0.4rem; max-height:160px; overflow-y:auto; font-size:0.75rem">
+          <div id="historyEmpty" style="color:var(--ink-secondary)">尚無紀錄</div>
+        </div>
+        <button class="btn btn-secondary" id="refreshHistoryBtn" style="font-size:0.7rem; min-height:28px; padding:3px; width:100%">重新整理</button>
+      </div>
+
+      <!-- Panel: Eye Tracking -->
+      <div class="sidebar-panel" id="panel-gaze">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.4rem;">
+          <div class="panel-section-title" style="margin-bottom:0;">眼動追蹤</div>
+          <span id="gazePerfModeTag" class="perf-mode-tag video" onclick="if(window.lexiOpenPerfModal) window.lexiOpenPerfModal();" title="點擊切換效能模式">🎬 錄影模式</span>
+        </div>
+
+        <!-- ── Video-Record Mode Controls (shown when mode = video) ── -->
+        <div id="gazeVmControls">
+          <div class="video-mode-banner visible" id="vmBanner">
+            <div class="vmb-title">
+              <span class="vmb-rec-dot" id="vmRecDot"></span>
+              🎬 錄影分析模式
+            </div>
+            <div style="font-size:0.7rem; color:rgba(255,255,255,0.7); line-height:1.4;">
+              開始閱讀前，點擊「開始錄影」。閱讀完畢後，點擊「停止」再點「上傳分析」，系統將在伺服器批次還原您的視線軌跡。
+            </div>
+            <div id="vmStatus" style="font-size:0.7rem; color:rgba(255,255,255,0.85); background:rgba(255,255,255,0.08); padding:5px 8px; border-radius:5px;">尚未開始</div>
+            <button class="vmb-btn vmb-btn-start" id="vmStartBtn" onclick="startVideoRecording()">▶ 開始錄影</button>
+            <button class="vmb-btn vmb-btn-stop"  id="vmStopBtn"  onclick="stopVideoRecording()"  disabled>■ 停止錄影</button>
+            <button class="vmb-btn vmb-btn-process" id="vmProcessBtn" onclick="processVideoRecording()" disabled>⬆ 上傳並分析影片</button>
+          </div>
+
+          <!-- Model selector also available in video mode -->
+          <div class="field" style="margin-top:8px;">
+            <label>推論模型 (分析時使用)</label>
+            <select id="gazeModelSelect" class="gaze-model-select">
+              <option value="before">原始 / before</option>
+            </select>
+          </div>
+          <button class="btn btn-secondary open-gaze-page-btn" id="openGazePageBtnVm" type="button" style="width:100%; margin-top:4px;">
+            相機校正與訓練 ↗
+          </button>
+        </div>
+
+        <!-- ── Real-time Mode Controls (shown when mode = realtime) ── -->
+        <div id="gazeRtControls" style="display:none;">
+          <div class="switch-row">
+            <div class="switch-info">
+              <div class="switch-lbl">啟用眼動推論</div>
+              <div class="switch-desc">開啟視訊鏡頭與推論模型</div>
+            </div>
+            <button class="toggle-btn" id="gazeToggle" type="button">
+              <div class="sw-track"></div>
+              <span id="gazeToggleLabel" style="display:none">啟用眼動推論（關閉）</span>
+            </button>
+          </div>
+
+          <div class="switch-row">
+            <div class="switch-info">
+              <div class="switch-lbl">Gaze Mapping</div>
+              <div class="switch-desc">比對注視點與滑鼠</div>
+            </div>
+            <button class="toggle-btn" id="gazeMappingToggle" type="button">
+              <div class="sw-track"></div>
+              <span id="gazeMappingLabel" style="display:none">啟用 Gaze Mapping（關閉）</span>
+            </button>
+          </div>
+          
+          <button class="btn btn-secondary open-gaze-page-btn" id="openGazePageBtnRt" type="button" style="width:100%">
+            相機校正與訓練 ↗
+          </button>
+          
+          <div class="gaze-status" id="gazeStatus">尚未啟用</div>
+
+        <!-- Gaze Filter Settings -->
+        <hr style="border:none; border-top:1px solid var(--line); margin:0.25rem 0">
+        <div class="panel-section-title">濾波設定</div>
+        <div class="field">
+          <label>推論模型</label>
+          <select id="gazeModelSelectRt" class="gaze-model-select">
+            <option value="before">原始 / before</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>防抖模式</label>
+          <select id="gazeDebounceMode">
+            <option value="none">無</option>
+            <option value="one-euro" selected>OneEuro 平滑</option>
+            <option value="corridor">廊道鎖定</option>
+            <option value="one-euro-corridor">OneEuro + 廊道</option>
+            <option value="dwell">停留凝視</option>
+          </select>
+        </div>
+        <div class="field">
+          <div class="field-label-row">
+            <label>平滑敏感度</label>
+            <span id="gazeSmoothValue" class="field-val">45</span>
+          </div>
+          <input type="range" id="gazeSmoothSlider" min="0" max="100" value="45">
+        </div>
+        <div style="display:flex; gap:4px">
+          <div class="field" style="flex:1">
+            <label>廊道 (px)</label>
+            <input type="number" id="gazeCorridorInput" value="35" min="8" max="120" step="1">
+          </div>
+          <div class="field" style="flex:1">
+            <label>停留 (ms)</label>
+            <input type="number" id="gazeDwellInput" value="180" min="60" max="800" step="20">
+          </div>
+        </div>
+
+        <!-- Performance: Inference Interval -->
+        <hr style="border:none; border-top:1px solid var(--line); margin:0.25rem 0">
+        <div class="panel-section-title">效能設定 (Performance)</div>
+        <div class="field">
+          <div class="field-label-row">
+            <label>推論間隔 (Inference Interval)</label>
+            <span id="gazeIntervalValue" class="field-val">90 ms</span>
+          </div>
+          <input type="range" id="gazeIntervalSlider" min="90" max="600" step="30" value="90">
+          <div style="font-size:0.65rem; color:var(--ink-muted); margin-top:2px; line-height:1.4;">
+            ⚡ 較舊硬體建議設定 300–600 ms 以減少 CPU 負擔。數值越高，追蹤頻率越低但 CPU 用量越少。
+            <br>For older hardware (e.g. 2019 MacBook i5), use 300–600 ms to reduce lag.
+          </div>
+        </div>
+        </div><!-- /gazeRtControls -->
+      </div>
+
+
+      <!-- Panel: Cognitive Load -->
+      <div class="sidebar-panel" id="panel-cognitive">
+        <div class="panel-section-title">認知負荷評估</div>
+        
+        <button class="btn btn-primary" id="cogAnalyzeBtn" style="width:100%">分析認知負荷</button>
+
+        <div class="stats-card" id="cogStats">
+          <div class="stat-grid">
+            <div class="stat-box">
+              <span class="stat-lbl">模型 / 語言</span>
+              <span class="stat-val" id="cogModel">—</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-lbl">領域</span>
+              <span class="stat-val" id="cogDomain">—</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-lbl">詞彙總數</span>
+              <span class="stat-val" id="cogTotal">—</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-lbl">高負荷詞數</span>
+              <span class="stat-val" id="cogHighCount">—</span>
+            </div>
+          </div>
+          <div class="stat-row" style="margin-top:0.4rem; padding-top:0.3rem; border-top:1px solid var(--line)">
+            <span>閾值</span>
+            <span class="stat-val" id="cogMedCount">≥ 0.70</span>
+          </div>
+        </div>
+        
+        <div class="progress-block" id="cogProgressBlock">
+          <div class="progress-bg"><div class="progress-fill" id="cogProgressFill"></div></div>
+          <div class="progress-txt" id="cogProgressTxt">分析中…</div>
+        </div>
+
+        <!-- Cognitive Parameters -->
+        <hr style="border:none; border-top:1px solid var(--line); margin:0.25rem 0">
+        <div class="panel-section-title">參數設定</div>
+        <div style="display:flex; gap:4px">
+          <div class="field" style="flex:1">
+            <label>語言</label>
+            <select id="cogLangSelect">
+              <option value="auto">自動</option>
+              <option value="en">英文</option>
+              <option value="zh">中文</option>
+            </select>
+          </div>
+          <div class="field" style="flex:1">
+            <label>領域</label>
+            <select id="cogDomainSelect">
+              <option value="auto">自動</option>
+              <option value="academic">學術</option>
+              <option value="general">一般</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>標記模式</label>
+          <select id="cogVizModeSelect">
+            <option value="box">矩形邊框</option>
+            <option value="heatmap" selected>熱力圖</option>
+          </select>
+        </div>
+        <div class="field" id="cogMuRow">
+          <div class="field-label-row">
+            <label>臨界值 µ</label>
+            <span id="cogMuValue" class="field-val">0.50</span>
+          </div>
+          <input type="range" id="cogMuSlider" min="0" max="1" step="0.02" value="0.50">
+        </div>
+        <div class="field" id="cogSigmaRow">
+          <div class="field-label-row">
+            <label>擴散半徑 σ</label>
+            <span id="cogSigmaValue" class="field-val">40 px</span>
+          </div>
+          <input type="range" id="cogSigmaSlider" min="10" max="120" step="2" value="40">
+        </div>
+        <div class="field">
+          <label>高負荷詞彙</label>
+          <div class="cog-list" id="cogList"></div>
+          <div class="cog-empty" id="cogEmpty">尚未分析</div>
+        </div>
+
+        <div class="switch-row" id="cogOverlaySec">
+          <div class="switch-info">
+            <div class="switch-lbl">在文件上標示負荷</div>
+            <div class="switch-desc">視覺化高認知負擔詞彙</div>
+          </div>
+          <button class="toggle-btn" id="cogOverlayToggle" type="button">
+            <div class="sw-track"></div>
+            <span id="cogOverlayLabel" style="display:none">在文件上標示負荷（關閉）</span>
+          </button>
+        </div>
+
+        <div class="switch-row">
+          <div class="switch-info">
+            <div class="switch-lbl">顯示座標框</div>
+            <div class="switch-desc">文字熱區邊界</div>
+          </div>
+          <button class="toggle-btn" id="overlayToggle" type="button">
+            <div class="sw-track"></div>
+            <span id="overlayLabel" style="display:none">顯示座標框（關閉）</span>
+          </button>
+        </div>
+
+        <div class="field">
+          <input type="text" id="searchInput" placeholder="搜尋項目...">
+          <span id="matchCount" style="font-size:0.65rem; color:var(--ink-secondary); margin-top:0.2rem; display:block; text-align:right"></span>
+        </div>
+
+        <!-- Overlay Display Settings -->
+        <hr style="border:none; border-top:1px solid var(--line); margin:0.25rem 0">
+        <div class="panel-section-title">覆蓋顯示</div>
+        <div class="field">
+          <div class="field-label-row">
+            <label>不透明度</label>
+            <span id="alphaDisplay" class="field-val">70%</span>
+          </div>
+          <input type="range" id="alphaSlider" min="10" max="100" value="70">
+        </div>
+        <div class="field">
+          <label>外部 JSON 覆蓋</label>
+          <input type="file" id="extJsonInput" accept=".json" style="display:none">
+          <button class="btn btn-secondary" onclick="document.getElementById('extJsonInput').click()" style="width:100%">選擇檔案</button>
+          <span id="extJsonName" style="font-size:0.65rem; color:var(--ink-secondary); display:block; text-align:center; margin-top:0.2rem"></span>
+        </div>
+        <div class="legend">
+          <div class="chip"><div class="chip-dot" style="background:#3b82f6"></div>一般</div>
+          <div class="chip"><div class="chip-dot" style="background:#f59e0b"></div>搜尋</div>
+          <div class="chip"><div class="chip-dot" style="background:#10b981"></div>懸停</div>
+          <div class="chip"><div class="chip-dot" style="background:#ef4444"></div>難字</div>
+        </div>
+        <div class="field">
+          <label>懸停詳情</label>
+          <div class="hover-info" id="hoverInfo">移動滑鼠至頁面顯示</div>
+        </div>
+      </div>
+
+      <!-- Panel: Cognitive Capability Inspector -->
+      <div class="sidebar-panel" id="panel-inspector">
+        <div class="panel-section-title">認知能力診斷</div>
+        <p style="font-size:0.75rem; color:var(--ink-secondary); margin-bottom:0.75rem; line-height:1.4;">
+          基於眼動序列，分析使用者的閱讀理解力、英語熟練度與疲勞程度。
+        </p>
+
+        <div class="field">
+          <label for="inspectParticipantInput">受試者編號 / Participant ID</label>
+          <input type="text" id="inspectParticipantInput" value="anonymous" placeholder="例如: test01_user" autocomplete="off" />
+        </div>
+
+        <div class="field">
+          <label for="inspectLangSelect">診斷語言 / Language</label>
+          <select id="inspectLangSelect">
+            <option value="en">English (英文)</option>
+            <option value="zh">Chinese (中文)</option>
+          </select>
+        </div>
+
+        <button class="btn btn-primary" id="inspectAnalyzeBtn" style="width:100%; margin-top:8px;">開始診斷認知能力</button>
+        <button class="btn btn-secondary" id="inspectReportBtn" style="width:100%; margin-top:6px;" disabled>產生與儲存診斷報告</button>
+
+        <!-- Dynamic Diagnosis Results Card -->
+        <div class="stats-card" id="inspectResultsCard" style="margin-top:12px; display:none; flex-direction:column; gap:10px; padding: 12px; background: rgba(0,0,0,0.02); border: 1px solid var(--line-strong);">
+          <div style="font-size:0.75rem; font-weight:700; border-bottom:1px solid var(--line); padding-bottom:6px; margin-bottom:4px;">診斷結果畫像 (Diagnostics Profile)</div>
+          
+          <!-- Reading Ability Score -->
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px;">
+              <span style="font-weight:600; color:var(--ink-secondary);">閱讀理解力 (Reading Ability)</span>
+              <span id="inspectReadingScore" style="color:var(--accent); font-weight:700;">—</span>
+            </div>
+            <div style="background:var(--bg-highest); height:5px; border-radius:2.5px; margin-top:4px; overflow:hidden;">
+              <div id="inspectReadingBar" style="background:linear-gradient(90deg, var(--accent), #10b981); width:0%; height:100%; transition: width 0.4s ease;"></div>
+            </div>
+            <div id="inspectReadingLevel" style="font-size:9px; color:var(--ink-muted); margin-top:2px;">—</div>
+          </div>
+
+          <!-- English Proficiency Score -->
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px;">
+              <span style="font-weight:600; color:var(--ink-secondary);">英語熟練度 (English Proficiency)</span>
+              <span id="inspectEnglishScore" style="color:var(--accent); font-weight:700;">—</span>
+            </div>
+            <div style="background:var(--bg-highest); height:5px; border-radius:2.5px; margin-top:4px; overflow:hidden;">
+              <div id="inspectEnglishBar" style="background:linear-gradient(90deg, var(--accent), #8b5cf6); width:0%; height:100%; transition: width 0.4s ease;"></div>
+            </div>
+            <div id="inspectEnglishLevel" style="font-size:9px; color:var(--ink-muted); margin-top:2px;">—</div>
+          </div>
+
+          <!-- Cognitive Load Index -->
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px;">
+              <span style="font-weight:600; color:var(--ink-secondary);">心智認知負荷 (Cognitive Load)</span>
+              <span id="inspectLoadScore" style="color:var(--warning); font-weight:700;">—</span>
+            </div>
+            <div style="background:var(--bg-highest); height:5px; border-radius:2.5px; margin-top:4px; overflow:hidden;">
+              <div id="inspectLoadBar" style="background:linear-gradient(90deg, var(--warning), var(--danger)); width:0%; height:100%; transition: width 0.4s ease;"></div>
+            </div>
+          </div>
+
+          <!-- Dwell & Fixations Row -->
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; border-top:1px solid var(--line); padding-top:8px; margin-top:2px;">
+            <div>
+              <span style="font-size:9px; color:var(--ink-muted); display:block;">閱讀速度 (WPM)</span>
+              <span id="inspectWpm" style="font-size:11px; font-weight:600; color:var(--ink-primary);">—</span>
+            </div>
+            <div>
+              <span style="font-size:9px; color:var(--ink-muted); display:block;">回看率 (Reg. Rate)</span>
+              <span id="inspectRegRate" style="font-size:11px; font-weight:600; color:var(--ink-primary);">—</span>
+            </div>
+            <div>
+              <span style="font-size:9px; color:var(--ink-muted); display:block;">注意力穩定 (Attention)</span>
+              <span id="inspectAttention" style="font-size:11px; font-weight:600; color:var(--success);">—</span>
+            </div>
+            <div>
+              <span style="font-size:9px; color:var(--ink-muted); display:block;">疲勞狀態 (Fatigue)</span>
+              <span id="inspectFatigue" style="font-size:11px; font-weight:600; color:var(--ink-primary);">—</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Reports History List -->
+        <hr style="border:none; border-top:1px solid var(--line); margin:0.75rem 0 0.5rem 0">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="font-size:0.72rem; font-weight:700; color:var(--ink-secondary);">歷史診斷報告 (History Reports)</span>
+          <button class="btn-sm" id="inspectRefreshReportsBtn" style="min-height:22px; padding:0 8px; font-size:9px;">重新整理</button>
+        </div>
+        <div id="inspectReportsList" style="max-height:160px; overflow-y:auto; font-size:10px; display:flex; flex-direction:column; gap:4px;">
+          <!-- Loaded dynamically -->
+        </div>
+        <div id="inspectReportsEmpty" style="font-size:10px; color:var(--ink-muted); text-align:center; padding:10px 0;">尚無歷史診斷報告</div>
+      </div>
+
+    </div><!-- /sidebar -->
+
+    <!-- Mobile Backdrop Overlay -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <!-- ══ MAIN WORKSPACE ══ -->
+    <div class="main-workspace">
+      
+      <!-- ══ PREVIEW ══ -->
+      <div class="preview-area" id="previewArea">
+        <!-- Center card upload zone on start -->
+        <div class="empty-state" id="emptyState">
+          <div class="upload-zone" id="uploadZone">
+            <input type="file" id="fileInput" accept=".pdf,.html,.htm,.txt,.docx,.md,.markdown">
+            <div class="upload-icon">
+              <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+              </svg>
+            </div>
+            <h3>文件座標擷取與眼動分析</h3>
+            <p>點擊此處 或 拖曳檔案至此開始分析</p>
+            <div class="upload-formats">支援格式: PDF · DOCX · HTML · TXT · MD</div>
+          </div>
+          <div class="quick-examples" style="margin-top: 1.5rem; text-align: center; z-index: 200;">
+            <div style="font-size: 0.85rem; color: var(--ink-secondary); margin-bottom: 0.6rem; font-weight: 500;">快速載入內建閱讀範本：</div>
+            <div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
+              <button class="btn btn-secondary" onclick="loadExampleText('/examples/easy_en.md', 'easy_en.md')" style="padding: 0.45rem 0.9rem; font-size: 0.8rem; border-radius: var(--radius-md); background: #f4f4f5; border: 1px solid #e4e4e7; cursor: pointer; color: #09090b; font-weight: 500; transition: background 0.2s;">英文簡單 (Easy EN)</button>
+              <button class="btn btn-secondary" onclick="loadExampleText('/examples/hard_en.md', 'hard_en.md')" style="padding: 0.45rem 0.9rem; font-size: 0.8rem; border-radius: var(--radius-md); background: #f4f4f5; border: 1px solid #e4e4e7; cursor: pointer; color: #09090b; font-weight: 500; transition: background 0.2s;">英文挑戰 (Hard EN)</button>
+              <button class="btn btn-secondary" onclick="loadExampleText('/examples/easy_zh.md', 'easy_zh.md')" style="padding: 0.45rem 0.9rem; font-size: 0.8rem; border-radius: var(--radius-md); background: #f4f4f5; border: 1px solid #e4e4e7; cursor: pointer; color: #09090b; font-weight: 500; transition: background 0.2s;">中文簡單 (Easy ZH)</button>
+              <button class="btn btn-secondary" onclick="loadExampleText('/examples/hard_zh.md', 'hard_zh.md')" style="padding: 0.45rem 0.9rem; font-size: 0.8rem; border-radius: var(--radius-md); background: #f4f4f5; border: 1px solid #e4e4e7; cursor: pointer; color: #09090b; font-weight: 500; transition: background 0.2s;">中文挑戰 (Hard ZH)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ COLLAPSIBLE BOTTOM LOGS PANEL ══ -->
+      <div class="logs-drawer collapsed" id="logsDrawer">
+        <div class="logs-drawer-header" onclick="toggleLogsDrawer()">
+          <span>系統執行紀錄</span>
+          <span class="drawer-chevron">▲</span>
+        </div>
+        <div class="logs-drawer-content">
+          <div class="log-box" id="logBox"></div>
+        </div>
+      </div>
+      
+    </div><!-- /main-workspace -->
+    
+  </div><!-- /layout -->
+
+  <!-- Settings modal removed - content migrated to sidebar panel -->
+
+  <!-- Tooltip (shared) -->
+  <div id="vTooltip"></div>
+
+  <!-- JavaScript Logics -->
+  <script>
+    'use strict';
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    // ── State ─────────────────────────────────────────────────────────────────────
+    let currentFile     = null;
+    let currentFileType = 'pdf';
+    let extractedData   = [];
+    let overlayOn       = false;
+    let cognitiveOn     = false;
+    let cognitiveResult = null;
+    const cogScoreMap   = new Map();
+    const COG_MIN_SCORE = 0.70;
+    
+    let cogVizMode = 'heatmap';
+    let cogMu      = 0.50;
+    let cogSigma   = 40;
+
+    // Map<pageNum, { overlayCanvas: HTMLCanvasElement, items: Array }>
+    const pageOverlayMap = new Map();
+
+    // ── DOM references ────────────────────────────────────────────────────────────
+    const uploadZone    = document.getElementById('uploadZone');
+    const fileInput     = document.getElementById('fileInput');
+    const parseBtn      = document.getElementById('parseBtn');
+    const exportJson    = document.getElementById('exportJson');
+    const exportCsv     = document.getElementById('exportCsv');
+    const previewArea   = document.getElementById('previewArea');
+    const emptyState    = document.getElementById('emptyState');
+    const progressBlock = document.getElementById('progressBlock');
+    const progressFill  = document.getElementById('progressFill');
+    const progressTxt   = document.getElementById('progressTxt');
+    const statsCard     = document.getElementById('statsCard');
+    const logBox        = document.getElementById('logBox');
+    const scaleInput    = document.getElementById('scaleInput');
+    
+    // verify
+    // verifySection removed - now in panels
+    const overlayToggle = document.getElementById('overlayToggle');
+    const overlayLabel  = document.getElementById('overlayLabel');
+    const alphaSlider   = document.getElementById('alphaSlider');
+    const alphaDisplay  = document.getElementById('alphaDisplay');
+    const searchInput   = document.getElementById('searchInput');
+    const matchCount    = document.getElementById('matchCount');
+    const hoverInfo     = document.getElementById('hoverInfo');
+    const extJsonInput  = document.getElementById('extJsonInput');
+    const extJsonName   = document.getElementById('extJsonName');
+    const vTooltip      = document.getElementById('vTooltip');
+    
+    // history
+    const saveBtn           = document.getElementById('saveBtn');
+    const historyList       = document.getElementById('historyList');
+    const historyCount      = document.getElementById('historyCount');
+    const refreshHistoryBtn = document.getElementById('refreshHistoryBtn');
+    const backendDot        = document.getElementById('backendDot');
+    
+    // cognitive
+    // cognitiveSection removed - now in panels
+    const cogLangSelect     = document.getElementById('cogLangSelect');
+    const cogDomainSelect   = document.getElementById('cogDomainSelect');
+    const cogAnalyzeBtn     = document.getElementById('cogAnalyzeBtn');
+    const cogProgressBlock  = document.getElementById('cogProgressBlock');
+    const cogProgressFill   = document.getElementById('cogProgressFill');
+    const cogProgressTxt    = document.getElementById('cogProgressTxt');
+    const cogStats          = document.getElementById('cogStats');
+    const cogModel          = document.getElementById('cogModel');
+    const cogDomain         = document.getElementById('cogDomain');
+    const cogTotal          = document.getElementById('cogTotal');
+    const cogHighCount      = document.getElementById('cogHighCount');
+    const cogMedCount       = document.getElementById('cogMedCount');
+    const cogOverlayToggle  = document.getElementById('cogOverlayToggle');
+    const cogOverlayLabel   = document.getElementById('cogOverlayLabel');
+    const cogList           = document.getElementById('cogList');
+    const cogEmpty          = document.getElementById('cogEmpty');
+    const cogVizModeSelect  = document.getElementById('cogVizModeSelect');
+    const cogMuSlider       = document.getElementById('cogMuSlider');
+    const cogMuValue        = document.getElementById('cogMuValue');
+    const cogSigmaSlider    = document.getElementById('cogSigmaSlider');
+    const cogSigmaValue     = document.getElementById('cogSigmaValue');
+    const cogMuRow          = document.getElementById('cogMuRow');
+    const cogSigmaRow       = document.getElementById('cogSigmaRow');
+
+    const sidebar           = document.getElementById('sidebar');
+    const mobileMenuBtn     = document.getElementById('mobileMenuBtn');
+    const sidebarBackdrop   = document.getElementById('sidebarBackdrop');
+
+    // ── VS Code Sidebar: Panel Switching ──────────────────────────────────────────
+    const iconBtns      = document.querySelectorAll('.icon-bar-btn[data-panel]');
+    const sidebarPanels = document.querySelectorAll('.sidebar-panel');
+    let activePanel     = 'guide'; // default
+
+    function switchPanel(name) {
+      if (activePanel === name) {
+        iconBtns.forEach(b => b.classList.remove('active'));
+        sidebarPanels.forEach(p => p.classList.remove('active'));
+        activePanel = null;
+        sidebar.classList.add('collapsed');
+        return;
+      }
+      sidebar.classList.remove('collapsed');
+      iconBtns.forEach(b => b.classList.toggle('active', b.dataset.panel === name));
+      sidebarPanels.forEach(p => p.classList.toggle('active', p.id === `panel-${name}`));
+      activePanel = name;
+    }
+
+    iconBtns.forEach(btn => {
+      btn.addEventListener('click', () => switchPanel(btn.dataset.panel));
+    });
+
+    // ── Logs Drawer Toggle Helper ──────────────────────────────────────────
+    window.toggleLogsDrawer = function() {
+      const drawer = document.getElementById('logsDrawer');
+      drawer.classList.toggle('collapsed');
+    };
+
+    function closeMobileSheet() {
+      sidebar.classList.remove('mobile-open');
+      sidebar.classList.add('collapsed');
+      sidebarBackdrop.classList.remove('visible');
+      document.body.style.overflow = '';
+    }
+    function openMobileSheet() {
+      sidebar.classList.remove('collapsed');
+      sidebar.classList.add('mobile-open');
+      sidebarBackdrop.classList.add('visible');
+      document.body.style.overflow = 'hidden';
+      switchPanel('guide');
+    }
+
+    mobileMenuBtn.addEventListener('click', () => {
+      if (sidebar.classList.contains('mobile-open')) {
+        closeMobileSheet();
+      } else {
+        openMobileSheet();
+      }
+    });
+    
+    sidebarBackdrop.addEventListener('click', closeMobileSheet);
+    document.getElementById('mobileCloseBtn')?.addEventListener('click', closeMobileSheet);
+
+    // ── Logging ───────────────────────────────────────────────────────────────────
+    function log(msg, cls = '') {
+      const el = document.createElement('div');
+      el.className = 'log-line' + (cls ? ' ' + cls : '');
+      const ts = new Date().toLocaleTimeString('zh-TW', { hour12: false });
+      el.textContent = `[${ts}] ${msg}`;
+      logBox.appendChild(el);
+      while (logBox.children.length > 200) logBox.removeChild(logBox.firstChild);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function setProgress(pct, msg) {
+      progressFill.style.width = `${Math.min(100, pct)}%`;
+      progressTxt.textContent  = msg;
+    }
+
+    // ── File upload ───────────────────────────────────────────────────────────────
+    uploadZone.addEventListener('click', () => fileInput.click());
+    uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+    uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+    uploadZone.addEventListener('drop', e => {
+      e.preventDefault(); uploadZone.classList.remove('drag-over');
+      const f = e.dataTransfer.files[0];
+      if (f) {
+        if (detectFileType(f) !== 'unknown') loadFile(f);
+        else log('不支援的檔案類型，請上傳 PDF / HTML / TXT / DOCX / MD', 'err');
+      }
+    });
+    fileInput.addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+
+    const FILE_META = {
+      pdf:  { icon: '📄', label: 'PDF',  tag: 'PDF'  },
+      html: { icon: '🌐', label: 'HTML', tag: 'HTML' },
+      txt:  { icon: '📝', label: 'TXT',  tag: 'TXT'  },
+      docx: { icon: '📘', label: 'DOCX', tag: 'DOCX' },
+      md:   { icon: '📋', label: 'MD',   tag: 'MD'   },
+    };
+
+    function detectFileType(file) {
+      const n = file.name.toLowerCase();
+      const m = file.type;
+      if (m === 'application/pdf'  || n.endsWith('.pdf'))  return 'pdf';
+      if (m === 'text/html'        || n.endsWith('.html') || n.endsWith('.htm')) return 'html';
+      if (n.endsWith('.md') || n.endsWith('.markdown'))    return 'md';
+      if (m === 'text/plain'       || n.endsWith('.txt'))  return 'txt';
+      if (n.endsWith('.docx') || m.includes('wordprocessingml')) return 'docx';
+      return 'unknown';
+    }
+
+    function loadFile(file) {
+      currentFile     = file;
+      currentFileType = detectFileType(file);
+      const meta      = FILE_META[currentFileType] || FILE_META.pdf;
+
+      // Update File Card Info in Sidebar
+      document.getElementById('fileCardName').textContent = file.name;
+      document.getElementById('fileCardMeta').textContent = `${meta.tag} · ${formatBytes(file.size)}`;
+
+      // Reveal sidebar
+      // Sidebar is always visible; ensure default panel active
+      if (!activePanel) switchPanel('guide');
+
+      // Clear existing page blocks and trigger parsing
+      [...previewArea.children].forEach(c => { if (c.id !== 'emptyState') c.remove(); });
+      emptyState.style.display = 'none';
+
+      parseBtn.disabled = false;
+      extractedData = [];
+      exportJson.disabled = exportCsv.disabled = true;
+      statsCard.classList.remove('visible');
+      
+      // Sections now in panels - always available
+
+      resetCognitive();
+      pageOverlayMap.clear();
+      
+      document.getElementById('scaleRow').style.display = currentFileType === 'pdf' ? '' : 'none';
+      log(`已載入檔案: ${file.name} [${meta.tag}] (${formatBytes(file.size)})`, 'hi');
+      
+      // Trigger auto-parse
+      parseBtn.click();
+
+      if (typeof updateGuideUI === 'function') updateGuideUI();
+    }
+
+    async function loadExampleText(url, filename) {
+      try {
+        log(`正在從系統載入內建範本: ${filename}...`);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP 錯誤: ${res.status}`);
+        const text = await res.text();
+        const file = new File([text], filename, { type: 'text/markdown' });
+        loadFile(file);
+      } catch (err) {
+        log(`載入範本失敗: ${err.message}`, 'err');
+      }
+    }
+    window.loadExampleText = loadExampleText;
+
+    function formatBytes(b) {
+      if (b < 1024)    return `${b} B`;
+      if (b < 1048576) return `${(b/1024).toFixed(1)} KB`;
+      return `${(b/1048576).toFixed(2)} MB`;
+    }
+
+    // ── Parse ─────────────────────────────────────────────────────────────────────
+    parseBtn.addEventListener('click', async () => {
+      if (!currentFile) return;
+
+      const scale       = Math.max(0.5, Math.min(3, parseFloat(scaleInput.value) || 1.5));
+      const granularity = document.querySelector('input[name="granularity"]:checked').value;
+
+      parseBtn.disabled = exportJson.disabled = exportCsv.disabled = saveBtn.disabled = true;
+      extractedData = [];
+      pageOverlayMap.clear();
+      overlayOn = false;
+      overlayToggle.classList.remove('active');
+      overlayLabel.textContent = '顯示座標框（關閉）';
+      progressBlock.classList.add('visible');
+      statsCard.classList.remove('visible');
+      
+      resetCognitive();
+      [...previewArea.children].forEach(c => { if (c.id !== 'emptyState') c.remove(); });
+      emptyState.style.display = 'none';
+      log(`── 開始解析 [${currentFileType.toUpperCase()}] (單位: ${granularity}) ──`, 'hi');
+
+      try {
+        let numPages;
+        if (currentFileType === 'pdf') {
+          numPages = await parsePDF(scale, granularity);
+        } else {
+          numPages = await parseDocument(granularity);
+        }
+
+        document.getElementById('sPages').textContent = numPages;
+        document.getElementById('sItems').textContent = extractedData.length.toLocaleString();
+        document.getElementById('sUnit').textContent  = (granularity === 'word' ? 'Word' : 'Char') + (currentFileType === 'pdf' ? ` / ${scale}x` : '');
+        
+        statsCard.classList.add('visible');
+        exportJson.disabled = exportCsv.disabled = saveBtn.disabled = false;
+        
+        // Panels always accessible via icon bar
+        
+        log(`完成！共擷取 ${extractedData.length} 個項目`, 'ok');
+      } catch (err) {
+        log(`錯誤：${err.message}`, 'err');
+        console.error(err);
+        setProgress(0, '解析失敗');
+      } finally {
+        parseBtn.disabled = false;
+        progressBlock.classList.remove('visible');
+      }
+    });
+
+    // ── PDF parser ────────────────────────────────────────────────────────────────
+    async function parsePDF(scale, granularity) {
+      setProgress(0, '讀取 PDF 檔案…');
+      const buffer   = await readArrayBuffer(currentFile);
+      const pdf      = await pdfjsLib.getDocument({ data: buffer }).promise;
+      const numPages = pdf.numPages;
+      log(`PDF 載入成功，共 ${numPages} 頁`, 'ok');
+      setProgress(5, `共 ${numPages} 頁，開始逐頁渲染…`);
+      let globalIdx = 0;
+      for (let p = 1; p <= numPages; p++) {
+        setProgress(5 + Math.round(((p - 1) / numPages) * 90), `渲染第 ${p} / ${numPages} 頁…`);
+        const { items, nextIdx } = await processPage(pdf, p, scale, granularity, globalIdx);
+        extractedData.push(...items);
+        globalIdx = nextIdx;
+      }
+      setProgress(100, '解析完成！');
+      return numPages;
+    }
+
+    // ── Non-PDF parser (HTML / TXT / DOCX / MD) ──────────────────────────────────
+    async function parseDocument(granularity) {
+      setProgress(5, '讀取文件內容…');
+      let htmlContent = '';
+
+      if (currentFileType === 'txt') {
+        const text = await currentFile.text();
+        htmlContent = `<pre>${escHtml(text)}</pre>`;
+        log('TXT 讀取成功', 'ok');
+      } else if (currentFileType === 'html') {
+        const raw = await currentFile.text();
+        htmlContent = sanitizeHTML(raw);
+        log('HTML 讀取成功', 'ok');
+      } else if (currentFileType === 'md') {
+        const text   = await currentFile.text();
+        htmlContent  = marked.parse(text);
+        log('Markdown 轉換成功', 'ok');
+      } else if (currentFileType === 'docx') {
+        const buf    = await readArrayBuffer(currentFile);
+        const result = await mammoth.convertToHtml({ arrayBuffer: buf });
+        htmlContent  = result.value;
+        log('DOCX 轉換成功', 'ok');
+      }
+
+      setProgress(25, '預載圖片快取…');
+      await preloadImages(htmlContent);
+
+      setProgress(55, '渲染文件網頁…');
+      const contentDiv = document.createElement('div');
+      contentDiv.innerHTML = htmlContent;
+
+      const { wrap, overlayCanvas } = await createDocPage(contentDiv, 1);
+      setProgress(82, '分析文字座標…');
+      await waitFrames(4);
+
+      const pageRect = wrap.getBoundingClientRect();
+      const items    = extractCoordsFromDOM(contentDiv, 1, pageRect, 0, granularity);
+      addNormCoords(items, pageRect.width, pageRect.height);
+      extractedData  = items;
+      pageOverlayMap.set(1, { overlayCanvas, items });
+
+      setProgress(100, '解析完成！');
+      return 1;
+    }
+
+    // ── Pre-load all images to prevent DOM coordinate shifts ──────────────────
+    async function preloadImages(htmlContent, timeoutMs = 12000) {
+      const srcs = new Set();
+      htmlContent.replace(/<img\b[^>]*/gi, tag => {
+        const sm = tag.match(/\bsrc=["']([^"']+)["']/i);
+        if (sm && !sm[1].startsWith('data:')) srcs.add(sm[1]);
+        return tag;
+      });
+
+      if (!srcs.size) return;
+      log(`預載 ${srcs.size} 張圖片…`);
+
+      const proms = [...srcs].map(src =>
+        new Promise(res => {
+          const img = new Image();
+          img.onload = img.onerror = res;
+          img.src = src;
+        })
+      );
+
+      const timer = new Promise(res => setTimeout(res, timeoutMs));
+      await Promise.race([Promise.all(proms), timer]);
+    }
+
+    // ── Build non-PDF DOM page block ─────────────────────────────────────────────
+    async function createDocPage(contentDiv, pageNum) {
+      const block = document.createElement('div');
+      block.className = 'page-block';
+
+      const wrap = document.createElement('div');
+      wrap.className = 'page-wrap doc-page';
+      wrap.style.width = '794px'; // standard A4 CSS width at 96 DPI
+      wrap.appendChild(contentDiv);
+
+      const overlayCanvas = document.createElement('canvas');
+      overlayCanvas.className = 'overlay-canvas';
+      wrap.appendChild(overlayCanvas);
+
+      const hitDiv = document.createElement('div');
+      hitDiv.className = 'hit-div';
+      wrap.appendChild(hitDiv);
+
+      const lbl = document.createElement('div');
+      lbl.className   = 'page-lbl';
+      lbl.textContent = `第 ${pageNum} 頁  (${FILE_META[currentFileType]?.label ?? currentFileType})`;
+
+      block.appendChild(wrap);
+      block.appendChild(lbl);
+      previewArea.appendChild(block);
+
+      await waitForImages(contentDiv);
+      await waitFrames(4);
+
+      const w = wrap.getBoundingClientRect().width;
+      const h = wrap.getBoundingClientRect().height;
+      overlayCanvas.width        = Math.round(w);
+      overlayCanvas.height       = Math.round(h);
+      overlayCanvas.style.width  = `${Math.round(w)}px`;
+      overlayCanvas.style.height = `${Math.round(h)}px`;
+
+      hitDiv.addEventListener('mousemove',  e => onPageMouseMove(e, wrap, pageNum));
+      hitDiv.addEventListener('mouseleave', ()  => onPageMouseLeave(pageNum));
+
+      return { wrap, overlayCanvas };
+    }
+
+    function waitForImages(container, timeoutMs = 5000) {
+      const imgs = [...container.querySelectorAll('img')];
+      if (!imgs.length) return Promise.resolve();
+      const pending = imgs.filter(img => !img.complete).map(img =>
+        new Promise(res => {
+          img.addEventListener('load', res, { once: true });
+          img.addEventListener('error', res, { once: true });
+        })
+      );
+      if (!pending.length) return Promise.resolve();
+      return Promise.race([Promise.all(pending), new Promise(res => setTimeout(res, timeoutMs))]);
+    }
+
+    // ── Add normalized coordinates ────────────────────────────────────────────
+    function addNormCoords(items, pageWidth, pageHeight) {
+      const dpr = round4(window.devicePixelRatio || 1);
+      const pw  = round4(pageWidth);
+      const ph  = round4(pageHeight);
+      items.forEach(item => {
+        item.page_width  = pw;
+        item.page_height = ph;
+        item.dpr         = dpr;
+        item.norm_left   = round4(item.left   / pageWidth);
+        item.norm_top    = round4(item.top    / pageHeight);
+        item.norm_right  = round4(item.right  / pageWidth);
+        item.norm_bottom = round4(item.bottom / pageHeight);
+        item.norm_width  = round4(item.width  / pageWidth);
+        item.norm_height = round4(item.height / pageHeight);
+      });
+    }
+
+    // ── DOM coordinate extractor ──────────────────────────────────────────────
+    function extractCoordsFromDOM(rootEl, pageNum, pageRect, startIdx, granularity) {
+      const results = [];
+      let   idx     = startIdx;
+
+      const walker = document.createTreeWalker(rootEl, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+          const tag = node.parentElement?.tagName?.toUpperCase() ?? '';
+          if (['SCRIPT','STYLE','NOSCRIPT','TEXTAREA'].includes(tag))
+            return NodeFilter.FILTER_REJECT;
+          return node.textContent.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+        },
+      });
+
+      let node;
+      while ((node = walker.nextNode())) {
+        const text = node.textContent;
+        if (granularity === 'word') {
+          const re = /\S+/g;
+          let m;
+          while ((m = re.exec(text)) !== null) {
+            const cs = getRangeRects(node, m.index, m.index + m[0].length, pageRect);
+            for (const c of cs) {
+              results.push({ page: pageNum, index: idx++, text: m[0], ...c });
+            }
+          }
+        } else {
+          for (let i = 0; i < text.length; i++) {
+            if (/\s/.test(text[i])) continue;
+            const cs = getRangeRects(node, i, i + 1, pageRect);
+            for (const c of cs) {
+              results.push({ page: pageNum, index: idx++, text: text[i], ...c });
+            }
+          }
+        }
+      }
+      return results;
+    }
+
+    function getRangeRects(textNode, start, end, pageRect) {
+      try {
+        const range = document.createRange();
+        range.setStart(textNode, start);
+        range.setEnd(textNode, end);
+        const rects = range.getClientRects();
+        const out = [];
+        for (const r of rects) {
+          if (r.width < 0.5 || r.height < 0.5) continue;
+          out.push({
+            top:    round4(r.top    - pageRect.top),
+            left:   round4(r.left   - pageRect.left),
+            right:  round4(r.right  - pageRect.left),
+            bottom: round4(r.bottom - pageRect.top),
+            width:  round4(r.width),
+            height: round4(r.height),
+          });
+        }
+        return out;
+      } catch { return []; }
+    }
+
+    function sanitizeHTML(raw) {
+      const doc = new DOMParser().parseFromString(raw, 'text/html');
+      doc.querySelectorAll('script,link,style,meta,noscript,iframe,object,embed,form,input,button,select')
+         .forEach(el => el.remove());
+      doc.querySelectorAll('*').forEach(el => {
+        [...el.attributes].forEach(attr => {
+          if (attr.name.startsWith('on')) el.removeAttribute(attr.name);
+        });
+      });
+      return doc.body.innerHTML;
+    }
+
+    // ── Process PDF single page ───────────────────────────────────────────────────
+    async function processPage(pdf, pageNum, scale, granularity, globalIdx) {
+      const page     = await pdf.getPage(pageNum);
+      const viewport = page.getViewport({ scale });
+
+      const block = document.createElement('div');
+      block.className = 'page-block';
+
+      const wrap = document.createElement('div');
+      wrap.className = 'page-wrap';
+      wrap.style.width  = `${viewport.width}px`;
+      wrap.style.height = `${viewport.height}px`;
+
+      const canvas  = document.createElement('canvas');
+      canvas.width  = viewport.width;
+      canvas.height = viewport.height;
+      canvas.style.display = 'block';
+      wrap.appendChild(canvas);
+
+      const textLayerDiv = document.createElement('div');
+      textLayerDiv.className = 'textLayer';
+      textLayerDiv.style.width  = `${viewport.width}px`;
+      textLayerDiv.style.height = `${viewport.height}px`;
+      wrap.appendChild(textLayerDiv);
+
+      const overlayCanvas   = document.createElement('canvas');
+      overlayCanvas.className    = 'overlay-canvas';
+      overlayCanvas.width        = viewport.width;
+      overlayCanvas.height       = viewport.height;
+      wrap.appendChild(overlayCanvas);
+
+      const hitDiv = document.createElement('div');
+      hitDiv.className = 'hit-div';
+      wrap.appendChild(hitDiv);
+
+      const lbl = document.createElement('div');
+      lbl.className   = 'page-lbl';
+      lbl.textContent = `第 ${pageNum} 頁  (${Math.round(viewport.width)} × ${Math.round(viewport.height)} px)`;
+
+      block.appendChild(wrap);
+      block.appendChild(lbl);
+      previewArea.appendChild(block);
+
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+      const textContent = await page.getTextContent();
+      await pdfjsLib.renderTextLayer({
+        textContentSource: textContent,
+        container: textLayerDiv,
+        viewport,
+        textDivs: [],
+      }).promise;
+
+      await waitFrames(2);
+
+      const items = extractCoords(textContent, viewport, pageNum, globalIdx, granularity);
+      addNormCoords(items, viewport.width, viewport.height);
+      const nextIdx = globalIdx + items.length;
+
+      pageOverlayMap.set(pageNum, { overlayCanvas, items });
+
+      hitDiv.addEventListener('mousemove',  e => onPageMouseMove(e, wrap, pageNum));
+      hitDiv.addEventListener('mouseleave', ()  => onPageMouseLeave(pageNum));
+
+      return { items, nextIdx };
+    }
+
+    function extractCoords(textContent, viewport, pageNum, startIdx, granularity) {
+      const results = [];
+      let   idx     = startIdx;
+      const mc = document.createElement('canvas').getContext('2d');
+      mc.font  = '1000px Arial, sans-serif';
+
+      for (const item of textContent.items) {
+        const str = item.str;
+        if (!str || !str.trim()) continue;
+
+        const [a, b, c, d, e, f] = item.transform;
+        const [vpX, vpY] = viewport.convertToViewportPoint(e, f);
+        const vpWidth = item.width * viewport.scale;
+        if (vpWidth < 0.5) continue;
+
+        const fontH = Math.hypot(c, d) * viewport.scale;
+        if (fontH < 0.5) continue;
+
+        const vTop  = vpY - fontH;
+        const vLeft = vpX;
+        const totalMW = mc.measureText(str).width || 1;
+
+        function push(chunk, chunkStart) {
+          const preW  = mc.measureText(str.slice(0, chunkStart)).width;
+          const chW   = mc.measureText(chunk).width;
+          const wLeft  = vLeft + (preW / totalMW) * vpWidth;
+          const wWidth = (chW  / totalMW) * vpWidth;
+          if (wWidth < 0.5) return;
+          results.push({
+            page: pageNum, index: idx++, text: chunk,
+            top:    round4(vTop),
+            left:   round4(wLeft),
+            right:  round4(wLeft + wWidth),
+            bottom: round4(vpY),
+            width:  round4(wWidth),
+            height: round4(fontH),
+          });
+        }
+
+        if (granularity === 'word') {
+          const re = /\S+/g;
+          let m;
+          while ((m = re.exec(str)) !== null) push(m[0], m.index);
+        } else {
+          for (let i = 0; i < str.length; i++) {
+            if (!/\s/.test(str[i])) push(str[i], i);
+          }
+        }
+      }
+      return results;
+    }
+
+    function round4(n) { return Math.round(n * 10000) / 10000; }
+
+    // ── Overlay drawing ───────────────────────────────────────────────────────────
+    function drawOverlay(overlayCanvas, items, search, alpha, hoverItem = null) {
+      const ctx = overlayCanvas.getContext('2d');
+      ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+      if (cognitiveOn && cogVizMode === 'heatmap') {
+        drawCognitiveHeatmap(ctx, items);
+      }
+
+      items.forEach(item => {
+        const isHover = hoverItem && item.index === hoverItem.index;
+        const isMatch = search && item.text.includes(search);
+        const cog     = cognitiveOn ? lookupCognitive(item.text) : null;
+
+        let fillStyle = null;
+
+        if (isHover) {
+          ctx.strokeStyle = `rgba(16, 185, 129, ${alpha})`;
+          fillStyle       = 'rgba(16, 185, 129, 0.18)';
+          ctx.lineWidth   = 2;
+        } else if (isMatch) {
+          ctx.strokeStyle = `rgba(245, 158, 11, ${alpha})`;
+          fillStyle       = 'rgba(245, 158, 11, 0.15)';
+          ctx.lineWidth   = 1.5;
+        } else if (cognitiveOn && cogVizMode === 'box' && cog && cog.score >= COG_MIN_SCORE) {
+          ctx.strokeStyle = `rgba(239, 68, 68, ${alpha})`;
+          fillStyle       = `rgba(239, 68, 68, ${0.15 + 0.3 * cog.score})`;
+          ctx.lineWidth   = 1.5;
+        } else if (cognitiveOn) {
+          return; // Heatmap mode: do not draw default outlines
+        } else {
+          ctx.strokeStyle = `rgba(59, 130, 246, ${Math.min(alpha, 0.6)})`;
+          ctx.lineWidth   = 1;
+        }
+
+        const lw = ctx.lineWidth;
+        ctx.strokeRect(item.left + lw/2, item.top + lw/2, item.width - lw, item.height - lw);
+        if (fillStyle) {
+          ctx.fillStyle = fillStyle;
+          ctx.fillRect(item.left, item.top, item.width, item.height);
+        }
+      });
+    }
+
+    function drawCognitiveHeatmap(ctx, items) {
+      const kernels = [];
+      items.forEach(item => {
+        const cog = lookupCognitive(item.text);
+        if (!cog || cog.score < cogMu) return;
+        const intensity = Math.max(0, Math.min(1, (cog.score - cogMu) / Math.max(1 - cogMu, 0.01)));
+        kernels.push({
+          cx: item.left + item.width / 2,
+          cy: item.top + item.height / 2,
+          intensity,
+          score: cog.score,
+        });
+      });
+      if (!kernels.length) return;
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (const k of kernels) {
+        const grad = ctx.createRadialGradient(k.cx, k.cy, 0, k.cx, k.cy, cogSigma);
+        const a0 = 0.55 * k.intensity;
+        const a1 = 0.18 * k.intensity;
+        grad.addColorStop(0,   `rgba(239, 68, 68, ${a0})`);
+        grad.addColorStop(0.55, `rgba(239, 68, 68, ${a1})`);
+        grad.addColorStop(1,   'rgba(239, 68, 68, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(k.cx, k.cy, cogSigma, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+
+      ctx.save();
+      ctx.lineWidth = 0.8;
+      for (const k of kernels) {
+        const lineAlpha = 0.3 + 0.4 * k.intensity;
+        ctx.strokeStyle = `rgba(185, 28, 28, ${lineAlpha})`;
+        for (const t of [0.35, 0.7, 1.0]) {
+          ctx.beginPath();
+          ctx.arc(k.cx, k.cy, cogSigma * t, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    function lookupCognitive(text) {
+      if (!text || !cogScoreMap.size) return null;
+      let key = text.toLowerCase().normalize("NFKD");
+      if (cogScoreMap.has(key)) return cogScoreMap.get(key);
+      
+      key = key.replace(/^[^\w\d\u4e00-\u9fff]+|[^\w\d\u4e00-\u9fff]+$/g, '');
+      if (cogScoreMap.has(key)) return cogScoreMap.get(key);
+      return null;
+    }
+
+    function redrawAllOverlays(hoverPageNum = null, hoverItem = null) {
+      const alpha  = parseFloat(alphaSlider.value) / 100;
+      const search = searchInput.value.trim();
+      pageOverlayMap.forEach(({ overlayCanvas, items }, pageNum) => {
+        const hi = (pageNum === hoverPageNum) ? hoverItem : null;
+        drawOverlay(overlayCanvas, items, search, alpha, hi);
+      });
+      updateMatchCount(search);
+    }
+
+    function updateMatchCount(search) {
+      if (!search) { matchCount.textContent = ''; return; }
+      let n = 0;
+      pageOverlayMap.forEach(({ items }) => { n += items.filter(i => i.text.includes(search)).length; });
+      matchCount.textContent = `${n} 筆符合`;
+    }
+
+    // ── Overlay toggle ────────────────────────────────────────────────────────────
+    overlayToggle.addEventListener('click', () => {
+      overlayOn = !overlayOn;
+      overlayToggle.classList.toggle('active', overlayOn);
+      overlayLabel.textContent = overlayOn ? '顯示座標框（開啟）' : '顯示座標框（關閉）';
+
+      pageOverlayMap.forEach(({ overlayCanvas }) => {
+        if (overlayOn) {
+          overlayCanvas.style.display = 'block';
+        } else {
+          overlayCanvas.getContext('2d').clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+          overlayCanvas.style.display = 'none';
+        }
+      });
+
+      document.querySelectorAll('.hit-div').forEach(d => d.classList.toggle('active', overlayOn));
+      if (overlayOn) redrawAllOverlays();
+      log(`座標邊框：${overlayOn ? '開啟' : '關閉'}`);
+    });
+
+    alphaSlider.addEventListener('input', () => {
+      alphaDisplay.textContent = alphaSlider.value + '%';
+      if (overlayOn) redrawAllOverlays();
+    });
+
+    searchInput.addEventListener('input', () => {
+      if (overlayOn) redrawAllOverlays();
+      else updateMatchCount(searchInput.value.trim());
+    });
+
+    // ── Mouse interaction ─────────────────────────────────────────────────────────
+    function onPageMouseMove(e, wrap, pageNum) {
+      if (!overlayOn) return;
+
+      const { overlayCanvas, items } = pageOverlayMap.get(pageNum);
+      const wRect = wrap.getBoundingClientRect();
+      const mx = (e.clientX - wRect.left) * (overlayCanvas.width / wRect.width);
+      const my = (e.clientY - wRect.top) * (overlayCanvas.height / wRect.height);
+
+      let best = null, bestArea = Infinity;
+      items.forEach(item => {
+        if (mx >= item.left && mx <= item.right && my >= item.top && my <= item.bottom) {
+          const area = item.width * item.height;
+          if (area < bestArea) { best = item; bestArea = area; }
+        }
+      });
+
+      const alpha  = parseFloat(alphaSlider.value) / 100;
+      const search = searchInput.value.trim();
+      drawOverlay(overlayCanvas, items, search, alpha, best);
+
+      if (best) {
+        const cog = lookupCognitive(best.text);
+        const cogLine = cog ? `Load   : ${cog.level} (${cog.score.toFixed(3)})\n` : '';
+        hoverInfo.textContent =
+          `Page   : ${best.page}\n` +
+          `Index  : ${best.index}\n` +
+          `Text   : "${best.text}"\n` +
+          cogLine +
+          `Top    : ${best.top}\n` +
+          `Left   : ${best.left}\n` +
+          `Width  : ${best.width}\n` +
+          `Height : ${best.height}`;
+
+        const cogTip = cog
+          ? `<br><span style="color:${cog.level==='high'?'var(--danger)':'var(--warning)'}">load ${cog.level} (${cog.score.toFixed(3)})</span>`
+          : '';
+        vTooltip.innerHTML =
+          `<b style="color:var(--accent)">"${escHtml(best.text)}"</b><br>` +
+          `Page ${best.page} · #${best.index}<br>` +
+          `(${best.left.toFixed(1)}, ${best.top.toFixed(1)})  ` +
+          `${best.width.toFixed(1)} × ${best.height.toFixed(1)} px` +
+          cogTip;
+        vTooltip.style.display = 'block';
+        vTooltip.style.left    = `${e.clientX + 14}px`;
+        vTooltip.style.top     = `${e.clientY - 10}px`;
+      } else {
+        vTooltip.style.display = 'none';
+        hoverInfo.textContent  = '移動滑鼠至上方頁面顯示詳情';
+      }
+    }
+
+    function onPageMouseLeave(pageNum) {
+      if (!overlayOn) return;
+      const { overlayCanvas, items } = pageOverlayMap.get(pageNum);
+      const alpha  = parseFloat(alphaSlider.value) / 100;
+      const search = searchInput.value.trim();
+      drawOverlay(overlayCanvas, items, search, alpha);
+      vTooltip.style.display = 'none';
+      hoverInfo.textContent  = '移動滑鼠至上方頁面顯示詳情';
+    }
+
+    function escHtml(s) {
+      return String(s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    extJsonInput.addEventListener('change', async e => {
+      const f = e.target.files[0];
+      if (!f) return;
+      try {
+        const data = JSON.parse(await f.text());
+        if (!Array.isArray(data)) throw new Error('JSON 需為陣列格式');
+
+        const byPage = new Map();
+        data.forEach(item => {
+          if (!byPage.has(item.page)) byPage.set(item.page, []);
+          byPage.get(item.page).push(item);
+        });
+
+        let updated = 0;
+        byPage.forEach((items, p) => {
+          if (pageOverlayMap.has(p)) {
+            pageOverlayMap.get(p).items = items;
+            updated++;
+          }
+        });
+
+        extJsonName.textContent = f.name;
+        if (overlayOn) redrawAllOverlays();
+        log(`外部 JSON 載入成功：${data.length} 筆項目，更新 ${updated} 頁面`, 'ok');
+      } catch (err) {
+        log(`JSON 載入失敗：${err.message}`, 'err');
+      }
+    });
+
+    // ── Utilities ─────────────────────────────────────────────────────────────────
+    function waitFrames(n) {
+      return new Promise(resolve => {
+        let c = 0;
+        const tick = () => { if (++c >= n) resolve(); else requestAnimationFrame(tick); };
+        requestAnimationFrame(tick);
+      });
+    }
+
+    function readArrayBuffer(file) {
+      return new Promise((res, rej) => {
+        const fr = new FileReader();
+        fr.onload  = e => res(e.target.result);
+        fr.onerror = ()  => rej(new Error('FileReader 讀取失敗'));
+        fr.readAsArrayBuffer(file);
+      });
+    }
+
+    function triggerDownload(content, filename, mime) {
+      const blob = new Blob([content], { type: mime });
+      const url  = URL.createObjectURL(blob);
+      Object.assign(document.createElement('a'), { href: url, download: filename }).click();
+      URL.revokeObjectURL(url);
+    }
+
+    // ── Export ────────────────────────────────────────────────────────────────────
+    exportJson.addEventListener('click', () => {
+      if (!extractedData.length) return;
+      triggerDownload(JSON.stringify(extractedData, null, 2), 'pdf_coordinates.json', 'application/json');
+      log(`匯出 JSON 成功：${extractedData.length} 筆`, 'ok');
+    });
+
+    exportCsv.addEventListener('click', () => {
+      if (!extractedData.length) return;
+      const header = [
+        'Page','Index','Text',
+        'Top','Left','Right','Bottom','Width','Height',
+        'NormTop','NormLeft','NormRight','NormBottom','NormWidth','NormHeight',
+        'PageWidth','PageHeight','DPR',
+      ].join(',');
+      const rows = extractedData.map(d => [
+        d.page, d.index,
+        `"${String(d.text).replace(/"/g,'""')}"`,
+        d.top,       d.left,       d.right,       d.bottom,       d.width,       d.height,
+        d.norm_top ?? '', d.norm_left ?? '', d.norm_right ?? '', d.norm_bottom ?? '',
+        d.norm_width ?? '', d.norm_height ?? '',
+        d.page_width ?? '', d.page_height ?? '', d.dpr ?? '',
+      ].join(','));
+      triggerDownload('﻿' + [header, ...rows].join('\r\n'), 'pdf_coordinates.csv', 'text/csv;charset=utf-8');
+      log(`匯出 CSV 成功：${extractedData.length} 筆`, 'ok');
+    });
+
+    // ── Cognitive Load Analysis ──────────────────────────────────────────────────
+    function resetCognitive() {
+      cognitiveOn = false;
+      cognitiveResult = null;
+      cogScoreMap.clear();
+      cogStats.classList.remove('visible');
+      cogList.classList.remove('visible');
+      cogList.innerHTML = '';
+      cogEmpty.style.display = 'block';
+      cogEmpty.textContent = '尚未執行分析';
+      cogProgressBlock.classList.remove('visible');
+      cogOverlayToggle.classList.remove('active');
+      cogOverlayLabel.textContent = '在文件上標示負荷（關閉）';
+    }
+
+    function detectLang(text) {
+      return /[\u4e00-\u9fff]/.test(text) ? 'zh' : 'en';
+    }
+
+    function reconstructText(items, lang) {
+      if (!items.length) return '';
+      const joiner = (lang === 'zh') ? '' : ' ';
+      return items.map(d => d.text).join(joiner);
+    }
+
+    function collectTextFromPreview() {
+      const parts = [];
+      previewArea.querySelectorAll('.textLayer').forEach(layer => {
+        const t = layer.textContent.replace(/\s+/g, ' ').trim();
+        if (t) parts.push(t);
+      });
+      if (!parts.length) {
+        previewArea.querySelectorAll('.doc-page').forEach(page => {
+          const t = page.innerText.replace(/\s+/g, ' ').trim();
+          if (t) parts.push(t);
+        });
+      }
+      return parts.join('\n\n');
+    }
+
+    cogAnalyzeBtn.addEventListener('click', async () => {
+      let lang = cogLangSelect.value;
+      const domain = cogDomainSelect.value;
+      let text = '';
+      let coordCount = extractedData.length;
+
+      if (coordCount > 0) {
+        text = reconstructText(extractedData, lang);
+      } else {
+        const previewText = collectTextFromPreview();
+        if (!previewText.trim()) {
+          log('請先載入並解析檔案', 'err');
+          return;
+        }
+        text = previewText;
+        log('無文字座標，直接對全文字進行分析 (無法於文件標示)', 'hi');
+      }
+
+      if (lang === 'auto') {
+        lang = detectLang(text.slice(0, 2000));
+      }
+
+      cogAnalyzeBtn.disabled = true;
+      cogProgressBlock.classList.add('visible');
+      cogProgressFill.style.width = '15%';
+      cogProgressTxt.textContent = `送出請求中 (語言: ${lang})...`;
+      log(`── 啟動認知負荷評估 [lang=${lang}, domain=${domain}] ──`, 'hi');
+
+      try {
+        const res = await fetch('/api/cognitive/analyze/text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, lang, domain }),
+        });
+        cogProgressFill.style.width = '75%';
+        cogProgressTxt.textContent = '後端計算中...';
+
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+          throw new Error(errBody.error || `HTTP ${res.status}`);
+        }
+        const result = await res.json();
+        cognitiveResult = result;
+
+        cogScoreMap.clear();
+        (result.word_analysis || []).forEach(w => {
+          if (w.is_entity) return;
+          const key = (w.word || '').toLowerCase().normalize("NFKD").replace(/^[^\w\d\u4e00-\u9fff]+|[^\w\d\u4e00-\u9fff]+$/g, '');
+          if (!key) return;
+          const prev = cogScoreMap.get(key);
+          if (!prev || w.load_score > prev.score) {
+            cogScoreMap.set(key, {
+              score: w.load_score,
+              level: w.load_level,
+              ent_type: w.ent_type || '',
+            });
+          }
+        });
+
+        cogProgressFill.style.width = '100%';
+        cogProgressTxt.textContent = `評估完成 (${result.process_time_ms ?? '?'} ms)`;
+        renderCognitiveResult(result);
+        
+        // Auto enable overlay
+        if (!cognitiveOn) toggleCognitiveOverlay(true);
+      } catch (err) {
+        log(`評估失敗：${err.message}`, 'err');
+        cogProgressTxt.textContent = '評估失敗';
+      } finally {
+        cogAnalyzeBtn.disabled = false;
+        setTimeout(() => cogProgressBlock.classList.remove('visible'), 1500);
+      }
+    });
+
+    function renderCognitiveResult(result) {
+      const words = result.word_analysis || [];
+      const hardWords = words.filter(w => w.load_score >= COG_MIN_SCORE && !w.is_entity);
+
+      cogModel.textContent      = `${result.model || '?'} / ${result.lang || '?'}`;
+      cogDomain.textContent     = result.domain || '—';
+      cogTotal.textContent      = words.length.toLocaleString();
+      cogHighCount.textContent  = hardWords.length.toLocaleString();
+      cogMedCount.textContent   = `≥ ${COG_MIN_SCORE.toFixed(2)}`;
+      cogStats.classList.add('visible');
+
+      const uniq = new Map();
+      hardWords.forEach(w => {
+        const key = w.word.toLowerCase();
+        if (!uniq.has(key) || uniq.get(key).load_score < w.load_score) {
+          uniq.set(key, w);
+        }
+      });
+      const sorted = [...uniq.values()].sort((a, b) => b.load_score - a.load_score);
+
+      cogList.innerHTML = '';
+      if (!sorted.length) {
+        cogList.classList.remove('visible');
+        cogEmpty.style.display = 'block';
+        cogEmpty.textContent = `無分數大於 ${COG_MIN_SCORE} 的深難詞`;
+        return;
+      }
+      
+      cogEmpty.style.display = 'none';
+      cogList.classList.add('visible');
+      sorted.forEach(w => {
+        const chip = document.createElement('span');
+        chip.className = 'cog-chip';
+        chip.textContent = `${w.word} (${w.load_score.toFixed(2)})`;
+        cogList.appendChild(chip);
+      });
+    }
+
+    function toggleCognitiveOverlay(forceState) {
+      const next = (typeof forceState === 'boolean') ? forceState : !cognitiveOn;
+      cognitiveOn = next;
+      cogOverlayToggle.classList.toggle('active', cognitiveOn);
+      cogOverlayLabel.textContent = cognitiveOn ? '在文件上標示負荷（開啟）' : '在文件上標示負荷（關閉）';
+
+      if (cognitiveOn && !cogScoreMap.size) {
+        log('請先執行評估分析', 'err');
+        cognitiveOn = false;
+        cogOverlayToggle.classList.remove('active');
+        cogOverlayLabel.textContent = '在文件上標示負荷（關閉）';
+        return;
+      }
+
+      if (cognitiveOn && !overlayOn) {
+        overlayToggle.click(); // auto toggle outlines on
+      } else {
+        if (overlayOn) redrawAllOverlays();
+      }
+      log(`認知負荷標記：${cognitiveOn ? '開啟' : '關閉'}`);
+    }
+
+    cogOverlayToggle.addEventListener('click', () => toggleCognitiveOverlay());
+
+    function updateCogControlsVisibility() {
+      const show = (cogVizMode === 'heatmap');
+      cogMuRow.style.display    = show ? '' : 'none';
+      cogSigmaRow.style.display = show ? '' : 'none';
+    }
+    updateCogControlsVisibility();
+
+    cogVizModeSelect.addEventListener('change', () => {
+      cogVizMode = cogVizModeSelect.value;
+      updateCogControlsVisibility();
+      if (cognitiveOn && overlayOn) redrawAllOverlays();
+    });
+
+    cogMuSlider.addEventListener('input', () => {
+      cogMu = parseFloat(cogMuSlider.value);
+      cogMuValue.textContent = cogMu.toFixed(2);
+      if (cognitiveOn && overlayOn) redrawAllOverlays();
+    });
+
+    cogSigmaSlider.addEventListener('input', () => {
+      cogSigma = parseFloat(cogSigmaSlider.value);
+      cogSigmaValue.textContent = `${cogSigma} px`;
+      if (cognitiveOn && overlayOn) redrawAllOverlays();
+    });
+
+    // ── Backend: Save ─────────────────────────────────────────────────────────────
+    saveBtn.addEventListener('click', async () => {
+      if (!extractedData.length) return;
+      saveBtn.disabled = true;
+      saveBtn.textContent = '儲存中…';
+      try {
+        const res = await fetch('/api/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filename: currentFile?.name ?? 'unknown',
+            filetype: currentFileType,
+            items:    extractedData,
+          }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        log(`成功儲存座標資料到後端 (${data.id.slice(0, 8)}…)`, 'ok');
+        loadHistory();
+      } catch (e) {
+        log(`儲存失敗：${e.message}`, 'err');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = '儲存至伺服器';
+      }
+    });
+
+    // ── Backend: Load history list ────────────────────────────────────────────────
+    async function loadHistory() {
+      try {
+        const ping = await fetch('/api/ping');
+        if (!ping.ok) throw new Error(`網關異常 ${ping.status}`);
+        backendDot.style.background = 'var(--success)';
+        backendDot.title = '伺服器連線正常';
+      } catch (e) {
+        backendDot.style.background = 'var(--danger)';
+        backendDot.title = `伺服器連線失敗：${e.message}`;
+        historyList.innerHTML = `<div style="font-size:0.75rem; color:var(--danger)">⚠ 伺服器未連線</div>`;
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/sessions');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        renderHistory(await res.json());
+      } catch (e) {
+        historyList.innerHTML = `<div style="font-size:0.75rem; color:var(--danger)">讀取歷史失敗: ${e.message}</div>`;
+      }
+    }
+
+    function renderHistory(sessions) {
+      historyList.innerHTML = '';
+      if (!sessions.length) {
+        historyCount.textContent = '';
+        historyList.innerHTML = '<div id="historyEmpty" style="font-size:0.75rem; color:var(--ink-secondary)">尚無歷史紀錄</div>';
+        return;
+      }
+      historyCount.textContent = `(${sessions.length})`;
+      sessions.forEach(s => {
+        const date = new Date(s.created_at).toLocaleString('zh-TW', { hour12: false });
+        const tag  = s.filetype?.toUpperCase() ?? '';
+        const card = document.createElement('div');
+        card.className = 'hist-card';
+        card.innerHTML = `
+          <div class="hname" title="${escHtml(s.filename)}">${escHtml(s.filename)}</div>
+          <div class="hmeta">${date} &nbsp;·&nbsp; ${tag} &nbsp;·&nbsp; ${s.item_count.toLocaleString()} 點</div>
+          <div class="hbtns">
+            <button class="btn-sm" onclick="downloadSession('${s.id}','json')">JSON</button>
+            <button class="btn-sm" onclick="downloadSession('${s.id}','csv')">CSV</button>
+            <button class="btn-sm btn-del" onclick="deleteSession('${s.id}',this)">🗑 刪除</button>
+          </div>`;
+        historyList.appendChild(card);
+      });
+    }
+
+    window.downloadSession = async function(id, format) {
+      try {
+        const res     = await fetch(`/api/sessions/${id}`);
+        if (!res.ok) throw new Error('找不到該筆紀錄');
+        const session = await res.json();
+        const items   = session.items ?? [];
+        const base    = session.filename.replace(/\.[^.]+$/, '');
+
+        if (format === 'json') {
+          triggerDownload(JSON.stringify(items, null, 2), `${base}_coords.json`, 'application/json');
+        } else {
+          const header = [
+            'Page','Index','Text',
+            'Top','Left','Right','Bottom','Width','Height',
+            'NormTop','NormLeft','NormRight','NormBottom','NormWidth','NormHeight',
+            'PageWidth','PageHeight','DPR',
+          ].join(',');
+          const rows = items.map(d => [
+            d.page, d.index,
+            `"${String(d.text).replace(/"/g,'""')}"`,
+            d.top, d.left, d.right, d.bottom, d.width, d.height,
+            d.norm_top ?? '', d.norm_left ?? '', d.norm_right ?? '', d.norm_bottom ?? '',
+            d.norm_width ?? '', d.norm_height ?? '',
+            d.page_width ?? '', d.page_height ?? '', d.dpr ?? '',
+          ].join(','));
+          triggerDownload('﻿' + [header, ...rows].join('\r\n'), `${base}_coords.csv`, 'text/csv;charset=utf-8');
+        }
+        log(`已成功從歷史讀取並下載 ${format.toUpperCase()}`, 'ok');
+      } catch (e) {
+        log(`下載歷史失敗：${e.message}`, 'err');
+      }
+    };
+
+    window.deleteSession = async function(id, btn) {
+      if (!confirm('確定要永久刪除此歷史紀錄？')) return;
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/sessions/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        log('已成功刪除該歷史紀錄', 'ok');
+        loadHistory();
+      } catch (e) {
+        log(`刪除歷史失敗：${e.message}`, 'err');
+        btn.disabled = false;
+      }
+    };
+
+    // ── Cognitive Capability Inspector Integration ────────────────────────────────
+    const inspectParticipantInput = document.getElementById('inspectParticipantInput');
+    const inspectLangSelect        = document.getElementById('inspectLangSelect');
+    const inspectAnalyzeBtn        = document.getElementById('inspectAnalyzeBtn');
+    const inspectReportBtn         = document.getElementById('inspectReportBtn');
+    const inspectResultsCard       = document.getElementById('inspectResultsCard');
+
+    const inspectReadingScore      = document.getElementById('inspectReadingScore');
+    const inspectReadingBar        = document.getElementById('inspectReadingBar');
+    const inspectReadingLevel      = document.getElementById('inspectReadingLevel');
+
+    const inspectEnglishScore      = document.getElementById('inspectEnglishScore');
+    const inspectEnglishBar        = document.getElementById('inspectEnglishBar');
+    const inspectEnglishLevel      = document.getElementById('inspectEnglishLevel');
+
+    const inspectLoadScore         = document.getElementById('inspectLoadScore');
+    const inspectLoadBar           = document.getElementById('inspectLoadBar');
+
+    const inspectWpm               = document.getElementById('inspectWpm');
+    const inspectRegRate           = document.getElementById('inspectRegRate');
+    const inspectAttention         = document.getElementById('inspectAttention');
+    const inspectFatigue           = document.getElementById('inspectFatigue');
+
+    let lastInspectorAnalysisGazeHistory = null;
+
+    async function runCognitiveInspectorAnalysis() {
+      const gazeHistoryData = typeof window.flushGazeHistory === 'function' ? window.flushGazeHistory() : [];
+      if (!gazeHistoryData || gazeHistoryData.length === 0) {
+        log('眼動歷史軌跡為空，請先啟用眼動追蹤並進行閱讀！', 'err');
+        alert('請先在左側面板啟用眼動追蹤，閱讀部分文字後，再點擊此按鈕進行診斷。');
+        return;
+      }
+
+      inspectAnalyzeBtn.disabled = true;
+      inspectAnalyzeBtn.textContent = '分析中…';
+
+      try {
+        const res = await fetch('/api/inspector/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gaze_history: gazeHistoryData,
+            lang: inspectLangSelect.value
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || '分析失敗');
+
+        const profile = data.analysis.user_profile;
+        const summary = data.analysis.summary;
+
+        // Populate Dashboard UI
+        inspectReadingScore.textContent = profile.reading_ability_score.toFixed(1);
+        inspectReadingBar.style.width = `${profile.reading_ability_score}%`;
+        inspectReadingLevel.textContent = profile.reading_ability_level;
+
+        inspectEnglishScore.textContent = profile.english_proficiency_score.toFixed(1);
+        inspectEnglishBar.style.width = `${profile.english_proficiency_score}%`;
+        inspectEnglishLevel.textContent = profile.english_proficiency_level;
+
+        inspectLoadScore.textContent = profile.cognitive_load_index.toFixed(1);
+        inspectLoadBar.style.width = `${profile.cognitive_load_index}%`;
+
+        inspectWpm.textContent = `${summary.words_per_minute.toFixed(1)} 字/分`;
+        inspectRegRate.textContent = `${(summary.regression_rate * 100).toFixed(1)}%`;
+        inspectAttention.textContent = `${profile.attention_index}%`;
+        inspectFatigue.textContent = profile.fatigue_label;
+
+        // Display results
+        inspectResultsCard.style.display = 'flex';
+        inspectReportBtn.disabled = false;
+        lastInspectorAnalysisGazeHistory = gazeHistoryData;
+        log('認知能力診斷分析完成！', 'ok');
+        if (typeof updateGuideUI === 'function') updateGuideUI();
+
+      } catch (err) {
+        log(`認知能力診斷失敗：${err.message}`, 'err');
+        alert(`診斷失敗：${err.message}`);
+      } finally {
+        inspectAnalyzeBtn.disabled = false;
+        inspectAnalyzeBtn.textContent = '開始診斷認知能力';
+      }
+    }
+
+    async function generateAndShowCognitiveReport() {
+      if (!lastInspectorAnalysisGazeHistory) return;
+
+      inspectReportBtn.disabled = true;
+      inspectReportBtn.textContent = '產生報告中…';
+
+      try {
+        const participantId = inspectParticipantInput.value.trim() || 'anonymous';
+        const res = await fetch('/api/inspector/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gaze_history: lastInspectorAnalysisGazeHistory,
+            participant_id: participantId,
+            lang: inspectLangSelect.value,
+            persist: true
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || '報告生成失敗');
+
+        // Render Markdown to HTML using marked.js
+        const reportContentEl = document.getElementById('cogReportContent');
+        const reportModalEl   = document.getElementById('cogReportModal');
+        if (reportContentEl) {
+          reportContentEl.innerHTML = typeof marked !== 'undefined' ? marked.parse(data.report_md) : `<pre style="white-space:pre-wrap;">${data.report_md}</pre>`;
+        }
+        
+        // Show Modal
+        if (reportModalEl) {
+          reportModalEl.classList.add('open');
+        }
+        log(`診斷報告已生成並保存至：${data.analysis.report_path}`, 'ok');
+        loadReportsHistory();
+
+      } catch (err) {
+        log(`產生診斷報告失敗：${err.message}`, 'err');
+        alert(`產生報告失敗：${err.message}`);
+      } finally {
+        inspectReportBtn.disabled = false;
+        inspectReportBtn.textContent = '產生與儲存診斷報告';
+      }
+    }
+
+    // ── Reports History Actions ──────────────────────────────────────────────────
+    const inspectReportsList = document.getElementById('inspectReportsList');
+    const inspectReportsEmpty = document.getElementById('inspectReportsEmpty');
+    const inspectRefreshReportsBtn = document.getElementById('inspectRefreshReportsBtn');
+
+    async function loadReportsHistory() {
+      try {
+        const res = await fetch('/api/inspector/reports');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        
+        inspectReportsList.innerHTML = '';
+        const reports = data.reports || [];
+        
+        if (reports.length === 0) {
+          inspectReportsEmpty.style.display = 'block';
+          return;
+        }
+        
+        inspectReportsEmpty.style.display = 'none';
+        
+        reports.forEach(r => {
+          const card = document.createElement('div');
+          card.className = 'hist-card';
+          card.style.padding = '6px 8px';
+          card.style.marginBottom = '4px';
+          card.style.border = '1px solid var(--line)';
+          card.style.borderRadius = 'var(--radius-sm)';
+          card.style.background = 'var(--bg-elevated)';
+          
+          card.innerHTML = `
+            <div class="hname" style="font-size:10px; font-weight:600; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" onclick="viewReportContent('${r.filename}')" title="${r.filename}">
+              👤 ${escHtml(r.participant_id)}
+            </div>
+            <div class="hmeta" style="font-size:8px; display:flex; justify-content:space-between; margin-top:2px; color:var(--ink-muted);">
+              <span>${r.created_at}</span>
+              <span>${(r.size_bytes / 1024).toFixed(1)} KB</span>
+            </div>
+            <div class="hbtns" style="margin-top:6px; display:flex; gap:4px; justify-content: flex-end;">
+              <button class="btn-sm" style="font-size:8px; padding:2px 6px; min-height:18px; border-radius:3px;" onclick="viewReportContent('${r.filename}')">開啟</button>
+              <button class="btn-sm" style="font-size:8px; padding:2px 6px; min-height:18px; border-radius:3px;" onclick="downloadReport('${r.filename}')">下載</button>
+              <button class="btn-sm btn-del" style="font-size:8px; padding:2px 6px; min-height:18px; border-radius:3px;" onclick="deleteReportFile('${r.filename}')">🗑 刪除</button>
+            </div>
+          `;
+          inspectReportsList.appendChild(card);
+        });
+      } catch (e) {
+        log(`載入診斷歷史報告失敗：${e.message}`, 'err');
+      }
+    }
+
+    window.viewReportContent = async function(filename) {
+      try {
+        const res = await fetch(`/api/inspector/reports/${filename}`);
+        if (!res.ok) throw new Error('報告找不到');
+        const data = await res.json();
+        
+        cogReportContent.innerHTML = typeof marked !== 'undefined' ? marked.parse(data.markdown) : `<pre style="white-space:pre-wrap;">${data.markdown}</pre>`;
+        cogReportModal.classList.add('open');
+      } catch (e) {
+        log(`讀取報告失敗：${e.message}`, 'err');
+        alert(`讀取報告失敗：${e.message}`);
+      }
+    };
+
+    window.downloadReport = async function(filename) {
+      try {
+        const res = await fetch(`/api/inspector/reports/${filename}`);
+        if (!res.ok) throw new Error('報告找不到');
+        const data = await res.json();
+        
+        triggerDownload(data.markdown, filename, 'text/markdown;charset=utf-8');
+        log(`已下載報告 ${filename}`, 'ok');
+      } catch (e) {
+        log(`下載報告失敗：${e.message}`, 'err');
+      }
+    };
+
+    window.deleteReportFile = async function(filename) {
+      if (!confirm(`確定要永久刪除報告 ${filename}？`)) return;
+      try {
+        const res = await fetch(`/api/inspector/reports/${filename}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('刪除失敗');
+        log(`已刪除報告 ${filename}`, 'ok');
+        loadReportsHistory();
+      } catch (e) {
+        log(`刪除報告失敗：${e.message}`, 'err');
+        alert(`刪除報告失敗：${e.message}`);
+      }
+    };
+
+    inspectRefreshReportsBtn.addEventListener('click', loadReportsHistory);
+
+    inspectAnalyzeBtn.addEventListener('click', runCognitiveInspectorAnalysis);
+    inspectReportBtn.addEventListener('click', generateAndShowCognitiveReport);
+
+    // Wrap DOM-dependent modal handlers in DOMContentLoaded to prevent null references during early load
+    window.addEventListener('DOMContentLoaded', () => {
+      const cogReportModal           = document.getElementById('cogReportModal');
+      const closeCogReportBtn        = document.getElementById('closeCogReportBtn');
+      const closeCogReportFooterBtn  = document.getElementById('closeCogReportFooterBtn');
+
+      function closeReportModal() {
+        if (cogReportModal) cogReportModal.classList.remove('open');
+      }
+
+      closeCogReportBtn?.addEventListener('click', closeReportModal);
+      closeCogReportFooterBtn?.addEventListener('click', closeReportModal);
+
+      cogReportModal?.addEventListener('click', (e) => {
+        if (e.target === cogReportModal) closeReportModal();
+      });
+
+      // ── Help Tutorial Modal Logic ──
+      const helpTutorialBtn = document.getElementById('helpTutorialBtn');
+      const helpTutorialModal = document.getElementById('helpTutorialModal');
+      const closeHelpTutorialBtn = document.getElementById('closeHelpTutorialBtn');
+      const closeHelpTutorialFooterBtn = document.getElementById('closeHelpTutorialFooterBtn');
+
+      function openHelpTutorial() {
+        if (helpTutorialModal) helpTutorialModal.classList.add('open');
+      }
+      function closeHelpTutorial() {
+        if (helpTutorialModal) helpTutorialModal.classList.remove('open');
+      }
+
+      helpTutorialBtn?.addEventListener('click', openHelpTutorial);
+      closeHelpTutorialBtn?.addEventListener('click', closeHelpTutorial);
+      closeHelpTutorialFooterBtn?.addEventListener('click', closeHelpTutorial);
+      helpTutorialModal?.addEventListener('click', (e) => {
+        if (e.target === helpTutorialModal) closeHelpTutorial();
+      });
+
+      // Auto open tutorial on first-time load
+      if (!localStorage.getItem('lexigaze_tutorial_shown')) {
+        openHelpTutorial();
+        localStorage.setItem('lexigaze_tutorial_shown', 'true');
+      }
+
+      // Load history on start
+      loadHistory();
+      loadReportsHistory();
+    });
+
+    refreshHistoryBtn?.addEventListener('click', loadHistory);
+
+    // ── Stepper Guide JavaScript Logic ──
+    function updateGuideUI() {
+      // Step 1: Hardware Performance Mode
+      const step1 = document.getElementById('guideStep1');
+      const step1Badge = document.getElementById('guideStep1Badge');
+      const modeTxt = document.getElementById('guideCurrentModeTxt');
+      
+      const mode = window.lexiPerfMode || 'video';
+      if (modeTxt) {
+        modeTxt.textContent = mode === 'realtime' ? '🎯 即時推論模式' : '🎬 錄影分析模式';
+      }
+      
+      const vmCtrls = document.getElementById('guideVmControls');
+      const rtCtrls = document.getElementById('guideRtControls');
+      if (vmCtrls) vmCtrls.style.display = (mode === 'video') ? 'flex' : 'none';
+      if (rtCtrls) rtCtrls.style.display = (mode === 'realtime') ? 'flex' : 'none';
+      
+      if (step1Badge) {
+        step1Badge.textContent = '已設定';
+        step1Badge.className = 'guide-step-badge completed';
+      }
+      if (step1) {
+        step1.classList.remove('active');
+        step1.classList.add('completed');
+      }
+
+      // Step 2: Calibration
+      const step2 = document.getElementById('guideStep2');
+      const step2Badge = document.getElementById('guideStep2Badge');
+      const modelSelect = document.querySelector('.gaze-model-select');
+      const modelSelected = modelSelect && modelSelect.value !== 'before';
+      
+      if (step2 && step2Badge) {
+        if (modelSelected) {
+          step2Badge.textContent = '已套用';
+          step2Badge.className = 'guide-step-badge completed';
+          step2.classList.remove('active');
+          step2.classList.add('completed');
+        } else {
+          step2Badge.textContent = '待執行';
+          step2Badge.className = 'guide-step-badge';
+          step2.classList.remove('completed');
+          step2.classList.add('active');
+        }
+      }
+
+      // Step 3: Load Article
+      const step3 = document.getElementById('guideStep3');
+      const step3Badge = document.getElementById('guideStep3Badge');
+      const fileTxt = document.getElementById('guideFileLoadedTxt');
+      const fileNameSpan = document.getElementById('guideFileName');
+      
+      if (step3 && step3Badge) {
+        if (currentFile) {
+          step3Badge.textContent = '已載入';
+          step3Badge.className = 'guide-step-badge completed';
+          step3.classList.remove('active');
+          step3.classList.add('completed');
+          if (fileTxt) fileTxt.style.display = 'block';
+          if (fileNameSpan) fileNameSpan.textContent = currentFile.name;
+        } else {
+          step3Badge.textContent = '待執行';
+          step3Badge.className = 'guide-step-badge';
+          step3.classList.remove('completed');
+          if (fileTxt) fileTxt.style.display = 'none';
+          
+          if (!modelSelected) {
+            step3.classList.remove('active');
+          } else {
+            step3.classList.add('active');
+          }
+        }
+      }
+
+      // Step 4: Eye Tracking Reading
+      const step4 = document.getElementById('guideStep4');
+      const step4Badge = document.getElementById('guideStep4Badge');
+      const trackTxt = document.getElementById('guideTrackingDoneTxt');
+      const trackHits = document.getElementById('guideTrackingHitsCount');
+      
+      const hasData = (typeof window.flushGazeHistory === 'function' && window.flushGazeHistory().length > 0);
+      
+      if (step4 && step4Badge) {
+        if (hasData) {
+          step4Badge.textContent = '已完成';
+          step4Badge.className = 'guide-step-badge completed';
+          step4.classList.remove('active');
+          step4.classList.add('completed');
+          if (trackTxt) trackTxt.style.display = 'block';
+          if (trackHits) trackHits.textContent = window.flushGazeHistory().length;
+        } else {
+          step4Badge.textContent = '待執行';
+          step4Badge.className = 'guide-step-badge';
+          step4.classList.remove('completed');
+          if (trackTxt) trackTxt.style.display = 'none';
+          
+          if (!currentFile) {
+            step4.classList.remove('active');
+          } else {
+            step4.classList.add('active');
+          }
+        }
+      }
+
+      // Step 5: Diagnostics Report
+      const step5 = document.getElementById('guideStep5');
+      const step5Badge = document.getElementById('guideStep5Badge');
+      const guideReportBtn = document.getElementById('guideReportBtn');
+      
+      const hasAnalysis = lastInspectorAnalysisGazeHistory !== null;
+      
+      if (step5 && step5Badge) {
+        if (hasAnalysis) {
+          step5Badge.textContent = '已完成';
+          step5Badge.className = 'guide-step-badge completed';
+          step5.classList.remove('active');
+          step5.classList.add('completed');
+          if (guideReportBtn) guideReportBtn.disabled = false;
+        } else {
+          step5Badge.textContent = '待執行';
+          step5Badge.className = 'guide-step-badge';
+          step5.classList.remove('completed');
+          if (guideReportBtn) guideReportBtn.disabled = true;
+          
+          if (!hasData) {
+            step5.classList.remove('active');
+          } else {
+            step5.classList.add('active');
+          }
+        }
+      }
+    }
+    window.updateGuideUI = updateGuideUI;
+
+    // Stepper bindings and sync
+    window.addEventListener('DOMContentLoaded', () => {
+      // Upload Document click bridge
+      const guideUploadBtn = document.getElementById('guideUploadBtn');
+      if (guideUploadBtn) {
+        guideUploadBtn.addEventListener('click', () => {
+          document.getElementById('fileInput').click();
+        });
+      }
+
+      // Sync participant IDs
+      const guidePartInput = document.getElementById('guideParticipantInput');
+      const sidePartInput = document.getElementById('inspectParticipantInput');
+      if (guidePartInput && sidePartInput) {
+        guidePartInput.addEventListener('input', (e) => { sidePartInput.value = e.target.value; });
+        sidePartInput.addEventListener('input', (e) => { guidePartInput.value = e.target.value; });
+      }
+
+      // Bridge Real-time Mode Toggle button in Step 4
+      const guideRtBtn = document.getElementById('guideRtToggleBtn');
+      if (guideRtBtn) {
+        guideRtBtn.addEventListener('click', () => {
+          const mainToggle = document.getElementById('gazeToggle');
+          if (mainToggle) mainToggle.click();
+        });
+      }
+
+      // Auto update guide layout
+      updateGuideUI();
+    });
+
+  </script>
+  
+  <!-- Gaze Follower Element -->
+  <div id="gaze-cursor" class="hidden" style="
+    position: fixed;
+    width: 24px;
+    height: 24px;
+    background: rgba(59, 130, 246, 0.25);
+    border: 2px solid var(--accent);
+    border-radius: 50%;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    z-index: 99999;
+    display: none;
+  ">
+    <div style="
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 6px;
+      height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+    "></div>
+  </div>
+
+  <!-- Cognitive Report Modal -->
+  <div class="modal-backdrop" id="cogReportModal">
+    <div class="modal-card" style="max-width: 720px; max-height: 90vh;">
+      <div class="modal-header">
+        <h3>認知能力診斷報告 / Cognitive Diagnostic Report</h3>
+        <button class="modal-close-btn" id="closeCogReportBtn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-content" id="cogReportContent" style="padding: 1.5rem; font-size: 14px; line-height: 1.6; color: var(--ink-primary); overflow-y: auto;">
+        <!-- Marked report content will be loaded here -->
+      </div>
+      <div style="padding: 1rem 1.5rem; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; background: var(--bg-elevated); flex-shrink: 0;">
+        <button class="btn btn-secondary" id="closeCogReportFooterBtn">關閉</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Help Tutorial Modal -->
+  <div class="modal-backdrop" id="helpTutorialModal">
+    <div class="modal-card" style="max-width: 680px; max-height: 90vh;">
+      <div class="modal-header">
+        <h3>📖 LexiGaze 使用說明 / User Guide</h3>
+        <button class="modal-close-btn" id="closeHelpTutorialBtn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-content" style="padding: 1.5rem; font-size: 14px; line-height: 1.6; color: var(--ink-primary); overflow-y: auto;">
+        
+        <h4 style="margin-top:0; color:var(--accent); display:flex; align-items:center; gap:6px;">
+          <span style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; background:var(--accent-soft); color:var(--accent); border-radius:50%; font-size:11px; font-weight:700;">1</span>
+          第一步：影片相機校正與個人化訓練 (Calibration)
+        </h4>
+        <ol style="margin-left: 1.5rem; margin-bottom: 1.5rem;">
+          <li>點擊左側<b>「眼動追蹤」</b>面板中的<b>「相機校正與訓練 ↗」</b>，這將開啟獨立的校正頁面。</li>
+          <li>輸入您的<b>受試者 ID</b>，然後點擊<b>「開始」</b>。</li>
+          <li><b>眼睛注視著螢幕上跳動的黑色圓點</b>。鏡頭會同時錄影記錄眼球移動位置。</li>
+          <li>點點全部跑完後，系統將自動於後台開始訓練個人化模型（約需 2~3 秒）。完成後，您可以回到主頁面。</li>
+        </ol>
+
+        <h4 style="color:var(--accent); display:flex; align-items:center; gap:6px;">
+          <span style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; background:var(--accent-soft); color:var(--accent); border-radius:50%; font-size:11px; font-weight:700;">2</span>
+          第二步：載入文章與啟用眼動追蹤 (Reading)
+        </h4>
+        <ol style="margin-left: 1.5rem; margin-bottom: 1.5rem;">
+          <li>在左側<b>「文件與分析」</b>面板中上傳您的文件，或在下方<b>「範例文件」</b>直接選擇文章載入。</li>
+          <li>點選左側<b>「眼動追蹤」</b>面板：
+            <ul style="margin-left: 1.25rem; margin-top: 0.25rem;">
+              <li>在<b>「推論模型」</b>選單中，選擇您剛剛訓練的個人化模型（如：<code>anonymous_video_model</code>）。</li>
+              <li>點擊<b>「啟用眼動推論」</b>開啟視訊。此時會出現一個代表您視線的藍色注視點。</li>
+              <li>確認<b>「Gaze Mapping」</b>也是開啟狀態，開始像平常一樣閱讀文章。</li>
+            </ul>
+          </li>
+        </ol>
+
+        <h4 style="color:var(--accent); display:flex; align-items:center; gap:6px;">
+          <span style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; background:var(--accent-soft); color:var(--accent); border-radius:50%; font-size:11px; font-weight:700;">3</span>
+          第三步：生成認知分析診斷報告 (Diagnostic Report)
+        </h4>
+        <ol style="margin-left: 1.5rem; margin-bottom: 1rem;">
+          <li>閱讀完成後，打開右側的<b>「認知能力診斷」</b>面板。</li>
+          <li>輸入您的<b>受試者 ID</b>，並選擇文本的對應語言。</li>
+          <li>點擊<b>「開始診斷認知能力」</b>，系統會統計您的閱讀速度 (WPM)、回看次數、注意力專注度及閱讀疲勞度。</li>
+          <li>點擊<b>「產生與儲存診斷報告」</b>，即可產生精緻的文件認知能力評估報告，並提供個人化的學習建議。</li>
+        </ol>
+        
+        <div style="background:var(--bg-elevated); border: 1px solid var(--line); border-radius:var(--radius-sm); padding:12px; margin-top: 15px; font-size:12px; color:var(--ink-secondary); line-height: 1.5;">
+          💡 <b>小技巧：</b>如果覺得藍色圓點不夠準確，請重新執行校正，並請確保您的臉部有足夠的光源，且眼鏡無眩光，這樣能獲得最佳的預測準確度。
+        </div>
+
+        <div style="background:#fff8e1; border: 1px solid #f59e0b; border-radius:var(--radius-sm); padding:12px; margin-top: 10px; font-size:12px; color:#92400e; line-height: 1.5;">
+          ⚡ <b>效能提示 (Performance)：</b>系統的眼動推論使用您的本機 CPU 運算。若您的電腦較舊（例如 2019 MacBook i5），建議在左側<b>「眼動追蹤」→「效能設定」</b>中，將<b>「推論間隔」</b>調高至 300–600 ms，可大幅降低 CPU 負擔並減少延遲感。
+          <br><br>
+          <b>Performance tip:</b> Gaze inference runs on your local CPU. On older machines (e.g. 2019 MacBook i5 with Intel Iris Plus), set the <b>Inference Interval to 300–600 ms</b> in the Eye Tracking panel to reduce CPU load and lag.
+        </div>
+
+      </div>
+      <div style="padding: 1rem 1.5rem; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; background: var(--bg-elevated); flex-shrink: 0;">
+        <button class="btn btn-primary" id="closeHelpTutorialFooterBtn" style="min-height:36px; padding: 0 16px;">了解並開始閱讀</button>
+      </div>
+    </div>
+  </div>
+  <!-- ══ PERFORMANCE MODE SELECTION MODAL ══ -->
+  <div class="modal-backdrop" id="perfModeModal" style="align-items: center;">
+    <div class="modal-card" style="max-width: 680px; max-height: 92vh; width: 95%;">
+
+      <!-- Header -->
+      <div class="modal-header" style="background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%); border-bottom: none; padding: 1.5rem 1.75rem;">
+        <div style="display:flex; align-items:center; gap: 12px;">
+          <div style="width:40px; height:40px; background: rgba(59,130,246,0.2); border: 1px solid rgba(59,130,246,0.4); border-radius: 10px; display:flex; align-items:center; justify-content:center; font-size:20px;">⚡</div>
+          <div>
+            <h3 style="color:#fff; font-size:1.15rem; margin:0;">選擇效能模式 / Select Performance Mode</h3>
+            <p style="color:rgba(255,255,255,0.55); font-size:0.78rem; margin:2px 0 0 0;">LexiGaze 將根據您的硬體選擇最佳的眼動分析方式</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hardware Benchmark Panel -->
+      <div id="perfBenchPanel" style="background: #f8fafc; border-bottom: 1px solid var(--line); padding: 1rem 1.75rem;">
+        <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-secondary); margin-bottom: 0.6rem;">🔍 硬體偵測 / Hardware Detection</div>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 0.75rem;" id="hwInfoGrid">
+          <div class="hw-chip" id="hwCores"><span class="hw-icon">💻</span><span class="hw-val">—</span><span class="hw-lbl">CPU Cores</span></div>
+          <div class="hw-chip" id="hwMemory"><span class="hw-icon">🧠</span><span class="hw-val">—</span><span class="hw-lbl">RAM (approx)</span></div>
+          <div class="hw-chip" id="hwBench"><span class="hw-icon">⏱</span><span class="hw-val">—</span><span class="hw-lbl">JS Benchmark</span></div>
+        </div>
+        <div id="hwRecommendBanner" style="display:none; border-radius: 6px; padding: 8px 12px; font-size: 0.78rem; font-weight: 600; line-height: 1.4;"></div>
+        <div id="hwBenchProgress" style="margin-top:6px; display:flex; align-items:center; gap:8px; font-size:0.75rem; color:var(--ink-secondary);">
+          <div style="flex:1; height:4px; background:var(--bg-highest); border-radius:2px; overflow:hidden;">
+            <div id="hwBenchBar" style="height:100%; width:0%; background: linear-gradient(90deg, var(--accent), #8b5cf6); transition: width 0.3s ease;"></div>
+          </div>
+          <span id="hwBenchStatus">正在偵測硬體...</span>
+        </div>
+      </div>
+
+      <!-- Mode Cards -->
+      <div style="padding: 1.25rem 1.75rem; overflow-y:auto; flex:1;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;" id="perfModeCards">
+
+          <!-- Card: Real-time Mode -->
+          <div class="perf-card" id="cardRealtime" onclick="selectPerfMode('realtime')" data-mode="realtime">
+            <div class="perf-card-icon">🎯</div>
+            <div class="perf-card-title">即時推論模式<br><span style="font-weight:400; font-size:0.72rem; opacity:0.7;">Real-time Mode</span></div>
+            <div class="perf-card-desc">
+              鏡頭畫面即時推論，注視點即時顯示。<br>
+              <b>推薦硬體：</b>M1/M2/M3 Mac、近期 Intel i7+、Ryzen 7+。
+            </div>
+            <div class="perf-card-specs">
+              <div class="spec-row"><span class="spec-dot good"></span>注視點即時可見</div>
+              <div class="spec-row"><span class="spec-dot good"></span>即時 RDS 融合</div>
+              <div class="spec-row"><span class="spec-dot warn"></span>較高 CPU/GPU 佔用</div>
+              <div class="spec-row"><span class="spec-dot warn"></span>較舊硬體可能卡頓</div>
+            </div>
+            <div class="perf-card-badge" id="badgeRealtime">—</div>
+          </div>
+
+          <!-- Card: Video-Record Mode -->
+          <div class="perf-card selected" id="cardVideo" onclick="selectPerfMode('video')" data-mode="video">
+            <div class="perf-card-icon">🎬</div>
+            <div class="perf-card-title">錄影分析模式<br><span style="font-weight:400; font-size:0.72rem; opacity:0.7;">Video-Record Mode</span></div>
+            <div class="perf-card-desc">
+              錄製閱讀全程影片，結束後批次分析。讀書時無任何 CPU 負擔。<br>
+              <b>推薦硬體：</b>任何硬體皆適用，尤其 2019 MacBook 以前機型。
+            </div>
+            <div class="perf-card-specs">
+              <div class="spec-row"><span class="spec-dot good"></span>閱讀時零 CPU 負擔</div>
+              <div class="spec-row"><span class="spec-dot good"></span>任何硬體皆可用</div>
+              <div class="spec-row"><span class="spec-dot warn"></span>需在閱讀後等待處理</div>
+              <div class="spec-row"><span class="spec-dot warn"></span>閱讀中無即時注視點</div>
+            </div>
+            <div class="perf-card-badge" id="badgeVideo">—</div>
+          </div>
+        </div>
+
+        <!-- Selected Mode Summary -->
+        <div id="perfModeSummary" style="margin-top: 12px; background: var(--accent-soft); border: 1px solid rgba(37,99,235,0.2); border-radius: 8px; padding: 10px 14px; font-size: 0.8rem; color: var(--accent); line-height: 1.5; display:none;"></div>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding: 1rem 1.75rem; border-top: 1px solid var(--line); display:flex; justify-content:space-between; align-items:center; background: var(--bg-elevated); flex-shrink:0; gap:8px;">
+        <label style="display:flex; align-items:center; gap:6px; font-size:0.78rem; color:var(--ink-secondary); cursor:pointer;">
+          <input type="checkbox" id="perfModeRemember" style="width:auto; min-height:auto;"> 記住我的選擇 / Remember choice
+        </label>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-secondary" id="perfModeSkipBtn" style="min-height:36px;">稍後再說</button>
+          <button class="btn btn-primary" id="perfModeConfirmBtn" style="min-height:36px; padding: 0 20px;">確認並開始 →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Performance Mode CSS -->
+  <style>
+    .hw-chip {
+      background: #fff;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      text-align: center;
+    }
+    .hw-icon { font-size: 1.1rem; }
+    .hw-val  { font-size: 0.88rem; font-weight: 700; color: var(--ink-primary); font-family: 'JetBrains Mono', monospace; }
+    .hw-lbl  { font-size: 0.62rem; color: var(--ink-muted); font-weight: 500; }
+
+    .perf-card {
+      background: #fff;
+      border: 2px solid var(--line-strong);
+      border-radius: 12px;
+      padding: 1.1rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .perf-card:hover { border-color: var(--accent-2); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(37,99,235,0.1); }
+    .perf-card.selected { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
+    .perf-card.recommended::after {
+      content: '✨ 推薦';
+      position: absolute; top: 10px; right: 10px;
+      background: #10b981; color: #fff;
+      font-size: 0.6rem; font-weight: 700;
+      padding: 2px 7px; border-radius: 20px;
+      letter-spacing: 0.04em;
+    }
+    .perf-card-icon { font-size: 1.8rem; margin-bottom: 6px; }
+    .perf-card-title { font-size: 0.88rem; font-weight: 700; color: var(--ink-primary); margin-bottom: 8px; line-height: 1.3; }
+    .perf-card-desc { font-size: 0.75rem; color: var(--ink-secondary); line-height: 1.5; margin-bottom: 10px; }
+    .perf-card-specs { display: flex; flex-direction: column; gap: 4px; }
+    .spec-row { display: flex; align-items: center; gap: 6px; font-size: 0.7rem; color: var(--ink-secondary); }
+    .spec-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .spec-dot.good { background: var(--success); }
+    .spec-dot.warn { background: var(--warning); }
+    .spec-dot.bad  { background: var(--danger); }
+    .perf-card-badge {
+      margin-top: 10px; padding: 4px 10px;
+      border-radius: 20px; font-size: 0.65rem; font-weight: 700;
+      text-align: center; display: inline-block;
+      background: var(--bg-highest); color: var(--ink-muted);
+      transition: all 0.3s ease;
+    }
+    .perf-card-badge.good { background: #dcfce7; color: #15803d; }
+    .perf-card-badge.warn { background: #fef3c7; color: #92400e; }
+
+    /* Video-record mode indicator in gaze panel */
+    .video-mode-banner {
+      background: linear-gradient(135deg, #1e3a5f, #0f172a);
+      color: #fff;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 0.75rem;
+      line-height: 1.5;
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .video-mode-banner.visible { display: flex; }
+    .video-mode-banner .vmb-title { font-weight: 700; font-size: 0.82rem; display: flex; align-items: center; gap: 6px; }
+    .vmb-rec-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--danger);
+      box-shadow: 0 0 6px var(--danger);
+      animation: rec-pulse 1s infinite alternate;
+      display: none;
+    }
+    .vmb-rec-dot.recording { display: inline-block; }
+    @keyframes rec-pulse { 0% { opacity: 1; } 100% { opacity: 0.3; } }
+
+    .vmb-btn {
+      width: 100%; padding: 7px; border-radius: 6px;
+      font-size: 0.78rem; font-weight: 600;
+      border: none; cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .vmb-btn-start { background: var(--accent); color: #fff; }
+    .vmb-btn-start:hover { background: var(--accent-hover); }
+    .vmb-btn-stop  { background: var(--danger); color: #fff; }
+    .vmb-btn-stop:hover { opacity: 0.85; }
+    .vmb-btn-process { background: var(--success); color: #fff; }
+    .vmb-btn-process:hover { opacity: 0.85; }
+    .vmb-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .perf-mode-tag {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 0.62rem; font-weight: 700;
+      padding: 2px 7px; border-radius: 20px;
+      cursor: pointer; transition: all 0.15s ease;
+    }
+    .perf-mode-tag.realtime { background: #dbeafe; color: #1d4ed8; }
+    .perf-mode-tag.video    { background: #fce7f3; color: #be185d; }
+    .perf-mode-tag:hover { opacity: 0.8; }
+
+    /* ── Stepper Guide Styles ── */
+    .guide-welcome {
+      background: linear-gradient(135deg, rgba(37,99,235,0.06) 0%, rgba(139,92,246,0.06) 100%);
+      border: 1px dashed rgba(37,99,235,0.25);
+      border-radius: var(--radius-md);
+      padding: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+    .guide-step-card {
+      background: var(--bg-base);
+      border: 1px solid var(--line-strong);
+      border-left: 4px solid var(--ink-muted);
+      border-radius: var(--radius-md);
+      padding: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+    .guide-step-card.active {
+      border-left-color: var(--accent);
+      background: var(--accent-soft);
+      box-shadow: 0 4px 12px rgba(37,99,235,0.05);
+    }
+    .guide-step-card.completed {
+      border-left-color: var(--success);
+      background: rgba(16, 185, 129, 0.02);
+    }
+    .guide-step-card.completed .guide-step-number {
+      background: var(--success);
+      color: #fff;
+    }
+    .guide-step-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .guide-step-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .guide-step-number {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--bg-highest);
+      color: var(--ink-secondary);
+      font-size: 0.65rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.25s ease;
+      flex-shrink: 0;
+    }
+    .guide-step-card.active .guide-step-number {
+      background: var(--accent);
+      color: #fff;
+    }
+    .guide-step-title {
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: var(--ink-primary);
+    }
+    .guide-step-badge {
+      font-size: 0.58rem;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 10px;
+      background: var(--bg-highest);
+      color: var(--ink-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+    .guide-step-badge.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: 1px solid rgba(37,99,235,0.15);
+    }
+    .guide-step-badge.completed {
+      background: var(--success-soft);
+      color: var(--success);
+      border: 1px solid rgba(16,185,129,0.15);
+    }
+    .guide-step-desc {
+      font-size: 0.7rem;
+      color: var(--ink-secondary);
+      line-height: 1.4;
+    }
+    .guide-step-content {
+      margin-top: 2px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    @media (max-width: 600px) {
+      #perfModeCards { grid-template-columns: 1fr; }
+      #hwInfoGrid    { grid-template-columns: repeat(3, 1fr); }
+    }
+  </style>
+
+  <!-- Performance Mode + Video Record Logic -->
+  <script>
+  (function() {
+    'use strict';
+
+    // ── State ──────────────────────────────────────────────────────────────
+    let currentPerfMode     = 'video'; // 'realtime' | 'video'
+    let vmRecorder          = null;
+    let vmRecordedChunks    = [];
+    let vmRecordingStart    = 0;
+    let vmReadingTimeline   = []; // [{word, index, timestamp_ms, viewport_x, viewport_y}]
+    let vmStream            = null;
+    let vmIsRecording       = false;
+    let vmGazeEventsResult  = null;
+
+    // ── DOM refs ───────────────────────────────────────────────────────────
+    const perfModal        = document.getElementById('perfModeModal');
+    const perfConfirmBtn   = document.getElementById('perfModeConfirmBtn');
+    const perfSkipBtn      = document.getElementById('perfModeSkipBtn');
+    const perfRemember     = document.getElementById('perfModeRemember');
+
+    // ── Hardware Benchmark ─────────────────────────────────────────────────
+    async function runHardwareBenchmark() {
+      const cores  = navigator.hardwareConcurrency || 1;
+      const memory = navigator.deviceMemory || null;
+
+      document.querySelector('#hwCores .hw-val').textContent   = cores + ' cores';
+      document.querySelector('#hwMemory .hw-val').textContent  = memory ? memory + ' GB' : 'N/A';
+      document.getElementById('hwBenchStatus').textContent     = '執行效能測試...';
+
+      // Simple floating-point benchmark
+      const N = 2_000_000;
+      const t0 = performance.now();
+      let acc = 0;
+      for (let i = 0; i < N; i++) { acc += Math.sqrt(i) * Math.sin(i * 0.001); }
+      const benchMs = performance.now() - t0;
+      const _ = acc; // prevent dead-code elimination
+
+      document.getElementById('hwBenchBar').style.width = '100%';
+      document.getElementById('hwBenchStatus').textContent = '偵測完成';
+      document.querySelector('#hwBench .hw-val').textContent = Math.round(benchMs) + ' ms';
+
+      // Score: lower is faster. < 80ms = powerful, 80-200ms = medium, >200ms = slow
+      let score, recommendation, hwClass;
+      if (benchMs < 80) {
+        score = 'fast';
+        recommendation = '您的硬體效能優異 ✅ — 建議使用<b>即時推論模式</b>，可獲得最佳即時注視點體驗。';
+        hwClass = 'good';
+      } else if (benchMs < 200) {
+        score = 'medium';
+        recommendation = '您的硬體效能中等 ⚠️ — 兩種模式皆可，建議調高推論間隔（300 ms）或使用<b>錄影分析模式</b>。';
+        hwClass = 'warn';
+      } else {
+        score = 'slow';
+        recommendation = '您的硬體效能較舊（如 2019 MacBook i5）🔴 — 強烈建議使用<b>錄影分析模式</b>，閱讀時不佔 CPU，結束後再分析。';
+        hwClass = 'warn';
+      }
+
+      // Update recommendation banner
+      const banner = document.getElementById('hwRecommendBanner');
+      const colors = { good: { bg: '#dcfce7', border: '#16a34a', color: '#15803d' }, warn: { bg: '#fef9c3', border: '#ca8a04', color: '#854d0e' } };
+      const c = colors[hwClass] || colors.warn;
+      banner.style.cssText = `display:block; background:${c.bg}; border: 1px solid ${c.border}; color:${c.color};`;
+      banner.innerHTML = recommendation;
+
+      // Auto-select recommended mode
+      if (score === 'fast') {
+        selectPerfMode('realtime');
+        document.getElementById('badgeRealtime').textContent = '✅ 推薦您的硬體';
+        document.getElementById('badgeRealtime').className   = 'perf-card-badge good';
+        document.getElementById('badgeVideo').textContent    = '也可選用';
+        document.getElementById('badgeVideo').className      = 'perf-card-badge';
+        document.getElementById('cardRealtime').classList.add('recommended');
+      } else {
+        selectPerfMode('video');
+        document.getElementById('badgeVideo').textContent    = '✅ 推薦您的硬體';
+        document.getElementById('badgeVideo').className      = 'perf-card-badge good';
+        document.getElementById('badgeRealtime').textContent = score === 'medium' ? '可嘗試（可能略頓）' : '不建議（會卡頓）';
+        document.getElementById('badgeRealtime').className   = 'perf-card-badge warn';
+        document.getElementById('cardVideo').classList.add('recommended');
+      }
+
+      // Store hardware info globally
+      window.lexiHardwareScore = score;
+      window.lexiBenchMs       = benchMs;
+      window.lexiCpuCores      = cores;
+    }
+
+    window.selectPerfMode = function(mode) {
+      currentPerfMode = mode;
+      document.getElementById('cardRealtime').classList.toggle('selected', mode === 'realtime');
+      document.getElementById('cardVideo').classList.toggle('selected', mode === 'video');
+      const summary = document.getElementById('perfModeSummary');
+      summary.style.display = 'block';
+      if (mode === 'realtime') {
+        summary.innerHTML = '🎯 <b>即時模式：</b>啟用眼動後，鏡頭每隔幾毫秒推論一次，注視點即時顯示在文件上。若感到卡頓，請在「眼動追蹤 → 效能設定」調高推論間隔。';
+      } else {
+        summary.innerHTML = '🎬 <b>錄影模式：</b>閱讀期間後台錄製鏡頭影片。閱讀結束後，點擊「上傳分析」，系統將自動分析影片並生成注視軌跡。閱讀中 CPU 佔用幾乎為零。';
+      }
+    };
+
+    function applyPerfMode(mode) {
+      currentPerfMode = mode;
+      window.lexiPerfMode = mode;
+
+      // Update gaze panel UI visibility
+      const rtControls = document.getElementById('gazeRtControls');
+      const vmControls = document.getElementById('gazeVmControls');
+      if (rtControls) rtControls.style.display = (mode === 'realtime') ? '' : 'none';
+      if (vmControls) vmControls.style.display  = (mode === 'video')    ? '' : 'none';
+
+      // Update mode tag in gaze panel header
+      const modeTag = document.getElementById('gazePerfModeTag');
+      if (modeTag) {
+        modeTag.className   = `perf-mode-tag ${mode}`;
+        modeTag.textContent = mode === 'realtime' ? '⚡ 即時模式' : '🎬 錄影模式';
+      }
+
+      // If switching away from video, stop any active recording
+      if (mode !== 'video' && vmIsRecording) stopVideoRecording();
+      if (typeof updateGuideUI === 'function') updateGuideUI();
+    }
+
+    // ── Modal open/close ───────────────────────────────────────────────────
+    window.openPerfModeModal = function() {
+      perfModal.classList.add('open');
+    };
+    function closePerfModal() {
+      perfModal.classList.remove('open');
+    }
+
+    perfConfirmBtn.addEventListener('click', () => {
+      if (perfRemember.checked) {
+        localStorage.setItem('lexigaze_perf_mode', currentPerfMode);
+      }
+      applyPerfMode(currentPerfMode);
+      closePerfModal();
+    });
+    perfSkipBtn.addEventListener('click', () => {
+      applyPerfMode(currentPerfMode); // apply default (video)
+      closePerfModal();
+    });
+    perfModal.addEventListener('click', (e) => {
+      if (e.target === perfModal) { applyPerfMode(currentPerfMode); closePerfModal(); }
+    });
+
+    // ── Video Recording Logic ──────────────────────────────────────────────
+    window.startVideoRecording = async function() {
+      if (vmIsRecording) return;
+      try {
+        vmStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+          audio: false
+        });
+        vmRecordedChunks = [];
+        vmReadingTimeline = [];
+        const opts = { mimeType: 'video/webm;codecs=vp8' };
+        if (!MediaRecorder.isTypeSupported(opts.mimeType)) opts.mimeType = 'video/webm';
+        vmRecorder = new MediaRecorder(vmStream, opts);
+        vmRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) vmRecordedChunks.push(e.data); };
+        vmRecorder.start(500); // collect every 500ms chunk
+        vmRecordingStart = performance.now();
+        vmIsRecording = true;
+
+        // Sync with global window variables for Step Guide
+        window.lexiVmIsRecording = vmIsRecording;
+        window.lexiVmRecordedChunks = vmRecordedChunks;
+        window.lexiVmReadingTimeline = vmReadingTimeline;
+
+        // Update UI
+        const dot  = document.getElementById('vmRecDot');
+        const status = document.getElementById('vmStatus');
+        const startBtn   = document.getElementById('vmStartBtn');
+        const stopBtn    = document.getElementById('vmStopBtn');
+        const processBtn = document.getElementById('vmProcessBtn');
+        if (dot)      dot.classList.add('recording');
+        if (status)   status.textContent = '🎬 錄影中... 請開始閱讀文件';
+        if (startBtn) { startBtn.disabled = true; }
+        if (stopBtn)  { stopBtn.disabled = false; }
+        if (processBtn) { processBtn.disabled = true; }
+
+        // Start scroll-based word timeline tracker
+        startWordTimeline();
+        log('📹 錄影模式啟動，開始錄製鏡頭影片', 'ok');
+
+        if (typeof updateGuideUI === 'function') updateGuideUI();
+      } catch (err) {
+        log(`錄影啟動失敗：${err.message}`, 'err');
+        alert(`無法存取鏡頭：${err.message}`);
+      }
+    };
+
+    window.stopVideoRecording = function() {
+      if (!vmIsRecording || !vmRecorder) return;
+      vmRecorder.stop();
+      if (vmStream) { vmStream.getTracks().forEach(t => t.stop()); vmStream = null; }
+      vmIsRecording = false;
+      stopWordTimeline();
+
+      // Sync with global window variables for Step Guide
+      window.lexiVmIsRecording = vmIsRecording;
+      window.lexiVmRecordedChunks = vmRecordedChunks;
+      window.lexiVmReadingTimeline = vmReadingTimeline;
+
+      const dot     = document.getElementById('vmRecDot');
+      const status  = document.getElementById('vmStatus');
+      const startBtn   = document.getElementById('vmStartBtn');
+      const stopBtn    = document.getElementById('vmStopBtn');
+      const processBtn = document.getElementById('vmProcessBtn');
+      if (dot)      dot.classList.remove('recording');
+      if (status)   status.textContent = `✅ 錄影完成 (${vmReadingTimeline.length} 個時間點) — 請點擊「上傳分析」`;
+      if (startBtn) startBtn.disabled = false;
+      if (stopBtn)  stopBtn.disabled = true;
+      if (processBtn && vmReadingTimeline.length > 0) processBtn.disabled = false;
+      log(`錄影結束，共記錄 ${vmReadingTimeline.length} 個閱讀事件`, 'ok');
+
+      if (typeof updateGuideUI === 'function') updateGuideUI();
+    };
+
+    window.processVideoRecording = async function() {
+      if (vmRecordedChunks.length === 0) {
+        alert('尚無錄影資料，請先開始錄影並閱讀文件。');
+        return;
+      }
+      if (vmReadingTimeline.length === 0) {
+        alert('尚無閱讀時間軸資料。請確認已解析文件且滾動閱讀過文件內容。');
+        return;
+      }
+
+      const processBtn = document.getElementById('vmProcessBtn');
+      const status     = document.getElementById('vmStatus');
+      if (processBtn) processBtn.disabled = true;
+      if (status) status.textContent = '⏳ 上傳影片並分析中，請稍候...';
+      log('📡 上傳閱讀影片進行伺服器分析...', 'hi');
+
+      // Set global uploading state for Step Guide
+      window.lexiVmIsUploading = true;
+      if (typeof updateGuideUI === 'function') updateGuideUI();
+
+      const videoBlob = new Blob(vmRecordedChunks, { type: 'video/webm' });
+      const modelName = document.querySelector('.gaze-model-select')?.value || 'before';
+
+      const formData = new FormData();
+      formData.append('video', videoBlob, 'reading_session.webm');
+      formData.append('reading_timeline', JSON.stringify(vmReadingTimeline));
+      formData.append('model_name', modelName);
+      formData.append('viewport_width', String(window.innerWidth));
+      formData.append('viewport_height', String(window.innerHeight));
+
+      try {
+        const res  = await fetch('/api/gaze/analyze_reading_video', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || '分析失敗');
+
+        vmGazeEventsResult = data.gaze_events;
+
+        // Clear existing buffers
+        if (typeof window.clearGazeBuffer === 'function') window.clearGazeBuffer();
+
+        // Inject gaze_events directly into gazeBuffer
+        if (data.gaze_events && window.gazeBuffer) {
+          data.gaze_events.forEach(ev => {
+            const key = ev.word.toLowerCase();
+            window.gazeBuffer[key] = {
+              word:           ev.word,
+              dwell_count:    ev.dwell_count,
+              fixation_count: ev.fixation_count,
+              confidence:     ev.confidence,
+            };
+          });
+        }
+
+        // Inject gaze_history directly into gazeHistory
+        if (data.gaze_history && window.gazeHistory) {
+          data.gaze_history.forEach(h => {
+            window.gazeHistory.push({
+              word:         h.word,
+              index:        h.index,
+              confidence:   h.confidence,
+              timestamp_ms: h.timestamp_ms,
+            });
+          });
+        }
+
+        if (status) status.textContent = `✅ 分析完成！${data.event_count} 個詞彙軌跡已注入 — 可進行診斷`;
+        log(`影片分析完成：${data.event_count} 個詞彙事件已還原`, 'ok');
+        if (processBtn) processBtn.disabled = false;
+        if (typeof updateGuideUI === 'function') updateGuideUI();
+      } catch (err) {
+        if (status) status.textContent = `❌ 分析失敗：${err.message}`;
+        log(`影片分析失敗：${err.message}`, 'err');
+        if (processBtn) processBtn.disabled = false;
+      } finally {
+        window.lexiVmIsUploading = false;
+        if (typeof updateGuideUI === 'function') updateGuideUI();
+      }
+    };
+
+    // ── Word Timeline Tracker (scroll-based) ──────────────────────────────
+    // Samples visible words every 800ms during recording
+    let _wordTimelineInterval = null;
+
+    function startWordTimeline() {
+      _wordTimelineInterval = setInterval(sampleVisibleWords, 800);
+    }
+    function stopWordTimeline() {
+      clearInterval(_wordTimelineInterval);
+      _wordTimelineInterval = null;
+    }
+
+    function sampleVisibleWords() {
+      if (!vmIsRecording || typeof extractedData === 'undefined') return;
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const now = performance.now() - vmRecordingStart;
+      const SAMPLE_MAX = 8; // max words per sample tick to avoid giant timelines
+
+      // Collect visible word elements from overlays
+      const hits = [];
+      document.querySelectorAll('.word-hit, [data-word-idx]').forEach(el => {
+        const r = el.getBoundingClientRect();
+        if (r.top >= 0 && r.bottom <= vh && r.left >= 0 && r.right <= vw) {
+          const idx  = parseInt(el.dataset.wordIdx ?? el.dataset.idx ?? '-1', 10);
+          const word = el.dataset.word ?? el.textContent.trim().split(/\s+/)[0] ?? '';
+          if (word && idx >= 0) hits.push({ word, index: idx, cx: (r.left + r.right) / 2, cy: (r.top + r.bottom) / 2 });
+        }
+      });
+
+      // Fallback: if no overlay hit elements, sample from extractedData by viewport position
+      if (hits.length === 0 && window.extractedData && window.extractedData.length > 0) {
+        window.extractedData.forEach((item, i) => {
+          const absTop = item.top + (document.querySelector('.page-block')?.getBoundingClientRect().top ?? 0);
+          if (absTop >= 0 && absTop <= vh) {
+            hits.push({ word: item.text, index: item.index ?? i, cx: item.left + item.width / 2, cy: absTop + item.height / 2 });
+          }
+        });
+      }
+
+      // Sample up to SAMPLE_MAX evenly
+      const step = Math.max(1, Math.floor(hits.length / SAMPLE_MAX));
+      for (let i = 0; i < hits.length; i += step) {
+        const h = hits[i];
+        vmReadingTimeline.push({
+          word:         h.word,
+          index:        h.index,
+          timestamp_ms: Math.round(now),
+          viewport_x:   Math.round(h.cx),
+          viewport_y:   Math.round(h.cy),
+          confidence:   'medium'
+        });
+      }
+    }
+
+    // ── Initialise on page load ────────────────────────────────────────────
+    window.addEventListener('DOMContentLoaded', () => {}, false); // no-op guard
+
+    // Check saved preference
+    const saved = localStorage.getItem('lexigaze_perf_mode');
+    if (saved === 'realtime' || saved === 'video') {
+      currentPerfMode = saved;
+      applyPerfMode(saved);
+    } else {
+      // Show modal after a short delay (let page render first)
+      setTimeout(() => {
+        perfModal.classList.add('open');
+        runHardwareBenchmark();
+      }, 800);
+    }
+
+    // Expose globals
+    window.lexiPerfMode          = currentPerfMode;
+    window.lexiOpenPerfModal     = window.openPerfModeModal;
+    window.lexiRunBenchmark      = runHardwareBenchmark;
+  })();
+  </script>
+
+  <!-- External Gaze & Mapping Scripts -->
+  <script src="/static/mapping.js"></script>
+  <script src="/static/gaze_integration.js"></script>
+</body>
+</html>

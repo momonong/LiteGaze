@@ -1,0 +1,32 @@
+[project]
+name = "unigaze-personalization"
+version = "0.1.0"
+description = "UniGaze-B webcam personalization pipeline"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn>=0.29",
+  "numpy>=1.26",
+  "opencv-contrib-python==4.10.0.84",
+  "mediapipe>=0.10.30",
+  "pydantic>=2",
+  "torch>=2",
+  "torchvision>=0.17",
+  "unigaze==0.1.3",
+  "huggingface-hub>=0.24",
+  "safetensors>=0.4",
+  "tqdm>=4",
+  "websockets>=12.0",
+]
+
+[project.scripts]
+ugaze-collect = "unigaze_personalization.server:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+unigaze_personalization = ["assets/*.txt"]
