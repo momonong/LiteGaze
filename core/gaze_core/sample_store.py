@@ -182,14 +182,22 @@ def save_sample(root: Path, payload: dict) -> tuple[dict, int]:
                 "face_bbox": processed.face_bbox,
             })
         except Exception as exc:
-            record["ok"] = False
-            record["error"] = str(exc)
+            # Face detection failure on one frame should not abort the whole loop.
+            # Mark this sample as skipped but keep ok=True so the JS loop continues.
+            record["ok"] = True
+            record["face_detected"] = False
+            record["warning"] = str(exc)
 
         # Write manifest entry
         with manifest.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
-    return {"ok": record["ok"], "sample_index": sample_index, "error": record.get("error", "")}, 200
+    return {
+        "ok": True,
+        "sample_index": sample_index,
+        "face_detected": record.get("face_detected", True),
+        "warning": record.get("warning", ""),
+    }, 200
 
 
 def delete_dataset(root: Path, session_id: str) -> dict:

@@ -303,21 +303,34 @@ async function saveSample(point, pointIndex, repeatIndex) {
     });
   }
 
-  await postJson("/api/gaze/sample", {
-    session_id: state.sessionId,
-    image_data: captureFrame(),
-    target_x: pos.pageX,
-    target_y: pos.pageY,
-    target_x_norm: targetXNorm,
-    target_y_norm: targetYNorm,
-    viewport_width: window.innerWidth,
-    viewport_height: window.innerHeight,
-    stage_width: rect.width,
-    stage_height: rect.height,
-    phase: "calibration",
-    point_index: pointIndex,
-    repeat_index: repeatIndex,
-  });
+  try {
+    const res = await fetch("/api/gaze/sample", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: state.sessionId,
+        image_data: captureFrame(),
+        target_x: pos.pageX,
+        target_y: pos.pageY,
+        target_x_norm: targetXNorm,
+        target_y_norm: targetYNorm,
+        viewport_width: window.innerWidth,
+        viewport_height: window.innerHeight,
+        stage_width: rect.width,
+        stage_height: rect.height,
+        phase: "calibration",
+        point_index: pointIndex,
+        repeat_index: repeatIndex,
+      }),
+    });
+    const data = await res.json();
+    if (data.face_detected === false) {
+      log(`⚠️ 點 ${pointIndex + 1}: 偵測不到臉部，已跳過此幀（請確保臉部在鏡頭範圍內）`);
+    }
+  } catch (err) {
+    // Network or server error — log but don't abort the whole calibration loop
+    log(`⚠️ 點 ${pointIndex + 1} 上傳失敗: ${err.message}，繼續下一點...`);
+  }
   els.target.classList.remove("capturing");
 }
 
