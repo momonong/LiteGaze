@@ -76,7 +76,9 @@ uv sync
 ### 2. Configure Environment
 Create a `.env` file in the project root:
 ```env
-HF_HOME="D:/hf_models"
+# Optional: Path where Hugging Face weights are cached (defaults to ~/.cache/huggingface)
+# HF_HOME="/home/ubuntu/.cache/huggingface"
+
 GEMINI_API_KEY=your_gemini_api_key_here
 MODEL_NAME="gemma-4-26b-a4b-it"
 ```

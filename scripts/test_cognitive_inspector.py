@@ -141,6 +141,27 @@ class TestCognitiveInspectorUnit(unittest.TestCase):
         res_high = self.inspector.analyze(gaze_high, lang="en")
         self.assertEqual(res_high["user_profile"]["fatigue_level"], "high")
 
+    def test_video_mode_tick_estimation(self):
+        """測試低取樣率/影片離線模式 (約 800ms) 下的動態 Tick 與聚合判定。"""
+        gaze_history = [
+            {"word": "word0", "index": 0, "confidence": "high", "timestamp_ms": 0},
+            {"word": "word0", "index": 0, "confidence": "high", "timestamp_ms": 800},
+            {"word": "word1", "index": 1, "confidence": "high", "timestamp_ms": 1600},
+            {"word": "word2", "index": 2, "confidence": "high", "timestamp_ms": 2400},
+            {"word": "word3", "index": 3, "confidence": "high", "timestamp_ms": 3200},
+            {"word": "word4", "index": 4, "confidence": "high", "timestamp_ms": 4000},
+        ]
+        result = self.inspector.analyze(gaze_history, lang="en")
+        summary = result["summary"]
+        
+        # 總注視次數應為 5 (word0 的 2 個 hits 被聚合，因為 800ms < threshold = max(350, 800*1.5=1200ms))
+        self.assertEqual(summary["total_fixations"], 5)
+        # 總注視時間 (total_dwell_time_ms) 應為 6 * 800ms = 4800ms
+        self.assertEqual(summary["total_dwell_time_ms"], 4800)
+        # 平均注視時間應為 4800 / 5 = 960ms
+        self.assertEqual(summary["avg_fixation_duration_ms"], 960.0)
+
+
 
 class TestCognitiveInspectorIntegration(unittest.TestCase):
     def setUp(self):

@@ -1,0 +1,163 @@
+{
+  "participant_id": "test04",
+  "viewport_width": 1440,
+  "viewport_height": 800,
+  "targets": [
+    {
+      "timestamp_ms": 656,
+      "target_x": 115.2,
+      "target_y": 80,
+      "target_x_norm": -0.84,
+      "target_y_norm": -0.8,
+      "point_index": 0,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1440,
+      "screen_height": 800
+    },
+    {
+      "timestamp_ms": 1838,
+      "target_x": 720,
+      "target_y": 80,
+      "target_x_norm": 0,
+      "target_y_norm": -0.8,
+      "point_index": 1,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1440,
+      "screen_height": 800
+    },
+    {
+      "timestamp_ms": 2912,
+      "target_x": 1324.8,
+      "target_y": 80,
+      "target_x_norm": 0.8399999999999999,
+      "target_y_norm": -0.8,
+      "point_index": 2,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1440,
+      "screen_height": 800
+    },
+    {
+      "timestamp_ms": 4090,
+      "target_x": 115.2,
+      "target_y": 400,
+      "target_x_norm": -0.84,
+      "target_y_norm": 0,
+      "point_index": 3,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1440,
+      "screen_height": 800
+    },
+    {
+      "timestamp_ms": 5102,
+      "target_x": 720,
+      "target_y": 400,
+      "target_x_norm": 0,
+      "target_y_norm": 0,
+      "point_index": 4,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1440,
+      "screen_height": 800
+    },
+    {
+      "timestamp_ms": 6122.000000000029,
+      "target_x": 1324.8,
+      "target_y": 400,
+      "target_x_norm": 0.8399999999999999,
+      "target_y_norm": 0,
+      "point_index": 5,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1440,
+      "screen_height": 800
+    },
+    {
+      "timestamp_ms": 7201,
+      "target_x": 115.2,
+      "target_y": 720,
+      "target_x_norm": -0.84,
+      "target_y_norm": 0.8,
+      "point_index": 6,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1440,
+      "screen_height": 800
+    },
+    {
+      "timestamp_ms": 8219,
+      "target_x": 720,
+      "target_y": 720,
+      "target_x_norm": 0,
+      "target_y_norm": 0.8,
+      "point_index": 7,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1440,
+      "screen_height": 800
+    },
+    {
+      "timestamp_ms": 9230.00000000003,
+      "target_x": 1324.8,
+      "target_y": 720,
+      "target_x_norm": 0.8399999999999999,
+      "target_y_norm": 0.8,
+      "point_index": 8,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1440,
+      "screen_height": 800
+    },
+    {
+      "timestamp_ms": 10239,
+      "target_x": 417.59999999999997,
+      "target_y": 240,
+      "target_x_norm": -0.42000000000000004,
+      "target_y_norm": -0.4,
+      "point_index": 9,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1440,
+      "screen_height": 800
+    },
+    {
+      "timestamp_ms": 11250,
+      "target_x": 1022.4,
+      "target_y": 240,
+      "target_x_norm": 0.41999999999999993,
+      "target_y_norm": -0.4,
+      "point_index": 10,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1440,
+      "screen_height": 800
+    },
+    {
+      "timestamp_ms": 12328,
+      "target_x": 417.59999999999997,
+      "target_y": 560,
+      "target_x_norm": -0.42000000000000004,
+      "target_y_norm": 0.3999999999999999,
+      "point_index": 11,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1440,
+      "screen_height": 800
+    },
+    {
+      "timestamp_ms": 13330,
+      "target_x": 1022.4,
+      "target_y": 560,
+      "target_x_norm": 0.41999999999999993,
+      "target_y_norm": 0.3999999999999999,
+      "point_index": 12,
+      "repeat_index": 0,
+      "phase": "calibration",
+      "screen_width": 1440,
+      "screen_height": 800
+    }
+  ]
+}

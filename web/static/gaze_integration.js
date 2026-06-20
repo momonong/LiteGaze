@@ -9,6 +9,8 @@
     smoothValue: document.getElementById("gazeSmoothValue"),
     corridorInput: document.getElementById("gazeCorridorInput"),
     dwellInput: document.getElementById("gazeDwellInput"),
+    intervalSlider: document.getElementById("gazeIntervalSlider"),
+    intervalValue: document.getElementById("gazeIntervalValue"),
     status: document.getElementById("gazeStatus"),
     gazeCursor: document.getElementById("gaze-cursor"),
   };
@@ -118,22 +120,25 @@
 
   async function refreshModels() {
     try {
-      const active = els.modelSelect.value;
+      const active = els.modelSelect ? els.modelSelect.value : "before";
       const res = await fetch("/api/gaze/models");
       const data = await res.json();
-      els.modelSelect.innerHTML = '<option value="before">原始模型 / before</option>';
-      if (data.ok) {
-        data.models.forEach((model) => {
-          const option = document.createElement("option");
-          option.value = model.name;
-          option.textContent = model.display_name;
-          els.modelSelect.appendChild(option);
-        });
-      }
-      if ([...els.modelSelect.options].some((option) => option.value === active)) {
-        els.modelSelect.value = active;
-      }
-      setStatus(`模型清單已更新，共 ${els.modelSelect.options.length} 個選項`);
+      const selects = document.querySelectorAll(".gaze-model-select");
+      selects.forEach(select => {
+        select.innerHTML = '<option value="before">原始模型 / before</option>';
+        if (data.ok) {
+          data.models.forEach((model) => {
+            const option = document.createElement("option");
+            option.value = model.name;
+            option.textContent = model.display_name;
+            select.appendChild(option);
+          });
+        }
+        if ([...select.options].some((option) => option.value === active)) {
+          select.value = active;
+        }
+      });
+      setStatus(`模型清單已更新，共 ${data.models?.length || 0} 個選項`);
     } catch (err) {
       setStatus(`模型清單載入失敗：${err.message}`);
     }
@@ -278,7 +283,7 @@
         continue;
       }
 
-      await new Promise((resolve) => window.setTimeout(resolve, 90));
+      await new Promise((resolve) => window.setTimeout(resolve, els.intervalSlider ? Number(els.intervalSlider.value) : 90));
     }
   }
 
@@ -316,6 +321,12 @@
     els.toggle.classList.toggle("active", enabled);
     els.toggleLabel.textContent = enabled ? "啟用眼動推論（開啟）" : "啟用眼動推論（關閉）";
 
+    const guideBtn = document.getElementById("guideRtToggleBtn");
+    if (guideBtn) {
+      guideBtn.textContent = enabled ? "關閉相機" : "開啟相機";
+      guideBtn.className = enabled ? "btn btn-danger" : "btn btn-secondary";
+    }
+
     if (enabled) {
       if (typeof gazeMappingToggle !== "undefined" && gazeMappingToggle && typeof gazeMappingOn !== "undefined" && !gazeMappingOn) {
         gazeMappingToggle.click();
@@ -335,6 +346,10 @@
         state.enabled = false;
         els.toggle.classList.remove("active");
         els.toggleLabel.textContent = "啟用眼動推論（關閉）";
+        if (guideBtn) {
+          guideBtn.textContent = "開啟相機";
+          guideBtn.className = "btn btn-secondary";
+        }
         if (els.gazeCursor) {
           els.gazeCursor.style.display = "none";
         }
@@ -351,16 +366,48 @@
       }
       setStatus("已停止眼動推論");
     }
+
+    if (typeof window.updateGuideUI === "function") {
+      window.updateGuideUI();
+    }
   }
 
-  els.openPage.addEventListener("click", () => {
-    window.location.href = "/gaze";
+  function updateIntervalLabel() {
+    if (els.intervalSlider && els.intervalValue) {
+      els.intervalValue.textContent = `${els.intervalSlider.value} ms`;
+    }
+  }
+
+  // Set click listener on all calibration/training buttons
+  document.querySelectorAll(".open-gaze-page-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      window.location.href = "/gaze";
+    });
   });
+
+  // Synchronize model selection dropdowns
+  document.querySelectorAll(".gaze-model-select").forEach(select => {
+    select.addEventListener("change", (e) => {
+      document.querySelectorAll(".gaze-model-select").forEach(other => {
+        if (other !== e.target) {
+          other.value = e.target.value;
+        }
+      });
+      if (typeof window.updateGuideUI === "function") {
+        window.updateGuideUI();
+      }
+    });
+  });
+
   els.toggle.addEventListener("click", () => setEnabled(!state.enabled));
   els.smoothSlider.addEventListener("input", updateSmoothLabel);
+  if (els.intervalSlider) {
+    els.intervalSlider.addEventListener("input", updateIntervalLabel);
+  }
 
   state.filterX = new LowPassFilter(0.08);
   state.filterY = new LowPassFilter(0.08);
   updateSmoothLabel();
+  updateIntervalLabel();
   refreshModels();
 })();

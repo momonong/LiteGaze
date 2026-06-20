@@ -22,6 +22,23 @@ class CognitiveInspector:
         if not gaze_history:
             return []
 
+        # Calculate estimated tick duration dynamically from timestamps
+        timestamps = sorted([hit.get("timestamp_ms", 0) for hit in gaze_history if "timestamp_ms" in hit])
+        deltas = []
+        for i in range(1, len(timestamps)):
+            d = timestamps[i] - timestamps[i-1]
+            if d > 0:
+                deltas.append(d)
+
+        if deltas:
+            deltas.sort()
+            median_delta = deltas[len(deltas) // 2]
+            estimated_tick = min(max(median_delta, 50.0), 2000.0)
+        else:
+            estimated_tick = self.tick_ms
+
+        group_threshold = max(350.0, estimated_tick * 1.5)
+
         fixations: List[GazeFixation] = []
         current_group = []
 
@@ -35,20 +52,20 @@ class CognitiveInspector:
                 current_group.append(hit)
             else:
                 last_hit = current_group[-1]
-                # 若為相同單字 index 且時間間隔小於 350 ms，視為同一注視
-                if last_hit.get("index") == idx and (hit.get("timestamp_ms", 0) - last_hit.get("timestamp_ms", 0)) < 350:
+                # 若為相同單字 index 且時間間隔小於 group_threshold，視為同一注視
+                if last_hit.get("index") == idx and (hit.get("timestamp_ms", 0) - last_hit.get("timestamp_ms", 0)) < group_threshold:
                     current_group.append(hit)
                 else:
                     # 聚合上一個組
-                    fixations.append(self._aggregate_group(current_group))
+                    fixations.append(self._aggregate_group(current_group, estimated_tick))
                     current_group = [hit]
 
         if current_group:
-            fixations.append(self._aggregate_group(current_group))
+            fixations.append(self._aggregate_group(current_group, estimated_tick))
 
         return fixations
 
-    def _aggregate_group(self, group: List[Dict[str, Any]]) -> GazeFixation:
+    def _aggregate_group(self, group: List[Dict[str, Any]], tick_ms: float) -> GazeFixation:
         first = group[0]
         # 信心度排序：high > medium > low
         rank = {"high": 2, "medium": 1, "low": 0}
@@ -59,7 +76,7 @@ class CognitiveInspector:
                 best_conf = conf
 
         count = len(group)
-        duration = count * self.tick_ms
+        duration = count * tick_ms
 
         return GazeFixation(
             word=first.get("word", ""),
