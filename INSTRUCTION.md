@@ -104,6 +104,14 @@ In standard mode, the browser will automatically open to `http://localhost:8080/
 
 ## 4. Step-by-Step System Testing Workflow
 
+LexiGaze provides an interactive, sequential UI stepper and hardware performance benchmarking tools to guide users through the workflow seamlessly:
+
+### Interactive Stepper Panel & Performance Optimization
+1. **Interactive Stepper**: In the main reader interface (`http://localhost:8080/`), the right-hand side defaults to a **Step-by-step Guide** panel that tracks your progress through 5 key stages (Document Load, Gaze Setup, Calibration, Gaze Connection/Recording, and Diagnostic Reports) with visual status indicators (e.g., `待執行`, `進行中`, `已完成`).
+2. **Performance Mode Selection**: Upon loading the portal, a benchmark automatically evaluates your local machine's capability:
+   * **Real-time Gaze Mode** (Default / High Spec): Performs active gaze inference in the browser, tracking your eyes dynamically as you read. Recommended for modern high-performance devices.
+   * **Offline Video Recording Mode** (Low Spec / Battery Saver): Solves lagging on older laptops (e.g. MacBook Intel i5) by recording your webcam locally during reading, then uploading the WebM video for backend processing to extract high-accuracy gaze coordinates.
+
 Follow this walkthrough to run a complete, end-to-end workflow on the platform:
 
 ```
