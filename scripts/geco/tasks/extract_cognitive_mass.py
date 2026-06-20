@@ -4,6 +4,12 @@ from dotenv import load_dotenv
 # 1. 載入 .env 檔案中的環境變數
 load_dotenv()
 
+# Fix HF_HOME if it's set to a Windows drive path on a non-Windows OS
+if os.name != 'nt' and os.environ.get("HF_HOME"):
+    _hf_home = os.environ["HF_HOME"]
+    if ":" in _hf_home or _hf_home.startswith("D:") or _hf_home.startswith("C:"):
+        del os.environ["HF_HOME"]
+
 # 2. (可選) 印出來確認一下有沒有成功讀到
 print(f"📦 Hugging Face 模型存放路徑: {os.getenv('HF_HOME')}")
 

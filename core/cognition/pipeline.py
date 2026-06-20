@@ -20,6 +20,10 @@ import json
 import math
 import re
 import os
+if os.name != 'nt' and os.environ.get("HF_HOME"):
+    _hf_home = os.environ["HF_HOME"]
+    if ":" in _hf_home or _hf_home.startswith("D:") or _hf_home.startswith("C:"):
+        del os.environ["HF_HOME"]
 import time
 from dataclasses import dataclass, asdict
 from typing import List, Optional, Dict, Tuple
