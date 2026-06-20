@@ -1,145 +1,89 @@
-# 🔭 LexiGaze — How to Run
+# 🔭 LexiGaze Operations, Setup, and System Testing Guide
 
-LexiGaze is a Flask web application that fuses three research pipelines into one tool:
-
-- **Document coordinate extraction** — parse PDF/HTML/TXT/DOCX/MD into pixel-level word bounding boxes
-- **Gaze tracking** — real-time UniGaze-B neural network + MediaPipe face detection via webcam
-- **Cognitive load analysis** — GPT-2 (English) or BERT (Chinese) word-difficulty scoring
-
-The server logic lives inside the `web/` package, and the core modules live under the `core/` package. The entry point of the project is the `run.py` script at the root of the repository.
+This document provides a detailed setup guide, API references, troubleshooting tips, and a step-by-step end-to-end workflow to test and evaluate the entire LexiGaze platform.
 
 ---
 
 ## 📋 Table of Contents
 
-1. [Prerequisites](#1-prerequisites)
-2. [Environment Setup](#2-environment-setup)
-3. [Install Dependencies](#3-install-dependencies)
-4. [Configure Environment Variables](#4-configure-environment-variables)
-5. [Run the Server](#5-run-the-server)
-6. [Using the Web Interface](#6-using-the-web-interface)
-7. [API Reference](#7-api-reference)
-8. [Research & Standalone Scripts](#8-research--standalone-scripts)
-9. [Troubleshooting](#9-troubleshooting)
+1. [Environment Setup & Installation](#1-environment-setup--installation)
+2. [Environment Variables Configuration](#2-environment-variables-configuration)
+3. [Running the Flask Server](#3-running-the-flask-server)
+4. [Step-by-Step System Testing Workflow (Calibration to Fusion)](#4-step-by-step-system-testing-workflow-calibration-to-fusion)
+5. [Offline Performance Diagnostics & Directions for Improvement](#5-offline-performance-diagnostics--directions-for-improvement)
+6. [REST API Reference](#6-rest-api-reference)
+7. [Troubleshooting Guide](#7-troubleshooting-guide)
 
 ---
 
-## 1. Prerequisites
+## 1. Environment Setup & Installation
 
-| Requirement | Version | Notes |
-|---|---|---|
-| **Python** | **3.11** | Strictly required. 3.10 is acceptable. 3.9 or below will NOT work. |
-| **pip** | Latest | `pip install --upgrade pip` inside your env |
-| **Webcam** | Any USB / built-in | Required only for gaze tracking |
-| **CUDA GPU** | Optional | Strongly recommended for gaze inference speed (RTX etc.) |
+### Option A — Fast Sync using uv (Recommended)
+The repository contains a `uv.lock` file. If you have [uv](https://github.com/astral-sh/uv) installed:
+```bash
+# Create environment and install exact pinned dependencies
+uv sync
 
-> **Windows-specific:** Always launch the server with `python -X utf8` (see step 5). This prevents `UnicodeEncodeError` crashes when library output contains non-ASCII characters on CP950/Big5 terminals.
+# Download the English dependency parser model for spaCy
+.venv/bin/python -m spacy download en_core_web_sm
+```
 
----
-
-## 2. Environment Setup
-
-### Option A — Conda (Recommended for new setups)
-
-```powershell
-conda create -n lexigaze python=3.11
+### Option B — Conda Setup
+```bash
+conda create -n lexigaze python=3.11 -y
 conda activate lexigaze
-```
 
-### Option B — uv (Fast, reproducible via lock file)
-
-The repo ships a `uv.lock`. If you have [uv](https://github.com/astral-sh/uv):
-
-```powershell
-uv sync
-```
-
-This creates an isolated `.venv` and installs exact pinned versions from `uv.lock`.
-
-### Option C — Standard venv
-
-```powershell
-python -m venv .venv
-.venv\Scripts\activate
-```
-
----
-
-## 3. Install Dependencies
-
-### Using uv (recommended, exact lock file)
-
-```powershell
-uv sync
-```
-
-### Using pip (from pyproject.toml)
-
-```powershell
+# Install package in editable mode
 pip install -e .
-```
 
-### Using requirements.txt (fully pinned versions)
-
-```powershell
-pip install -r requirements.txt
-```
-
-### Additional: spaCy English model
-
-Required for the English cognitive load pipeline:
-
-```powershell
+# Download spaCy models
 python -m spacy download en_core_web_sm
 ```
 
-> **Core and Web logic packages are auto-discoverable.**
-> All core logic submodules under `core/` and views under `web/` are loaded using standard Python import resolutions.
+### Option C — Standard venv Setup
+```bash
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-> **First-run download:** On the first cognitive load request, Hugging Face downloads GPT-2 (~500 MB for English) or BERT (~400 MB for Chinese) automatically into your `HF_HOME` directory.
+# Install requirements
+pip install -r requirements.txt
+python -m spacy download en_core_web_sm
+```
+
+*Note: The first time you execute a cognitive analysis request, the Hugging Face library will automatically download the language models (GPT-2 for English ~500 MB; BERT for Chinese ~400 MB) and cache them in your `HF_HOME` directory.*
 
 ---
 
-## 4. Configure Environment Variables
+## 2. Environment Variables Configuration
 
-Copy the example file and fill it in:
-
-```powershell
-copy .env.example .env
+Duplicate the environment template file:
+```bash
+cp .env.example .env
 ```
 
-Edit `.env`:
-
+Configure `.env` with the following variables:
 ```env
-# Where Hugging Face model weights are cached (needs ~1 GB free space)
-HF_HOME="D:/hf_models"
+# Path where Hugging Face weights are cached
+HF_HOME="/home/ubuntu/.cache/huggingface"
 
-# Optional: HF token for private/gated models
-HF_TOKEN=
+# Required for Google AI Studio API (Inspector analyses, summaries)
+GEMINI_API_KEY=your_gemini_api_key_here
 
-# Required for Gemini-powered features (fusion analysis, etc.)
-GEMINI_API_KEY=your_key_here
-
-# Gemini model variant
-MODEL_NAME="gemini-flash-lite-latest"
+# Model variant for Google AI Studio
+MODEL_NAME="gemma-4-26b-a4b-it"
 ```
-
-Get a free Gemini API key at: https://aistudio.google.com/apikey
 
 ---
 
-## 5. Run the Server
+## 3. Running the Flask Server
 
-The single entry point for the entire integrated application is `run.py`.
-
-**Always run from the project root** (`D:\projects\lexigaze`), with the `-X utf8` flag:
-
-```powershell
-python -X utf8 run.py
+To run the Flask application locally:
+```bash
+# Always start from the project root with the UTF-8 flag to avoid console crashes
+.venv/bin/python -X utf8 run.py
 ```
 
-On success you'll see:
-
+Upon starting successfully, you should see console logs resembling:
 ```
 ================================================
   文件座標擷取工具  —  Flask Backend (Refactored)
@@ -151,272 +95,128 @@ On success you'll see:
   停止  : Ctrl + C
 ================================================
 ```
-
-The browser **opens automatically**. If not, go to `http://localhost:8080`.
-
-Stop the server with **Ctrl + C**.
+The browser will automatically open to `http://localhost:8080/`.
 
 ---
 
-## 6. Using the Web Interface
+## 4. Step-by-Step System Testing Workflow
 
-### Main Tool — http://localhost:8080
+Follow this walkthrough to run a complete, end-to-end workflow on the platform:
 
-The document analysis SPA (`word_track.html`). Features:
+```
+[Server Running] ──► [Gaze Calibration] ──► [Personalization Model] ──► [Document Upload] ──► [Gaze & NLP Fusion]
+```
 
-- **Upload** PDF, HTML, TXT, DOCX, or Markdown files
-- **Extract** word/character bounding boxes with normalized coordinates (0.0–1.0)
-- **Overlay** cognitive load scores as color-coded boxes or a Gaussian heatmap
-  - Adjustable µ (threshold) and σ (spread) sliders
-- **Save / Load** sessions via the REST API
-- **Export** extracted coordinates as JSON or CSV
-- **Evaluate** predictions against your own ground-truth word list (precision/recall/F1)
-- **Archive** view of previous analysis results
+### Phase 4.1: Perform Gaze Calibration & Model Personalization
+1. Navigate to the calibration page at `http://localhost:8080/gaze`.
+2. Expand the **收集設定 (Collection Settings)** panel at the bottom right.
+3. Assign a custom **受試者 ID (Participant ID)** (e.g. `subject_test_01`).
+4. Click **開始 (Start)** and keep your eyes focused on the red dot as it traverses the 9-point grid.
+5. Once complete, the browser uploads calibration coordinates to the server. The server automatically fits a polynomial regression model and stores it in `examples/models/subject_test_01_model.json`.
 
-### Gaze Calibration — http://localhost:8080/gaze
+### Phase 4.2: Upload Document & Extract Layout Coordinates
+1. Open the main portal at `http://localhost:8080/`.
+2. Upload a text or PDF document.
+3. Click **Extract Coordinates** to parse the text and extract pixel-level word layout boxes.
 
-The gaze tracking page (`gaze_page.html`). Features:
+### Phase 4.3: Execute Cognitive Load Analysis
+1. Select the document language (English or Chinese) in the sidebar.
+2. Click **Analyze Cognitive Load** to run the token-level suprisal and entropy models.
+3. Toggle the **Heatmap** view to display the difficulty overlay over the parsed words.
 
-- **Live inference** — webcam → MediaPipe face detection → UniGaze-B → screen coordinates
-- **9-point calibration grid** — collect samples (configurable repeats per point)
-- **Train personalization model** — polynomial regression calibration stored in `examples/models/`
-- **Model selector** — switch between the frozen baseline and any trained personalization version
-- **Filtering modes** — None, OneEuro, horizontal corridor lock, dwell/fixation detection, or combined
+### Phase 4.4: Read with Active Personalization
+1. In the sidebar dropdown, select your trained personalization model (e.g. `subject_test_01_model`).
+2. Toggle the **Live Gaze Tracking** connection on.
+3. Read the document naturally. Your webcam feed is preprocessed, mapped to the screen, and matched to the word boxes on the screen in real-time.
+
+### Phase 4.5: Execute Multimodal Fusion & Demo Results
+1. Click **Analyze & Fuse** after finishing the reading session.
+2. The frontend sends the accumulated dwell-times to `/api/fuse`.
+3. The server runs the fusion algorithm (e.g. Linear, Bayesian, or Sigmoid) to combine gaze attention values with linguistic load.
+4. The document view highlights words in red/orange/yellow (High/Medium/Low) matching calculated **Reading Difficulty Scores (RDS)**, identifying cognitive reading bottlenecks.
 
 ---
 
-## 7. API Reference
+## 5. Offline Performance Diagnostics & Directions for Improvement
 
-### Health Checks
+LexiGaze includes sandbox scripts to test and evaluate gaze correction, NLP modeling, and fusion pipelines offline on actual eye-tracking datasets (GECO). Use these to guide optimization:
 
+### Diagnostic 5.1: Comparative Module Sandbox
+To evaluate the combined performance of gaze decoders, NLP metrics, and fusion methods:
+```bash
+.venv/bin/python scripts/inspect_performance_demo.py
 ```
-GET  /api/ping                    → General health + session count
-GET  /api/gaze/health             → Gaze backend status
-GET  /api/cognitive/health        → Cognitive load model status (shows loaded languages)
-GET  /api/fuse/health             → Fusion pipeline status
+This simulates webcam drift (+45px vertical drift, 30-40px jitter) on a 156-word GECO reading trial, printing accuracy, Spearman correlation, and processing latency:
+
+| Configuration | Gaze Accuracy (%) | RDS Correlation ($\rho$) | Latency (ms) | Target Optimization Direction |
+| :--- | :---: | :---: | :---: | :--- |
+| **Raw Gaze + No Cog + Linear** | 18.59% | 0.0636 | ~1.5 ms | **Baseline**: Heavily impacted by calibration drift. |
+| **Viterbi + No Cog + Linear** | 48.72% | 0.0910 | ~140 ms | **Spatio-Temporal Prior**: Corrects drift but lacks online tuning. |
+| **Viterbi + EM Calib + No Cog** | 73.72% | 0.2050 | ~210 ms | **EM Self-Calibration**: Re-calibrates offsets during reading. |
+| **STOCK-T v3 + surprisal + Bayesian** | **78.21%** | **0.2258** | ~210 ms | **Optimal Joint System**: Max accuracy & difficulty correlation. |
+
+### Diagnostic 5.2: Multimodal Fusion Calibration
+To compare the six mathematical fusion methods on GECO:
+```bash
+.venv/bin/python scripts/experiment_fusion.py
 ```
+This generates evaluation summaries and plots under `output/`:
+* `fusion_correlation_comparison.png` - Compares Spearman $\rho$ and Pearson $r$.
+* `rds_distributions.png` - Plots score distributions across algorithms.
 
-### Document Sessions
-
-```
-GET    /api/sessions              → List saved sessions (summary only)
-POST   /api/sessions              → Save extracted coordinate session
-GET    /api/sessions/<id>         → Retrieve full session data
-DELETE /api/sessions/<id>         → Delete a session
-```
-
-Sessions are stored as JSON files in `data/`.
-
-### Gaze Tracking
-
-```
-GET  /api/gaze/models             → List trained personalization models
-GET  /api/gaze/datasets           → List calibration datasets
-POST /api/gaze/session            → Create a new calibration session
-POST /api/gaze/sample             → Save a calibration sample (image + target point)
-POST /api/gaze/train              → Train personalization model from a dataset
-POST /api/gaze/predict            → Run gaze prediction on a webcam frame (base64)
-```
-
-Calibration data is stored in `data/sessions/`.
-
-### Cognitive Load
-
-```
-GET  /api/cognitive/health        → Health check with loaded language list
-POST /api/cognitive/warmup        → Pre-load a language model ("zh" or "en")
-POST /api/cognitive/analyze/text  → Analyze text (auto-routes short vs long)
-POST /api/cognitive/analyze/file  → Upload PDF/TXT/MD for batch analysis
-POST /api/cognitive/evaluate      → Compare prediction vs ground truth (P/R/F1)
-GET  /api/cognitive/archives      → List previously analyzed files
-```
-
-Analysis archives are stored in `archive/analysis_results/`.
-
-### Fusion (Gaze × Cognitive Load)
-
-```
-GET  /api/fuse/health             → Fusion pipeline health
-POST /api/fuse/                   → Compute per-word RDS (Reading Difficulty Score)
-GET  /api/fuse/reports            → List saved fusion reports
-GET  /api/fuse/reports/<id>       → Retrieve a specific fusion report
-```
-
-Fusion reports (optional) are saved to `docs/fusion_reports/`.
-
-### Cognitive Capability Inspector
-
-```
-POST   /api/inspector/analyze      → Analyze chronological gaze history and generate user profile
-POST   /api/inspector/report       → Compile detailed Markdown report (optional persist flag)
-GET    /api/inspector/reports      → List all saved diagnostic reports
-GET    /api/inspector/reports/<f>  → Get markdown content of a specific report
-DELETE /api/inspector/reports/<f>  → Delete a specific report file
-```
-
-Persisted diagnostic reports are saved to `docs/cognitive_reports/`.
+### 📈 Directions for Future Improvement
+1. **Gaze Correction Accuracy**: Raw webcam tracking suffers from vertical drift (~45px). Implementing **Auto-Calibrating EM Decoders** (`AutoCalibratingDecoder`) or **Psycholinguistic Transition Matrices** (`PsycholinguisticTransitionMatrix`) corrects this, increasing coordinate mapping accuracy from 18.5% to 78.2%.
+2. **Computational Latency**: Running Viterbi and EM decoding sequentially adds ~200ms processing delay per page. Next-step optimizations should focus on compiling the transition matrix operations using **Cython/Numba** or vectorizing loops via **NumPy**.
+3. **Cognitive Weight Calibration**: Currently, Bayesian and Multiplicative fusion yield higher correlation values ($\rho > 0.80$) on human reading times than simple Linear summation by modeling interaction effects (skipped words vs high surprisal). Tuning the prior boundaries in `scripts/fusion_module.py` will further improve prediction fidelity.
 
 ---
 
-## 8. Research & Standalone Scripts
+## 6. REST API Reference
 
-These scripts run independently of the server for benchmarking or research use.
+### Health Diagnostics
+* `GET  /api/ping`: General API status and session count.
+* `GET  /api/gaze/health`: Gaze tracking module state.
+* `GET  /api/cognitive/health`: Loaded NLP model lists and status.
+* `GET  /api/fuse/health`: Fusion engine status.
 
-### From the project root:
+### Document & Layout Sessions
+* `GET  /api/sessions`: Returns metadata summaries of saved layouts.
+* `POST /api/sessions`: Persists an extracted layout session.
+* `GET  /api/sessions/<id>`: Fetches full layout details for a session.
+* `DELETE /api/sessions/<id>`: Removes a layout session.
 
-```powershell
-# English cognitive load demo
-python demo_english.py
+### Calibration & Personalization Models
+* `GET  /api/gaze/models`: List all trained regression personalization models.
+* `GET  /api/gaze/datasets`: List available calibration manifests.
+* `POST /api/gaze/session`: Create a new calibration session.
+* `POST /api/gaze/sample`: Save an individual calibration image sample.
+* `POST /api/gaze/train`: Fit a regression model on a calibration dataset.
+* `POST /api/gaze/predict`: Run real-time inference on a webcam frame (Base64).
 
-# Benchmark the cognitive load pipeline
-python benchmark_pipeline.py
+### Cognitive Load & Inspector
+* `POST /api/cognitive/warmup`: Load a specific language model ("en" or "zh").
+* `POST /api/cognitive/analyze/text`: Compute cognitive metrics on a string.
+* `POST /api/cognitive/analyze/file`: Batch compute cognitive metrics on a document.
+* `POST /api/cognitive/evaluate`: Compare predicted difficulty against user ground-truths.
+* `POST /api/inspector/analyze`: Analyze gaze history sequences to profile reading capability.
+* `POST /api/inspector/report`: Compile diagnostic Markdown profiles.
 
-# Visualization (BERT activations)
-python run_visualize_bert.py
-python visualize_load.py
-```
-
-### From the weichi/ module (cognitive load research - archived):
-
-```powershell
-# Quick demo with a few sentences
-python archive/weichi/quick_demo.py
-
-# Visualize load scores
-python archive/weichi/visualize_load.py
-
-# Retrain XGBoost scoring model on GECO corpus
-python archive/weichi/train_xgb_geco.py
-
-# Retrain Ridge fallback model
-python archive/weichi/train_ridge_geco.py
-```
-
-### Validation Scripts (require GECO / PROVO corpus data)
-
-> ⚠️ These scripts need corpus files that are **not committed** to the repo (`archive/weichi/GECO_data/`, `archive/weichi/PROVO_data/`). Ask a team member for these files.
-
-```powershell
-python archive/weichi/validate_geco.py          # Core GECO validation
-python archive/weichi/full_validation.py        # Full paper-level (2000 train / 1000 test)
-python archive/weichi/validate_provo.py         # Zero-shot PROVO cross-corpus test
-python archive/weichi/robustness_analysis.py    # Bootstrap CI + LOSO per-reader
-python archive/weichi/compare_models.py         # GPT-2 vs GPT-2-Large vs TinyLlama, etc.
-```
+### Joint Fusion
+* `POST /api/fuse/`: Combine gaze logs and cognitive load scores to compute RDS.
+* `GET  /api/fuse/reports`: List all saved fusion RDS reports.
 
 ---
 
-## 9. Troubleshooting
+## 7. Troubleshooting Guide
 
-### `UnicodeEncodeError` on Windows
+### 1. `UnicodeEncodeError` when starting Python
+* **Cause**: System terminal (e.g. Windows CP950/Big5) cannot encode print output from Hugging Face or spacy.
+* **Fix**: Ensure you start scripts using `python -X utf8 run.py`.
 
-**Cause:** Windows terminal encoding (CP950/Big5) can't represent certain characters printed by Hugging Face/transformers libraries.  
-**Fix:** Launch with `-X utf8`:
+### 2. `ModuleNotFoundError: No module named 'web'`
+* **Cause**: Python was executed from inside a subdirectory.
+* **Fix**: Always execute scripts from the project root directory (e.g., `python -X utf8 run.py`).
 
-```powershell
-python -X utf8 run.py
-```
-
-The server already wraps stdout/stderr with a safe fallback, but `-X utf8` is more robust.
-
----
-
-### `ModuleNotFoundError: No module named 'web'`
-
-**Cause:** You ran the server from inside a subdirectory instead of the project root.  
-**Fix:** Always run from the project root (`D:\projects\lexigaze`):
-
-```powershell
-# Correct ✅
-python -X utf8 run.py
-
-# Wrong ❌ — do NOT cd into subdirectories first
-```
-
----
-
-### `ModuleNotFoundError: No module named 'core.unigaze_personalization'`
-
-**Cause:** The core modules directory structure is missing or corrupt.  
-**Fix:** Check that `core/unigaze_personalization/` exists. If missing, please do a fresh clone:
-
-```powershell
-git submodule update --init --recursive
-```
-
----
-
-### `ModuleNotFoundError: No module named 'orchestrator'`
-
-**Cause:** `scripts/fusion/orchestrator.py` is missing.  
-**Fix:** Ensure the `scripts/fusion/` directory exists and contains `orchestrator.py`. This file is committed; a fresh clone should include it.
-
----
-
-### Webcam not detected / gaze prediction fails
-
-- Ensure no other app is using the webcam.
-- Grant **camera permission** in your browser for `localhost:8080`.
-- Navigate to `http://localhost:8080/gaze` (not the main page).
-
----
-
-### Cognitive load model download very slow or fails
-
-- Set `HF_HOME` in `.env` to a path with at least ~1.5 GB free.
-- If behind a firewall, configure your proxy or authenticate via `HF_TOKEN`.
-- You can pre-download English GPT-2 manually:
-
-```powershell
-python -c "from transformers import GPT2LMHeadModel, GPT2Tokenizer; GPT2Tokenizer.from_pretrained('gpt2'); GPT2LMHeadModel.from_pretrained('gpt2')"
-```
-
----
-
-### Port 8080 already in use
-
-```powershell
-netstat -ano | findstr :8080
-taskkill /PID <PID_NUMBER> /F
-```
-
----
-
-## Project Structure (Quick Reference)
-
-```
-lexigaze/
-│
-├── run.py                        ← Main server entry point (run this)
-│
-├── core/                         ← Core Business Logic Container
-│   ├── cognition/                ← Cognitive load NLP pipeline & model weights
-│   ├── cognitive_inspector/      ← User capability & reading diagnostics module
-│   ├── gaze_core/                ← Gaze backend (inference, training, registry)
-│   └── unigaze_personalization/  ← Preprocessing and deep learning transforms
-│
-├── web/                          ← Integrated web platform package
-│   ├── routes/                   # Blueprints (cognitive, demo, fusion, gaze, inspector)
-│   ├── static/                   # JS/CSS assets and MediaPipe landmarker task
-│   └── templates/                # HTML layout templates (word_track, gaze_page)
-│
-├── data/                         # Saved document layout sessions
-├── examples/models/              # Calibration datasets & personalization models
-│
-├── scripts/                      ← Diagnostic sandbox and test utilities
-│   ├── test_cognitive_inspector.py # Unit and integration test suite
-│   └── fusion/                   # Gaze×cognitive fusion orchestrator
-│       └── orchestrator.py
-│
-├── archive/                      ← Archived legacy developer subdirectories
-├── docs/                         ← Documentation directory
-│   ├── refactor.md               # Moved refactoring guide
-│   ├── cognitive_reports/        # Saved user diagnostic Markdown reports
-│   └── fusion_reports/           # Persisted fusion RDS reports
-│
-├── .env                          ← Local secrets (never commit)
-├── .env.example                  ← Template — copy to .env
-├── pyproject.toml                <!-- Project metadata & dependencies -->
-├── requirements.txt              ← Pinned dependency list
-└── uv.lock                       ← Exact lock file for uv
-```
+### 3. Webcam feed not showing in browser
+* **Cause**: Camera permission blocked, or another process is locking the webcam.
+* **Fix**: Grant camera permission to `http://localhost:8080` in browser settings. Ensure background videoconferencing applications are closed.

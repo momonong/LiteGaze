@@ -1,136 +1,102 @@
-# 🏗️ LexiGaze: Repository Architecture & System Structure
+# 🏗️ LexiGaze: System Architecture & Data Schema Specification
 
-This document provides a comprehensive overview of the **LexiGaze** repository architecture, describing its directory layout, module relationships, perception-cognition data flows, and internal database schemas.
-
----
-
-## 📂 Repository Directory Tree
-
-The repository is structured into modular subsystems representing different research branches (Perception, Cognition, Fusion, and Web Integration):
-
-```
-lexigaze/
-├── core/                      # 🧠 CORE BUSINESS LOGIC CONTAINER
-│   ├── cognition/             # Cognition pipeline & model JSON weights
-│   │   ├── pipeline.py        # NLP Pipeline surprisal (GPT-2/BERT) calculation
-│   │   ├── ridge_model.json   # Pretrained Ridge regression models
-│   │   └── xgb_model.json     # Pretrained XGBoost model
-│   │
-│   ├── cognitive_inspector/   # 🧠 COGNITIVE CAPABILITY INSPECTOR
-│   │   ├── __init__.py        # Exports inspector & report generator
-│   │   ├── inspector.py       # Sequence analyzer (fixations, WPM, regressions)
-│   │   └── report_generator.py # Formats metrics into GFM reports
-│   │
-│   ├── gaze_core/             # Gaze prediction filters & model registries
-│   │   ├── inference.py       # Preprocesses frames & feeds to ONNX model
-│   │   ├── training.py        # Trains polynomial regression on calibration datasets
-│   │   ├── sample_store.py    # Dataset sessions, manifests, and image saving
-│   │   └── model_registry.py  # Manages and lists trained per-user models
-│   │
-│   └── unigaze_personalization/ # MediaPipe preprocessing & model loading
-│       ├── preprocess.py      # Face cropping & head pose estimation
-│       ├── model.py           # Frozen UniGaze-B16 ViT model weights wrapper
-│       ├── dataset.py         # Manifest helper for loading calibration sessions
-│       └── transforms.py      # Image transformation pipeline
-│
-├── web/                       # 🌐 THE MAIN FLASK WEB APPLICATION PACKAGE
-│   ├── routes/                # Modular backend endpoints (blueprints)
-│   │   ├── cognitive.py       # Blueprints for text difficulty analysis
-│   │   ├── gaze.py            # Blueprints for gaze prediction & models
-│   │   ├── demo.py            # Blueprints for offline video-calibration
-│   │   ├── fusion.py          # Blueprints for combining gaze metrics & load
-│   │   └── inspector.py       # Blueprints for user capability diagnostics
-│   ├── static/                # Client-side JavaScript, CSS, & model weights
-│   │   ├── mapping.js         # Gaze cursor smoothing and word mapping
-│   │   ├── gaze_integration.js # Live loop & camera capture in browser
-│   │   ├── gaze_page.js       # Calibration and timeline logic
-│   │   └── face_landmarker.task # MediaPipe pretrained landmark task bundle
-│   └── templates/             # Client-side HTML views
-│       ├── word_track.html    # Main SPA: PDF coordinate extraction & reading dashboard
-│       └── gaze_page.html     # Live calibration view
-│
-├── run.py                     # 🚀 Clean entrypoint at root (runs web)
-├── archive/                   # 🗄️ ARCHIVED LEGACY MODULES (weichi, shengwen, BoWei)
-│
-├── scripts/                   # 🧪 RESEARCH SANDBOX & EXPERIMENTAL UTILITIES
-│   ├── fusion/                # Core mathematical fusion helper modules
-│   │   └── orchestrator.py    # Merges word layouts, gaze dwells, and NLP features
-│   ├── fusion_module.py       # Implements 6 fusion algorithms (Linear, Bayesian, RRF, etc.)
-│   ├── experiment_fusion.py   # Validation correlation tests on GECO corpus
-│   ├── inspect_performance_demo.py # Joint pipeline (Viterbi/EM/Fusion) terminal inspection dashboard
-│   ├── generate_web_demo_data.py   # Mock calibration session and model JSON generator
-│   ├── test_cognitive_inspector.py # Unit & integration test suite for diagnostics
-│   └── setup_remote_collection.py # Cross-platform ngrok tunnel launcher for remote laptops
-│
-├── docs/                      # 📄 SYSTEM DOCUMENTATION
-│   ├── refactor.md            # Refactoring documentation (moved)
-│   ├── demo_integration_guide.md  # Demo walkthrough and integration architecture
-│   ├── cognitive_reports/     # Persisted capability diagnostic reports (Markdown)
-│   └── fusion_reports/        # Saved joint gaze-cognitive fusion analysis logs
-│
-├── pyproject.toml             # Project dependency registry (Flask, Torch, OpenCV, Transformers)
-├── uv.lock                    # Dependency lockfile for reproducible environments
-├── instruction_data.md        # Setup guide for remote Ubuntu server + Windows clients
-└── conclusion.md              # Registry of recent updates and accomplishments
-```
+This document details the software architecture, module interaction models, data flows, and database schemas of the **LexiGaze** platform.
 
 ---
 
-## 🔄 Core Data Flows
+## 🏛️ Subsystem Design
 
-LexiGaze combines perception tracking with linguistic cognition to map where a user looks and calculate how difficult the text is.
+LexiGaze is divided into four decoupled subsystems, each responsible for a distinct aspect of the multimodal perception-cognition fusion pipeline:
 
-### 1. Perception Gaze Flow (Real-Time Tracking)
 ```
-[Webcam Stream] 
-       │ (640x480 Frame base64 JPEG)
-       ▼
-[MediaPipe Face Preprocessor] ──► Extracts 3D Face Bounding Box & Landmarks
-       │
-       ▼ (Normalized face image + crop)
-[UniGaze-B16 ViT ONNX Model] ──► Predicts raw Gaze vector [Pitch, Yaw]
-       │
-       ▼ (Standardized [-1.0, 1.0] coordinates)
-[Polynomial Personalization Model] ──► Corrects systematic offset & user bias
-       │
-       ▼ (Mapped viewport pixels)
-[OneEuro / Dwell Filter] ──► Smooths coordinates, detects Dwells/Fixations
-       │
-       ▼
-[Highlight Overlay] ──► Maps gaze cursor to active word layout boxes in mapping.js
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           WEB INTEGRATION PORTAL                        │
+│                                 (web/)                                  │
+│  - Routes Blueprints          - Templates (word_track)  - styles        │
+│  - mapping.js                 - gaze_integration.js     - gaze_page     │
+└──────┬────────────────────────────┬────────────────────────────▲────────┘
+       │ raw frames                 │ doc text                   │ RDS / Inspector
+       ▼                            ▼                            │ reports
+┌──────────────────────┐    ┌──────────────────────┐    ┌────────┴────────┐
+│  PERCEPTION MODULE   │    │   COGNITION MODULE   │    │  FUSION ENGINE  │
+│   (core/gaze_core)   │    │   (core/cognition)   │    │    (scripts)    │
+│  - Landmark Detect   │    │  - HuggingFace LLMs  │    │  - Viterbi POM  │
+│  - UniGaze ONNX ViT  │    │  - Surprisal Engine  │    │  - EM Calibrate │
+│  - Polynomial Reg    │    │  - XGBoost Scorer    │    │  - Multi. Sum   │
+└──────────────────────┘    └──────────────────────┘    └─────────────────┘
 ```
 
-### 2. Cognition NLP Flow (Language Complexity)
+### 1. Perception Module (`core/gaze_core/` & `core/unigaze_personalization/`)
+Processes real-time webcam streams to track eye coordinates:
+* **Preprocessing**: Face landmarker extracts 3D facial landmarks and crops the face region.
+* **Neural Gaze Prediction**: The cropped face is transformed and passed to a pre-trained UniGaze-B16 ViT model (loaded via ONNX Runtime), outputting pitch/yaw angles.
+* **Calibration Adaptation**: Corrects eye-tracking systematic bias (e.g. laptop-screen posture changes) using a polynomial regression model fit to a 9-point grid.
+* **Smoothing**: Appling OneEuro and horizontal corridor filters to minimize jitter.
+
+### 2. Cognition Module (`core/cognition/`)
+Analyzes text linguistic complexity to determine reading difficulty:
+* **Linguistic Pipeline**: Extracts word tokens and dependency-parsed relations using spaCy.
+* **Surprisal & Entropy Engine**: Passes the text through local language models (GPT-2 for English, BERT for Chinese) to compute lexical surprisal and contextual entropy.
+* **XGBoost Classifier**: Merges surprisal, Age-of-Acquisition (AoA) norms, Zipf word frequency, and dependency load to output a single cognitive load score per word.
+
+### 3. Fusion Engine (`scripts/` / `scripts/fusion_module.py`)
+Fuses tracking inputs with cognitive models offline or at the end of a session:
+* **Alignment**: Maps spatial gaze points to pixel bounding boxes.
+* **Math Fusion**: Implements six combination metrics (Linear, Multiplicative, Gated, Sigmoid, Bayesian, and Reciprocal Rank Fusion) to generate a unified Reading Difficulty Score (RDS).
+
+### 4. Web Portal (`web/`)
+The web presentation framework (built on Flask) providing interactive reading dashboards, real-time webcam rendering, and detailed markdown diagnostic reports.
+
+---
+
+## 🔄 Core Data Pipelines
+
+### 1. Eye-Gaze Tracking Flow
 ```
-[Uploaded Document (PDF/MD/TXT)] 
+[Webcam Frame]
+       │ (640x480 Base64 JPEG)
+       ▼
+[MediaPipe Landmark Processor] ──► Crop & Pose Estimation
+       │
+       ▼ (Normalized Face Image)
+[UniGaze ONNX Model] ────────────► Raw Gaze Vector [Pitch, Yaw]
        │
        ▼
-[Document Coordinate Extraction] ──► Parses pages into word layout bounding boxes
-       │
-       ▼ (Extracted Text Content)
-[HuggingFace Transformers (BERT/GPT-2)] ──► Computes per-word Surprisal & Attention Entropy
+[Polynomial Adapter Model] ──────► Corrected Screen Coordinates [X, Y]
        │
        ▼
-[Cognitive Load Overlay] ──► Visualizes text difficulty as a Gaussian Heatmap
+[OneEuro / Corridor Filter] ─────► Smoothed Coordinates (Dwell/Fixations)
 ```
 
-### 3. Joint Multi-Multimodal Fusion Flow (RDS Output)
-At the end of a reading session, the frontend gathers tracked gaze logs and sends them to the server to compute the Reading Difficulty Score (RDS):
+### 2. Cognitive Analyzer Flow
 ```
-[Gaze Dwell Logs] (Dwell time, fixations) ──┐
-                                             ├──► [Orchestrator] ──► [Fusion Algorithms] ──► [RDS High/Med/Low]
-[Cognitive Load Scores] (Surprisal) ─────────┘
+[Uploaded Document (PDF/MD/TXT)]
+       │
+       ▼
+[Document Coordinate Extraction] ──► DOM Word Bounding Boxes [x, y, w, h]
+       │
+       ▼ (Extracted Text Sequences)
+[HuggingFace GPT-2/BERT] ──────────► Surprisal & Contextual Entropy
+       │
+       ▼
+[XGBoost Classifier Model] ────────► Predicted Cognitive Load Scores
+```
+
+### 3. Joint Multimodal Fusion Flow
+```
+[Gaze Dwell Logs] (Times/Fixations) ──┐
+                                     ├──► [LexiGaze Fusion Engine] ──► [Word RDS]
+[Cognitive Load Scores] (Surprisal) ──┘
 ```
 
 ---
 
-## 📊 Database Schemas & File Structures
+## 📊 Database & File Schemas
 
 ### 1. Calibration Session Manifest (`manifest.jsonl`)
-Located in data/sessions/<session_id>/manifest.jsonl. Each line represents a recorded gaze calibration sample:
+Located under `data/sessions/<session_id>/manifest.jsonl`. Tracks collected calibration frames:
 ```json
 {
-  "ok": true,
   "sample_index": 0,
   "phase": "calibration",
   "point_index": 4,
@@ -149,48 +115,48 @@ Located in data/sessions/<session_id>/manifest.jsonl. Each line represents a rec
 }
 ```
 
-### 2. Personalization Model JSON
-Located in examples/models/<model_name>.json. Contains weights for mapping raw gaze angles (`[pitch, yaw]`) to screen locations:
+### 2. Personalization Model Config (`<model_name>.json`)
+Located under `examples/models/<model_name>.json`. Contains calibration regression coefficients:
 ```json
 {
-  "name": "subject_laptop_model",
-  "created_at": "2026-06-19T01:31:00",
-  "data_session_id": "session_20260619_013000",
-  "mean_px_error": 12.5,
-  "noise_level": 4.8,
+  "name": "user_laptop_01_model",
+  "created_at": "2026-06-20T16:00:00",
+  "data_session_id": "session_20260620_160000",
+  "mean_px_error": 18.4,
+  "noise_level": 5.2,
   "train_samples": 18,
   "stages": [
     {
       "stage": 1,
-      "poly_degree": 1,
+      "poly_degree": 2,
       "W": [
-        [0.85, 0.05],
-        [0.05, 0.85],
-        [0.01, 0.01]
+        [0.82, 0.04],
+        [0.03, 0.81],
+        [0.01, 0.02]
       ],
-      "mean_px_error": 12.5
+      "mean_px_error": 18.4
     }
   ]
 }
 ```
 
-### 3. Document Coordinate Layout Session
-Located in data/<session_id>.json. Extracted layout session generated during document uploading:
+### 3. Document Coordinate Layout (`<session_id>.json`)
+Located under `data/<session_id>.json`. Details pixel-level coordinate boxes for each word:
 ```json
 {
   "id": "72c20283-7bd7-49cd-bbaa-b9d5d9ba5567",
-  "filename": "sample.md",
+  "filename": "document.md",
   "filetype": "md",
-  "created_at": "2026-06-19T01:30:00",
-  "item_count": 134,
+  "created_at": "2026-06-20T16:05:00",
+  "item_count": 1,
   "items": [
     {
       "page": 1,
       "index": 0,
-      "text": "The",
+      "text": "LexiGaze",
       "top": 44.24,
       "left": 51.99,
-      "width": 31.7,
+      "width": 80.0,
       "height": 18.7,
       "norm_left": 0.0655,
       "norm_top": 0.0942,

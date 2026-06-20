@@ -51,8 +51,8 @@ def log_usage(module_name: str, section: str, usage_metadata):
     except Exception as e:
         print(f"無法記錄使用量: {e}")
 
-# 從環境變數讀取 MODEL_NAME，若無則預設為 gemini-2.5-flash
-model_name = os.getenv("MODEL_NAME", "gemini-2.5-flash")
+# 從環境變數讀取 MODEL_NAME，若無則預設為 gemma-4-26b-a4b-it
+model_name = os.getenv("MODEL_NAME", "gemma-4-26b-a4b-it")
 
 # 限制最高併發數為 1，強迫問題「乖乖排隊」一個一個問
 sem = asyncio.Semaphore(1)
