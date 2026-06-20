@@ -79,11 +79,14 @@ MODEL_NAME="gemma-4-26b-a4b-it"
 
 To run the Flask application locally:
 ```bash
-# Always start from the project root with the UTF-8 flag to avoid console crashes
+# Standard local mode
 .venv/bin/python -X utf8 run.py
+
+# Integrated remote collection mode (spawns an ngrok tunnel automatically)
+.venv/bin/python -X utf8 run.py --tunnel
 ```
 
-Upon starting successfully, you should see console logs resembling:
+Upon starting standard local mode successfully, you should see:
 ```
 ================================================
   文件座標擷取工具  —  Flask Backend (Refactored)
@@ -95,7 +98,7 @@ Upon starting successfully, you should see console logs resembling:
   停止  : Ctrl + C
 ================================================
 ```
-The browser will automatically open to `http://localhost:8080/`.
+In standard mode, the browser will automatically open to `http://localhost:8080/`. In remote collection mode (`--tunnel`), it will print the public secure URL and a QR code link, allowing you to connect remote devices (like a Macbook) easily.
 
 ---
 
