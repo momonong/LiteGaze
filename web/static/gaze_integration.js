@@ -134,8 +134,12 @@
             select.appendChild(option);
           });
         }
-        if ([...select.options].some((option) => option.value === active)) {
+        // Restore previous selection if still available
+        if (active !== 'before' && [...select.options].some((o) => o.value === active)) {
           select.value = active;
+        } else if (active === 'before' && data.ok && data.models?.length > 0) {
+          // Auto-select the first model when none was selected yet
+          select.value = data.models[0].name;
         }
       });
       setStatus(`模型清單已更新，共 ${data.models?.length || 0} 個選項`);
@@ -145,6 +149,9 @@
   }
 
   async function startCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error("不支援相機存取");
+    }
     state.stream = await navigator.mediaDevices.getUserMedia({
       video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
       audio: false,

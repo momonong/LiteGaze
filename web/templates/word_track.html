@@ -4134,8 +4134,58 @@
     });
 
     // ── Video Recording Logic ──────────────────────────────────────────────
+    // Syncs both the panel banner UI and the Guide Step 4 card simultaneously
+    function _setRecordingUI({ recording, done, error, processReady }) {
+      const dot        = document.getElementById('vmRecDot');
+      const status     = document.getElementById('vmStatus');
+      const startBtn   = document.getElementById('vmStartBtn');
+      const stopBtn    = document.getElementById('vmStopBtn');
+      const processBtn = document.getElementById('vmProcessBtn');
+      // Guide Step 4 equivalents
+      const gStatus     = document.getElementById('guideVmStatus');
+      const gStartBtn   = document.getElementById('guideVmStartBtn');
+      const gStopBtn    = document.getElementById('guideVmStopBtn');
+      const gProcessBtn = document.getElementById('guideVmProcessBtn');
+
+      if (recording) {
+        if (dot)        dot.classList.add('recording');
+        if (status)     status.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="vertical-align:-1px;margin-right:4px"><circle cx="12" cy="12" r="10"/></svg>錄影中... 請開始閱讀文件';
+        if (gStatus)    gStatus.textContent = '● 錄影中... 請開始閱讀文件';
+        if (startBtn)   startBtn.disabled   = true;
+        if (stopBtn)    stopBtn.disabled     = false;
+        if (processBtn) processBtn.disabled  = true;
+        if (gStartBtn)  gStartBtn.disabled   = true;
+        if (gStopBtn)   gStopBtn.disabled    = false;
+        if (gProcessBtn) gProcessBtn.disabled = true;
+      } else if (done) {
+        if (dot)        dot.classList.remove('recording');
+        if (status)     status.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px"><polyline points="20 6 9 17 4 12"/></svg>${done}`;
+        if (gStatus)    gStatus.textContent = '✓ ' + done;
+        if (startBtn)   startBtn.disabled   = false;
+        if (stopBtn)    stopBtn.disabled     = true;
+        if (processBtn) processBtn.disabled  = !processReady;
+        if (gStartBtn)  gStartBtn.disabled   = false;
+        if (gStopBtn)   gStopBtn.disabled    = true;
+        if (gProcessBtn) gProcessBtn.disabled = !processReady;
+      } else if (error) {
+        if (dot)        dot.classList.remove('recording');
+        if (status)     status.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>${error}`;
+        if (gStatus)    gStatus.textContent = '[!] ' + error;
+        if (startBtn)   startBtn.disabled   = false;
+        if (stopBtn)    stopBtn.disabled     = true;
+        if (gStartBtn)  gStartBtn.disabled   = false;
+        if (gStopBtn)   gStopBtn.disabled    = true;
+      }
+    }
+
     window.startVideoRecording = async function() {
       if (vmIsRecording) return;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        const msg = '瀏覽器不支援攝影機存取（請使用 Chrome 或 Firefox）';
+        log(msg, 'err');
+        _setRecordingUI({ error: msg });
+        return;
+      }
       try {
         vmStream = await navigator.mediaDevices.getUserMedia({
           video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
@@ -4143,50 +4193,31 @@
         });
         vmRecordedChunks = [];
         vmReadingTimeline = [];
-        // Try mime types in priority order — Safari/macOS only supports mp4
         const mimeTypes = [
-          'video/webm;codecs=vp8',
-          'video/webm;codecs=vp9',
-          'video/webm',
-          'video/mp4;codecs=avc1',
-          'video/mp4',
+          'video/webm;codecs=vp8', 'video/webm;codecs=vp9', 'video/webm',
+          'video/mp4;codecs=avc1', 'video/mp4',
         ];
         const supportedMime = mimeTypes.find(m => MediaRecorder.isTypeSupported(m)) || '';
         const opts = supportedMime ? { mimeType: supportedMime } : {};
         vmRecorder = new MediaRecorder(vmStream, opts);
         vmRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) vmRecordedChunks.push(e.data); };
-        vmRecorder.start(500); // collect every 500ms chunk
+        vmRecorder.start(500);
         vmRecordingStart = performance.now();
         vmIsRecording = true;
 
-        // Store the actual mimeType used so Blob creation can match it
         window.lexiVmMimeType = supportedMime || vmRecorder.mimeType || 'video/webm';
-
-        // Sync with global window variables for Step Guide
         window.lexiVmIsRecording = vmIsRecording;
         window.lexiVmRecordedChunks = vmRecordedChunks;
         window.lexiVmReadingTimeline = vmReadingTimeline;
 
-        // Update UI
-        const dot  = document.getElementById('vmRecDot');
-        const status = document.getElementById('vmStatus');
-        const startBtn   = document.getElementById('vmStartBtn');
-        const stopBtn    = document.getElementById('vmStopBtn');
-        const processBtn = document.getElementById('vmProcessBtn');
-        if (dot)      dot.classList.add('recording');
-        if (status)   status.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="vertical-align:-1px;margin-right:4px"><circle cx="12" cy="12" r="10"/></svg>錄影中... 請開始閱讀文件';
-        if (startBtn) { startBtn.disabled = true; }
-        if (stopBtn)  { stopBtn.disabled = false; }
-        if (processBtn) { processBtn.disabled = true; }
-
-        // Start scroll-based word timeline tracker
+        _setRecordingUI({ recording: true });
         startWordTimeline();
         log('錄影模式啟動，開始錄製鏡頭影片', 'ok');
-
         if (typeof updateGuideUI === 'function') updateGuideUI();
       } catch (err) {
-        log(`錄影啟動失敗：${err.message}`, 'err');
-        alert(`無法存取鏡頭：${err.message}`);
+        const msg = `無法存取鏡頭：${err.message}`;
+        log(msg, 'err');
+        _setRecordingUI({ error: msg });
       }
     };
 
@@ -4197,25 +4228,17 @@
       vmIsRecording = false;
       stopWordTimeline();
 
-      // Sync with global window variables for Step Guide
       window.lexiVmIsRecording = vmIsRecording;
       window.lexiVmRecordedChunks = vmRecordedChunks;
       window.lexiVmReadingTimeline = vmReadingTimeline;
 
-      const dot     = document.getElementById('vmRecDot');
-      const status  = document.getElementById('vmStatus');
-      const startBtn   = document.getElementById('vmStartBtn');
-      const stopBtn    = document.getElementById('vmStopBtn');
-      const processBtn = document.getElementById('vmProcessBtn');
-      if (dot)      dot.classList.remove('recording');
-      if (status)   status.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px"><polyline points="20 6 9 17 4 12"/></svg>錄影完成 (${vmReadingTimeline.length} 個時間點) — 請點擊「上傳分析」`;
-      if (startBtn) startBtn.disabled = false;
-      if (stopBtn)  stopBtn.disabled = true;
-      if (processBtn && vmReadingTimeline.length > 0) processBtn.disabled = false;
+      const doneMsg = `錄影完成 (${vmReadingTimeline.length} 個時間點) — 請點擊「上傳分析」`;
+      _setRecordingUI({ done: doneMsg, processReady: vmReadingTimeline.length > 0 });
       log(`錄影結束，共記錄 ${vmReadingTimeline.length} 個閱讀事件`, 'ok');
 
       if (typeof updateGuideUI === 'function') updateGuideUI();
     };
+
 
     window.processVideoRecording = async function() {
       if (vmRecordedChunks.length === 0) {
