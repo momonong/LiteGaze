@@ -400,6 +400,8 @@
           other.value = e.target.value;
         }
       });
+      // Mark that the user actively selected a model this session (not auto-selected on load)
+      window.lexiModelSelectedThisSession = true;
       if (typeof window.updateGuideUI === "function") {
         window.updateGuideUI();
       }

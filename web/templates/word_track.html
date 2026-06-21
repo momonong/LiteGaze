@@ -3131,6 +3131,14 @@
         return;
       }
 
+      // Capture participant ID at analysis time (not report time)
+      const participantId = (
+        document.getElementById('guideParticipantInput')?.value.trim() ||
+        document.getElementById('inspectParticipantInput')?.value.trim() ||
+        'anonymous'
+      );
+      window.lexiCurrentParticipantId = participantId;
+
       inspectAnalyzeBtn.disabled = true;
       inspectAnalyzeBtn.textContent = '分析中…';
 
@@ -3140,6 +3148,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             gaze_history: gazeHistoryData,
+            participant_id: participantId,
             lang: inspectLangSelect.value
           })
         });
@@ -3171,7 +3180,7 @@
         inspectResultsCard.style.display = 'flex';
         inspectReportBtn.disabled = false;
         lastInspectorAnalysisGazeHistory = gazeHistoryData;
-        log('認知能力診斷分析完成！', 'ok');
+        log(`認知能力診斷分析完成！(${participantId})`, 'ok');
         if (typeof updateGuideUI === 'function') updateGuideUI();
 
       } catch (err) {
@@ -3190,13 +3199,18 @@
       inspectReportBtn.textContent = '產生報告中…';
 
       try {
-        const participantId = inspectParticipantInput.value.trim() || 'anonymous';
+        // Use participant ID that was captured at analysis time for consistency
+        const participantId = window.lexiCurrentParticipantId
+          || inspectParticipantInput.value.trim()
+          || 'anonymous';
+        const sessionId = `${participantId}_session_${Date.now()}`;
         const res = await fetch('/api/inspector/report', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             gaze_history: lastInspectorAnalysisGazeHistory,
             participant_id: participantId,
+            session_id: sessionId,
             lang: inspectLangSelect.value,
             persist: true
           })
@@ -3204,6 +3218,11 @@
 
         const data = await res.json();
         if (!res.ok || !data.ok) throw new Error(data.error || '報告生成失敗');
+
+        // Also persist the gaze session with the correct participant-scoped ID
+        if (typeof window.exportFusion === 'function') {
+          window.exportFusion(data.analysis || {}, sessionId, true).catch(() => {});
+        }
 
         // Render Markdown to HTML using marked.js
         const reportContentEl = document.getElementById('cogReportContent');
@@ -3377,6 +3396,7 @@
     // ── Stepper Guide JavaScript Logic ──
     function updateGuideUI() {
       // Step 1: Hardware Performance Mode
+      // Only mark done if user explicitly confirmed mode in this session
       const step1 = document.getElementById('guideStep1');
       const step1Badge = document.getElementById('guideStep1Badge');
       const modeTxt = document.getElementById('guideCurrentModeTxt');
@@ -3393,20 +3413,25 @@
       if (vmCtrls) vmCtrls.style.display = (mode === 'video') ? 'flex' : 'none';
       if (rtCtrls) rtCtrls.style.display = (mode === 'realtime') ? 'flex' : 'none';
       
-      if (step1Badge) {
-        step1Badge.textContent = '已設定';
-        step1Badge.className = 'guide-step-badge completed';
-      }
-      if (step1) {
-        step1.classList.remove('active');
-        step1.classList.add('completed');
+      if (step1 && step1Badge) {
+        if (window.lexiPerfConfirmedThisSession) {
+          step1Badge.textContent = '已設定';
+          step1Badge.className = 'guide-step-badge completed';
+          step1.classList.remove('active');
+          step1.classList.add('completed');
+        } else {
+          step1Badge.textContent = '進行中';
+          step1Badge.className = 'guide-step-badge active';
+          step1.classList.remove('completed');
+          step1.classList.add('active');
+        }
       }
 
-      // Step 2: Calibration
+      // Step 2: Calibration — only mark done if user actively selected a model this session
       const step2 = document.getElementById('guideStep2');
       const step2Badge = document.getElementById('guideStep2Badge');
       const modelSelect = document.querySelector('.gaze-model-select');
-      const modelSelected = modelSelect && modelSelect.value !== 'before';
+      const modelSelected = modelSelect && modelSelect.value !== 'before' && window.lexiModelSelectedThisSession;
       
       if (step2 && step2Badge) {
         if (modelSelected) {
@@ -3418,7 +3443,11 @@
           step2Badge.textContent = '待執行';
           step2Badge.className = 'guide-step-badge';
           step2.classList.remove('completed');
-          step2.classList.add('active');
+          if (window.lexiPerfConfirmedThisSession) {
+            step2.classList.add('active');
+          } else {
+            step2.classList.remove('active');
+          }
         }
       }
 
@@ -4127,15 +4156,21 @@
       if (perfRemember.checked) {
         localStorage.setItem('lexigaze_perf_mode', currentPerfMode);
       }
+      window.lexiPerfConfirmedThisSession = true; // user actively confirmed
       applyPerfMode(currentPerfMode);
       closePerfModal();
     });
     perfSkipBtn.addEventListener('click', () => {
-      applyPerfMode(currentPerfMode); // apply default (video)
+      window.lexiPerfConfirmedThisSession = true; // user actively chose to skip
+      applyPerfMode(currentPerfMode);
       closePerfModal();
     });
     perfModal.addEventListener('click', (e) => {
-      if (e.target === perfModal) { applyPerfMode(currentPerfMode); closePerfModal(); }
+      if (e.target === perfModal) {
+        window.lexiPerfConfirmedThisSession = true;
+        applyPerfMode(currentPerfMode);
+        closePerfModal();
+      }
     });
 
     // ── Video Recording Logic ──────────────────────────────────────────────
