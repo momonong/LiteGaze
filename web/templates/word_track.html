@@ -2136,6 +2136,7 @@
         setProgress(5 + Math.round(((p - 1) / numPages) * 90), `渲染第 ${p} / ${numPages} 頁…`);
         const { items, nextIdx } = await processPage(pdf, p, scale, granularity, globalIdx);
         extractedData.push(...items);
+        window.extractedData = extractedData; // mirror for cross-script access
         globalIdx = nextIdx;
       }
       setProgress(100, '解析完成！');
@@ -2181,6 +2182,7 @@
       const items    = extractCoordsFromDOM(contentDiv, 1, pageRect, 0, granularity);
       addNormCoords(items, pageRect.width, pageRect.height);
       extractedData  = items;
+      window.extractedData = extractedData; // mirror for cross-script access
       pageOverlayMap.set(1, { overlayCanvas, items });
 
       setProgress(100, '解析完成！');
@@ -4228,6 +4230,11 @@
       vmIsRecording = false;
       stopWordTimeline();
 
+      // If no timeline entries were captured during recording, do a final snapshot now
+      if (vmReadingTimeline.length === 0) {
+        snapshotVisibleWords(vmReadingTimeline, performance.now() - vmRecordingStart);
+      }
+
       window.lexiVmIsRecording = vmIsRecording;
       window.lexiVmRecordedChunks = vmRecordedChunks;
       window.lexiVmReadingTimeline = vmReadingTimeline;
@@ -4333,8 +4340,39 @@
       _wordTimelineInterval = null;
     }
 
+    // Capture visible words into a target array at the given timestamp (no vmIsRecording guard)
+    function snapshotVisibleWords(targetArray, nowMs) {
+      const data = window.extractedData;
+      if (!data || data.length === 0) return;
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const hits = [];
+      document.querySelectorAll('.word-hit, [data-word-idx]').forEach(el => {
+        const r = el.getBoundingClientRect();
+        if (r.top >= 0 && r.bottom <= vh) {
+          const idx  = parseInt(el.dataset.wordIdx ?? el.dataset.idx ?? '-1', 10);
+          const word = el.dataset.word ?? el.textContent.trim().split(/\s+/)[0] ?? '';
+          if (word && idx >= 0) hits.push({ word, index: idx, cx: (r.left + r.right) / 2, cy: (r.top + r.bottom) / 2 });
+        }
+      });
+      if (hits.length === 0) {
+        data.forEach((item, i) => {
+          const absTop = item.top + (document.querySelector('.page-block')?.getBoundingClientRect().top ?? 0);
+          if (absTop >= 0 && absTop <= vh) {
+            hits.push({ word: item.text, index: item.index ?? i, cx: item.left + item.width / 2, cy: absTop + item.height / 2 });
+          }
+        });
+      }
+      const step = Math.max(1, Math.floor(hits.length / 8));
+      for (let i = 0; i < hits.length; i += step) {
+        const h = hits[i];
+        targetArray.push({ word: h.word, index: h.index, timestamp_ms: Math.round(nowMs), viewport_x: Math.round(h.cx), viewport_y: Math.round(h.cy), confidence: 'low' });
+      }
+    }
+
     function sampleVisibleWords() {
-      if (!vmIsRecording || typeof extractedData === 'undefined') return;
+      if (!vmIsRecording) return;
+      const data = window.extractedData;
+      if (!data || data.length === 0) return;
       const vw = window.innerWidth, vh = window.innerHeight;
       const now = performance.now() - vmRecordingStart;
       const SAMPLE_MAX = 8; // max words per sample tick to avoid giant timelines
@@ -4351,8 +4389,8 @@
       });
 
       // Fallback: if no overlay hit elements, sample from extractedData by viewport position
-      if (hits.length === 0 && window.extractedData && window.extractedData.length > 0) {
-        window.extractedData.forEach((item, i) => {
+      if (hits.length === 0 && data.length > 0) {
+        data.forEach((item, i) => {
           const absTop = item.top + (document.querySelector('.page-block')?.getBoundingClientRect().top ?? 0);
           if (absTop >= 0 && absTop <= vh) {
             hits.push({ word: item.text, index: item.index ?? i, cx: item.left + item.width / 2, cy: absTop + item.height / 2 });
