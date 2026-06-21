@@ -72,6 +72,32 @@ def analyze_reading_video():
     viewport_width  = float(request.form.get("viewport_width", 1920))
     viewport_height = float(request.form.get("viewport_height", 1080))
 
+    # ── Initialize Cognitive Load Pipeline for Attraction Snapping Prior ──
+    cog_lookup = {}
+    lang = "en"
+    try:
+        import re
+        from core.cognition import CognitiveLoadPipeline
+        # Detect if text contains Chinese
+        is_zh = any(re.search(r'[\u4e00-\u9fff]', str(e.get("word", ""))) for e in reading_timeline)
+        lang = "zh" if is_zh else "en"
+        
+        # Extract full reconstructed reading text
+        words_seq = [str(e.get("word", "")) for e in reading_timeline if e.get("word")]
+        if words_seq:
+            text_str = " ".join(words_seq) if lang == "en" else "".join(words_seq)
+            # Use BERT model for dynamic surprisal
+            pipeline = CognitiveLoadPipeline(model_type='bert', lang=lang)
+            cog_result = pipeline.run(text_str)
+            word_analysis = cog_result.get("word_analysis", [])
+            for item in word_analysis:
+                w_key = item.get("word", "").lower().strip()
+                if w_key:
+                    cog_lookup[w_key] = item
+            print(f"[gaze_video] Successfully ran CognitiveLoadPipeline. Found {len(cog_lookup)} analyzed words.")
+    except Exception as exc:
+        print(f"[gaze_video] Warning: Failed to run CognitiveLoadPipeline: {exc}")
+
     # ── Save video to a temp file ──────────────────────────────────────────
     video_file = request.files["video"]
     suffix     = Path(video_file.filename or "reading.webm").suffix or ".webm"
@@ -157,16 +183,42 @@ def analyze_reading_video():
                 # Face not detected
                 confidence = "low"
             else:
-                # Map gaze position to confidence based on distance from expected word position
+                # Map gaze position to confidence based on distance from expected word position with cognitive mass attraction
                 gaze_xy = result.get("screen_xy_px")
                 if gaze_xy:
                     gx, gy = gaze_xy
                     exp_x = float(event.get("viewport_x", viewport_width / 2))
                     exp_y = float(event.get("viewport_y", viewport_height / 2))
                     dist  = ((gx - exp_x) ** 2 + (gy - exp_y) ** 2) ** 0.5
-                    if dist < 80:
+                    
+                    # Apply cognitive mass pull based on BERT dynamic surprisal and Zipf fallback weights
+                    try:
+                        clean_w = word.strip(".,;:?!'\"()").lower()
+                        cog_item = cog_lookup.get(clean_w) if cog_lookup else None
+                        
+                        # Hyphenated / compound fallback
+                        if not cog_item and cog_lookup:
+                            for k, v in cog_lookup.items():
+                                if "-" in k and clean_w in k.split("-"):
+                                    cog_item = v
+                                    break
+                                    
+                        if cog_item and "surprisal" in cog_item:
+                            surp = float(cog_item["surprisal"])
+                            # Map BERT dynamic surprisal (typically 0-15) to mass (1.0 to 4.0)
+                            mass = 1.0 + max(0.0, surp) * 0.20
+                        else:
+                            # Zipf fallback weight (ranges 0-8). Lower zipf = rarer word = higher cognitive mass attraction
+                            from wordfreq import zipf_frequency
+                            zipf = zipf_frequency(clean_w, lang) if clean_w else 5.0
+                            mass = 1.0 + max(0.0, (5.0 - zipf)) * 0.35 if zipf > 0 else 1.0
+                    except Exception:
+                        mass = 1.0
+                        
+                    effective_dist = dist / mass
+                    if effective_dist < 80:
                         confidence = "high"
-                    elif dist < 200:
+                    elif effective_dist < 200:
                         confidence = "medium"
                     else:
                         confidence = "low"
