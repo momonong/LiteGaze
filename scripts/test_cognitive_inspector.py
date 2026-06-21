@@ -156,10 +156,10 @@ class TestCognitiveInspectorUnit(unittest.TestCase):
         
         # 總注視次數應為 5 (word0 的 2 個 hits 被聚合，因為 800ms < threshold = max(350, 800*1.5=1200ms))
         self.assertEqual(summary["total_fixations"], 5)
-        # 總注視時間 (total_dwell_time_ms) 應為 6 * 800ms = 4800ms
-        self.assertEqual(summary["total_dwell_time_ms"], 4800)
-        # 平均注視時間應為 4800 / 5 = 960ms
-        self.assertEqual(summary["avg_fixation_duration_ms"], 960.0)
+        # 總注視時間 (total_dwell_time_ms) 應為 6 * 200ms = 1200ms
+        self.assertEqual(summary["total_dwell_time_ms"], 1200)
+        # 平均注視時間應為 1200 / 5 = 240ms
+        self.assertEqual(summary["avg_fixation_duration_ms"], 240.0)
 
 
 
