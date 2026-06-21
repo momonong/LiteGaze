@@ -568,6 +568,16 @@ async function toggleTest() {
   }
 }
 
+// Sync output model name with participant name
+els.participantName.addEventListener("input", (e) => {
+  const pName = e.target.value.trim();
+  if (pName) {
+    els.outputModelName.value = `${pName}_model`;
+  } else {
+    els.outputModelName.value = "my_gaze_model";
+  }
+});
+
 // Collect modal
 els.calibrationBtn.addEventListener("click", () => {
   if (state.collecting) {
