@@ -3989,13 +3989,28 @@
       document.querySelector('#hwMemory .hw-val').textContent  = memory ? memory + ' GB' : 'N/A';
       document.getElementById('hwBenchStatus').textContent     = '執行效能測試...';
 
-      // Simple floating-point benchmark
-      const N = 2_000_000;
+      // Matrix multiplication benchmark (simulates deep learning inference load)
+      const N_size = 350;
+      const A = new Float32Array(N_size * N_size);
+      const B = new Float32Array(N_size * N_size);
+      const C = new Float32Array(N_size * N_size);
+      
+      for (let i = 0; i < N_size * N_size; i++) {
+        A[i] = Math.sin(i);
+        B[i] = Math.cos(i);
+      }
+      
       const t0 = performance.now();
-      let acc = 0;
-      for (let i = 0; i < N; i++) { acc += Math.sqrt(i) * Math.sin(i * 0.001); }
+      for (let i = 0; i < N_size; i++) {
+        for (let j = 0; j < N_size; j++) {
+          let sum = 0;
+          for (let k = 0; k < N_size; k++) {
+            sum += A[i * N_size + k] * B[k * N_size + j];
+          }
+          C[i * N_size + j] = sum;
+        }
+      }
       const benchMs = performance.now() - t0;
-      const _ = acc; // prevent dead-code elimination
 
       document.getElementById('hwBenchBar').style.width = '100%';
       document.getElementById('hwBenchStatus').textContent = '偵測完成';
@@ -4006,14 +4021,14 @@
       const isLowMem  = memory && memory < 8;
 
       let score, recommendation, hwClass;
-      if (benchMs < 80 && !isLowCore && !isLowMem) {
+      if (benchMs < 65 && !isLowCore && !isLowMem) {
         score = 'fast';
         recommendation = '您的硬體效能優異 ✅ — 建議使用<b>即時推論模式</b>，可獲得最佳即時注視點體驗。';
         hwClass = 'good';
-      } else if (benchMs < 200 && !isLowMem) {
+      } else if (benchMs < 130 && !isLowMem) {
         score = 'medium';
         if (isLowCore) {
-          recommendation = '您的硬體單核運算快，但核心數較少（' + cores + ' 核心）⚠️ — 建議使用<b>錄影分析模式</b>以確保瀏覽器順暢運作。';
+          recommendation = '您的硬體運算快，但核心數較少（' + cores + ' 核心）⚠️ — 建議使用<b>錄影分析模式</b>以確保瀏覽器順暢運作。';
         } else {
           recommendation = '您的硬體效能中等 ⚠️ — 兩種模式皆可，建議調高推論間隔（300 ms）或使用<b>錄影分析模式</b>。';
         }
