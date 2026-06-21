@@ -1219,7 +1219,7 @@
                 <strong id="guideCurrentModeTxt"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>錄影模式</strong>
               </div>
               <button class="btn btn-secondary" onclick="if(window.lexiOpenPerfModal) window.lexiOpenPerfModal();" style="width:100%; font-size:11px; min-height:28px;">
-                ⚙ 選擇效能模式與效能測試
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>選擇效能模式與效能測試
               </button>
             </div>
           </div>
@@ -1237,6 +1237,11 @@
               開啟獨立校正視窗，注視跳動黑色圓點進行臉部與個人化眼動基準校正。
             </div>
             <div class="guide-step-content">
+              <!-- Active model row — shown when a model has been confirmed/applied -->
+              <div id="guideActiveModelRow" style="display:none; justify-content:space-between; align-items:center; background:var(--bg-highest); padding:4px 8px; border-radius:4px; font-size:10px; margin-bottom:4px;">
+                <span>套用模型：</span>
+                <strong id="guideActiveModelName" style="font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--success);">—</strong>
+              </div>
               <button class="btn btn-secondary open-gaze-page-btn" style="width:100%; font-size:11px; min-height:28px;">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>前往校正與訓練頁面 ↗
               </button>
@@ -1839,6 +1844,19 @@
   <!-- JavaScript Logics -->
   <script>
     'use strict';
+
+    // Clear session storage if page was explicitly reloaded by the user
+    (function() {
+      const isReload = (window.performance && (
+        (performance.getEntriesByType && performance.getEntriesByType('navigation')[0] && performance.getEntriesByType('navigation')[0].type === 'reload') ||
+        performance.navigation.type === 1
+      ));
+      if (isReload) {
+        sessionStorage.removeItem('lexiPerfConfirmedThisSession');
+        sessionStorage.removeItem('lexiModelSelectedThisSession');
+        sessionStorage.removeItem('lexiWentToGazePage');
+      }
+    })();
 
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -3442,6 +3460,8 @@
       const step2Badge = document.getElementById('guideStep2Badge');
       const step2ConfirmRow = document.getElementById('guideStep2ConfirmRow');
       const step2ModelName  = document.getElementById('guideStep2ModelName');
+      const step2ActiveRow  = document.getElementById('guideActiveModelRow');
+      const step2ActiveName = document.getElementById('guideActiveModelName');
       const modelSelect = document.querySelector('.gaze-model-select');
       const hasModel    = modelSelect && modelSelect.value !== 'before';
       const modelSelected = hasModel && window.lexiModelSelectedThisSession;
@@ -3453,6 +3473,8 @@
           step2.classList.remove('active');
           step2.classList.add('completed');
           if (step2ConfirmRow) step2ConfirmRow.style.display = 'none';
+          if (step2ActiveRow) step2ActiveRow.style.display = 'flex';
+          if (step2ActiveName) step2ActiveName.textContent = modelSelect.value;
         } else {
           step2Badge.textContent = '待執行';
           step2Badge.className = 'guide-step-badge';
@@ -3462,6 +3484,7 @@
           } else {
             step2.classList.remove('active');
           }
+          if (step2ActiveRow) step2ActiveRow.style.display = 'none';
           // Show confirm row if a model is available but not yet confirmed
           if (step2ConfirmRow) {
             step2ConfirmRow.style.display = hasModel ? 'flex' : 'none';
@@ -3660,7 +3683,7 @@
   <div class="modal-backdrop" id="helpTutorialModal">
     <div class="modal-card" style="max-width: 680px; max-height: 90vh;">
       <div class="modal-header">
-        <h3>📖 LexiGaze 使用說明 / User Guide</h3>
+        <h3 style="display:flex; align-items:center; gap:6px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>LexiGaze 使用說明 / User Guide</h3>
         <button class="modal-close-btn" id="closeHelpTutorialBtn">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18"></line>
