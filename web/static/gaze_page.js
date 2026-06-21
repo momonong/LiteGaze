@@ -325,11 +325,11 @@ async function saveSample(point, pointIndex, repeatIndex) {
     });
     const data = await res.json();
     if (data.face_detected === false) {
-      log(`⚠️ 點 ${pointIndex + 1}: 偵測不到臉部，已跳過此幀（請確保臉部在鏡頭範圍內）`);
+      log(`[!] 點 ${pointIndex + 1}: 偵測不到臉部，已跳過此幀（請確保臉部在鏡頭範圍內）`);
     }
   } catch (err) {
     // Network or server error — log but don't abort the whole calibration loop
-    log(`⚠️ 點 ${pointIndex + 1} 上傳失敗: ${err.message}，繼續下一點...`);
+    log(`[!] 點 ${pointIndex + 1} 上傳失敗: ${err.message}，繼續下一點...`);
   }
   els.target.classList.remove("capturing");
 }
