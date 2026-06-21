@@ -40,24 +40,24 @@ The dashboard outputs the following results for the six default configurations:
 LexiGaze fuses three research branches into a single system:
 
 ```
-                  ┌───────────────────────────────┐
-                  │   shengwen/ (Gaze Tracking)   │
-                  │   - MediaPipe Preprocessor    │
-                  │   - UniGaze-B16 Model         │
-                  └───────────────┬───────────────┘
+                  ┌──────────────────────────────────────────────┐
+                  │ core/unigaze_personalization/ (Gaze Tracker) │
+                  │ - MediaPipe Preprocessor                     │
+                  │ - UniGaze-B16 ONNX Model                     │
+                  └───────────────┬──────────────────────────────┘
                                   │ Webcam Coordinates
                                   ▼
-┌──────────────────┐      ┌────────────────────────┐      ┌───────────────────┐
-│  weichi/ (NLP)   ├─────►│  chenghao/ (Flask App) ◄├─────┤ scripts/ (Fusion) │
-│  - Surprisal     │      │  - word_track.html     │      │ - fusion_module.py│
-│  - Rényi Entropy │      │  - server.py (API)     │      │ - Viterbi, EM     │
-└──────────────────┘      └────────────────────────┘      └───────────────────┘
+┌───────────────────────────┐     ┌────────────────────────┐     ┌───────────────────┐
+│ core/cognition/ (NLP)     ├────►│ web/ (Flask Frontend)  ◄├────┤ scripts/ (Fusion) │
+│ - Surprisal & Entropy     │     │ - templates/word_track │     │ - fusion_module.py│
+│ - Ridge / XGBoost Weights │     │ - routes/ (API endpoints)│   │ - Viterbi, EM     │
+└───────────────────────────┘     └────────────────────────┘     └───────────────────┘
 ```
 
-1. **Perception Module (`shengwen/`)**: Preprocesses webcam frames and estimates real-time screen coordinates via the UniGaze-B16 ViT model.
-2. **Cognition Module (`weichi/`)**: Runs text through the transformer-based pipeline to calculate per-word cognitive features (information surprisal, entropy, syntactic load, AoA).
+1. **Perception Module (`core/unigaze_personalization/`)**: Preprocesses webcam frames and estimates screen coordinates.
+2. **Cognition Module (`core/cognition/`)**: Runs text through the transformer-based pipeline to calculate per-word cognitive features (information surprisal, entropy, syntactic load, AoA).
 3. **Fusion Module (`scripts/fusion_module.py`)**: Fuses gaze occurrences with cognitive load to calculate the Reading Difficulty Score (RDS).
-4. **Integration Server (`chenghao/`)**: Serves the frontend web interface, matches gaze coordinates with word layout bounding boxes, and handles HTTP API endpoints.
+4. **Integration Server (`web/`)**: Serves the frontend web interface, matches gaze coordinates with word layout bounding boxes, and handles HTTP API endpoints.
 
 ---
 
@@ -66,25 +66,25 @@ LexiGaze fuses three research branches into a single system:
 To demo the complete integrated system via the web browser:
 
 ### Step 1: Start the Integration Server
-Launch the single entry point `chenghao/server.py` with UTF-8 support:
+Launch the unified entry point `run.py` at the repository root:
 ```bash
-python -X utf8 chenghao/server.py
+python -X utf8 run.py
 ```
 Open `http://localhost:8080` in your web browser.
 
 ### Step 2: Extract Bounding Boxes
-1. On the main page (`word_track.html`), upload a sample PDF, HTML, or TXT document.
+1. On the main page, upload a sample PDF, HTML, or TXT document.
 2. Click **Extract Coordinates** to render the document and extract pixel-level word coordinates.
 
 ### Step 3: Run Cognitive Load Analysis
 1. Select the language (English or Chinese) and click **Analyze Cognitive Load**.
-2. The backend runs the `weichi/` pipeline and returns `load_score` values.
+2. The backend runs the `core/cognition/` pipeline and returns `load_score` values.
 3. Toggle the **Heatmap** slider to display the visual overlay highlighting difficult words.
 
 ### Step 4: Calibrate Gaze Tracking
 1. Navigate to the Gaze Page at `http://localhost:8080/gaze`.
 2. Follow the 9-point grid to collect calibration frames.
-3. Click **Train Model** to run the personalization training, saving the polynomial model to `gaze_data/runs/`.
+3. Click **Train Model** to run the personalization training, saving the polynomial model to `data/gaze_data/runs/`.
 
 ### Step 5: Test Gaze-Cognitive Fusion
 1. Return to the main page, toggle the **Live Gaze Tracking** connection.
@@ -96,14 +96,14 @@ Open `http://localhost:8080` in your web browser.
 
 ## 🔗 How to Integrate Fusion Methods into the Flask Server
 
-To integrate the different fusion algorithms from `scripts/fusion_module.py` directly into the web platform's API endpoint, update `chenghao/fusion_routes.py`:
+To integrate the different fusion algorithms from `scripts/fusion_module.py` directly into the web platform's API endpoint, update `web/routes/fusion.py`:
 
 ```python
-# In D:/projects/lexigaze/chenghao/fusion_routes.py
+# In web/routes/fusion.py
 
 import sys
 from pathlib import Path
-ROOT = Path(__file__).parent.parent
+ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from fusion_module import LexiGazeFusion
