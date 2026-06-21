@@ -4156,17 +4156,20 @@
       if (perfRemember.checked) {
         localStorage.setItem('lexigaze_perf_mode', currentPerfMode);
       }
-      window.lexiPerfConfirmedThisSession = true; // user actively confirmed
+      sessionStorage.setItem('lexiPerfConfirmedThisSession', '1');
+      window.lexiPerfConfirmedThisSession = true;
       applyPerfMode(currentPerfMode);
       closePerfModal();
     });
     perfSkipBtn.addEventListener('click', () => {
-      window.lexiPerfConfirmedThisSession = true; // user actively chose to skip
+      sessionStorage.setItem('lexiPerfConfirmedThisSession', '1');
+      window.lexiPerfConfirmedThisSession = true;
       applyPerfMode(currentPerfMode);
       closePerfModal();
     });
     perfModal.addEventListener('click', (e) => {
       if (e.target === perfModal) {
+        sessionStorage.setItem('lexiPerfConfirmedThisSession', '1');
         window.lexiPerfConfirmedThisSession = true;
         applyPerfMode(currentPerfMode);
         closePerfModal();
@@ -4481,6 +4484,11 @@
         perfModal.classList.add('open');
         runHardwareBenchmark();
       }, 800);
+    }
+
+    // Restore session flags from sessionStorage (survive same-tab navigation like /gaze → back)
+    if (sessionStorage.getItem('lexiPerfConfirmedThisSession') === '1') {
+      window.lexiPerfConfirmedThisSession = true;
     }
 
     // Expose globals

@@ -138,10 +138,19 @@
         if (active !== 'before' && [...select.options].some((o) => o.value === active)) {
           select.value = active;
         } else if (active === 'before' && data.ok && data.models?.length > 0) {
-          // Auto-select the first model when none was selected yet
-          select.value = data.models[0].name;
+          // Auto-select the most recent model when none was selected yet
+          select.value = data.models[data.models.length - 1].name;
         }
       });
+
+      // If the user navigated to /gaze and came back, auto-confirm step 2
+      // (they went there specifically to train a model — count as active selection)
+      if (sessionStorage.getItem('lexiWentToGazePage') === '1' && data.ok && data.models?.length > 0) {
+        sessionStorage.removeItem('lexiWentToGazePage');
+        sessionStorage.setItem('lexiModelSelectedThisSession', '1');
+        window.lexiModelSelectedThisSession = true;
+      }
+
       setStatus(`模型清單已更新，共 ${data.models?.length || 0} 個選項`);
     } catch (err) {
       setStatus(`模型清單載入失敗：${err.message}`);
@@ -388,6 +397,8 @@
   // Set click listener on all calibration/training buttons
   document.querySelectorAll(".open-gaze-page-btn").forEach(btn => {
     btn.addEventListener("click", () => {
+      // Mark that we're leaving for the gaze training page so we can auto-confirm step 2 on return
+      sessionStorage.setItem('lexiWentToGazePage', '1');
       window.location.href = "/gaze";
     });
   });
@@ -396,15 +407,13 @@
   document.querySelectorAll(".gaze-model-select").forEach(select => {
     select.addEventListener("change", (e) => {
       document.querySelectorAll(".gaze-model-select").forEach(other => {
-        if (other !== e.target) {
-          other.value = e.target.value;
-        }
+        if (other !== e.target) other.value = e.target.value;
       });
-      // Mark that the user actively selected a model this session (not auto-selected on load)
+      // Mark that the user actively selected a model — persisted in sessionStorage
+      // so navigation to /gaze and back doesn't reset it
+      sessionStorage.setItem('lexiModelSelectedThisSession', '1');
       window.lexiModelSelectedThisSession = true;
-      if (typeof window.updateGuideUI === "function") {
-        window.updateGuideUI();
-      }
+      if (typeof window.updateGuideUI === "function") window.updateGuideUI();
     });
   });
 
@@ -418,9 +427,13 @@
   state.filterY = new LowPassFilter(0.08);
   updateSmoothLabel();
   updateIntervalLabel();
+
+  // Restore session flags from sessionStorage (survive navigation within same tab)
+  if (sessionStorage.getItem('lexiModelSelectedThisSession') === '1') {
+    window.lexiModelSelectedThisSession = true;
+  }
+
   refreshModels().then(() => {
-    if (typeof window.updateGuideUI === "function") {
-      window.updateGuideUI();
-    }
+    if (typeof window.updateGuideUI === "function") window.updateGuideUI();
   });
 })();
