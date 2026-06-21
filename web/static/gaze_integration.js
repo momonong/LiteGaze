@@ -409,5 +409,9 @@
   state.filterY = new LowPassFilter(0.08);
   updateSmoothLabel();
   updateIntervalLabel();
-  refreshModels();
+  refreshModels().then(() => {
+    if (typeof window.updateGuideUI === "function") {
+      window.updateGuideUI();
+    }
+  });
 })();

@@ -4137,13 +4137,24 @@
         });
         vmRecordedChunks = [];
         vmReadingTimeline = [];
-        const opts = { mimeType: 'video/webm;codecs=vp8' };
-        if (!MediaRecorder.isTypeSupported(opts.mimeType)) opts.mimeType = 'video/webm';
+        // Try mime types in priority order — Safari/macOS only supports mp4
+        const mimeTypes = [
+          'video/webm;codecs=vp8',
+          'video/webm;codecs=vp9',
+          'video/webm',
+          'video/mp4;codecs=avc1',
+          'video/mp4',
+        ];
+        const supportedMime = mimeTypes.find(m => MediaRecorder.isTypeSupported(m)) || '';
+        const opts = supportedMime ? { mimeType: supportedMime } : {};
         vmRecorder = new MediaRecorder(vmStream, opts);
         vmRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) vmRecordedChunks.push(e.data); };
         vmRecorder.start(500); // collect every 500ms chunk
         vmRecordingStart = performance.now();
         vmIsRecording = true;
+
+        // Store the actual mimeType used so Blob creation can match it
+        window.lexiVmMimeType = supportedMime || vmRecorder.mimeType || 'video/webm';
 
         // Sync with global window variables for Step Guide
         window.lexiVmIsRecording = vmIsRecording;
@@ -4220,11 +4231,13 @@
       window.lexiVmIsUploading = true;
       if (typeof updateGuideUI === 'function') updateGuideUI();
 
-      const videoBlob = new Blob(vmRecordedChunks, { type: 'video/webm' });
+      const actualMime = window.lexiVmMimeType || 'video/webm';
+      const videoExt = actualMime.includes('mp4') ? 'mp4' : 'webm';
+      const videoBlob = new Blob(vmRecordedChunks, { type: actualMime });
       const modelName = document.querySelector('.gaze-model-select')?.value || 'before';
 
       const formData = new FormData();
-      formData.append('video', videoBlob, 'reading_session.webm');
+      formData.append('video', videoBlob, `reading_session.${videoExt}`);
       formData.append('reading_timeline', JSON.stringify(vmReadingTimeline));
       formData.append('model_name', modelName);
       formData.append('viewport_width', String(window.innerWidth));
