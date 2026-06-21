@@ -76,7 +76,10 @@ class CognitiveInspector:
                 best_conf = conf
 
         count = len(group)
-        duration = count * tick_ms
+        # Cap the effective tick_ms to a realistic human fixation sample size (e.g. 200ms)
+        # when dealing with sparse/video-based sampling.
+        effective_tick = min(tick_ms, 200.0)
+        duration = count * effective_tick
 
         return GazeFixation(
             word=first.get("word", ""),
