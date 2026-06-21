@@ -4111,6 +4111,8 @@
     // ── Modal open/close ───────────────────────────────────────────────────
     window.openPerfModeModal = function() {
       perfModal.classList.add('open');
+      // Always re-run benchmark so values are populated when manually opened
+      runHardwareBenchmark();
     };
     function closePerfModal() {
       perfModal.classList.remove('open');
