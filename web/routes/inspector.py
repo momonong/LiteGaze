@@ -135,6 +135,17 @@ def delete_report(filename):
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+def _clean_json_response(text: str) -> str:
+    import re
+    # Strip <thought>...</thought> blocks (case-insensitive, multi-line)
+    text = re.sub(r'(?i)<thought>.*?</thought>', '', text, flags=re.DOTALL)
+    # Strip ```json and ``` code block wrappers if present
+    match = re.search(r'```(?:json)?\s*(.*?)\s*```', text, flags=re.DOTALL)
+    if match:
+        text = match.group(1)
+    return text.strip()
+
+
 @inspector_bp.post("/quiz")
 def generate_agentic_quiz():
     """
@@ -290,7 +301,7 @@ Return the response in structured JSON format matching this exact schema:
             text_response = parts[-1]["text"]
         
         # Load generated JSON quiz
-        quiz_data = json.loads(text_response)
+        quiz_data = json.loads(_clean_json_response(text_response))
         return jsonify({
             "ok": True,
             "quiz": quiz_data.get("questions", []),
@@ -703,7 +714,7 @@ Return the response in structured JSON format matching this exact schema:
                 non_thought_parts = [p["text"] for p in parts if not p.get("thought")]
                 text_response = non_thought_parts[0] if non_thought_parts else parts[-1]["text"]
                 
-                res_data = json.loads(text_response)
+                res_data = json.loads(_clean_json_response(text_response))
                 if "text" in res_data and "quiz" in res_data:
                     return jsonify({
                         "ok": True,
@@ -825,7 +836,7 @@ Return the response in structured JSON format matching this exact schema:
                 non_thought_parts = [p["text"] for p in parts if not p.get("thought")]
                 text_response = non_thought_parts[0] if non_thought_parts else parts[-1]["text"]
                 
-                res_data = json.loads(text_response)
+                res_data = json.loads(_clean_json_response(text_response))
                 report_md = res_data.get("report_md", "")
                 summary_data = res_data.get("summary", {})
                 opt_font = summary_data.get("optimal_font_size", opt_font)
