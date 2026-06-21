@@ -89,24 +89,51 @@ def analyze_reading_video():
 
         fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
 
-        # Build a frame index: timestamp_ms → frame (lazy extraction)
+        # Sort reading_timeline chronologically
+        reading_timeline.sort(key=lambda e: float(e.get("timestamp_ms", 0)))
+
         gaze_events = []
         gaze_buffer: dict[str, dict] = {}  # key → {word, dwell_count, fixation_count, confidence}
         gaze_history = []                  # chronological trace of hits
         prev_word_key: str | None = None
 
-        # Sample one frame per timeline event, ±200ms tolerance
-        for event in reading_timeline:
+        timeline_idx = 0
+        frame_idx = 0
+
+        while timeline_idx < len(reading_timeline) and cap.isOpened():
+            event = reading_timeline[timeline_idx]
             ts_ms      = float(event.get("timestamp_ms", 0))
             word       = str(event.get("word", ""))
             word_index = int(event.get("index", -1))
             confidence_hint = event.get("confidence", "medium")
 
-            # Seek to the timestamp
-            cap.set(cv2.CAP_PROP_POS_MSEC, ts_ms)
-            ret, frame = cap.read()
-            if not ret or frame is None:
-                continue
+            # Sequential frame extraction to avoid OpenCV seek issues on browser-recorded streams
+            frame = None
+            matched_ts_ms = 0.0
+
+            while cap.isOpened():
+                pos_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
+                if pos_ms <= 0 and frame_idx > 0:
+                    pos_ms = frame_idx * (1000.0 / fps)
+
+                # Match frame closest to ts_ms (with a half-frame tolerance of ~16.6ms)
+                if pos_ms >= ts_ms - 16.6:
+                    ret, f = cap.read()
+                    if not ret or f is None:
+                        break
+                    frame = f
+                    matched_ts_ms = pos_ms
+                    frame_idx += 1
+                    break
+                else:
+                    # Skip frame
+                    ret = cap.grab()
+                    if not ret:
+                        break
+                    frame_idx += 1
+
+            if frame is None:
+                break
 
             # Resize to 240×180 for speed (same as gaze_integration.js captureFrame)
             h, w = frame.shape[:2]
@@ -153,7 +180,7 @@ def analyze_reading_video():
                     "word":         word,
                     "index":        word_index,
                     "confidence":   confidence,
-                    "timestamp_ms": int(ts_ms),
+                    "timestamp_ms": int(matched_ts_ms),
                 })
 
                 # Aggregated buffer (same structure as gazeBuffer in JS)
@@ -173,6 +200,8 @@ def analyze_reading_video():
                     rank = {"high": 2, "medium": 1, "low": 0}
                     if rank.get(confidence, 0) > rank.get(gaze_buffer[key]["confidence"], 0):
                         gaze_buffer[key]["confidence"] = confidence
+
+            timeline_idx += 1
 
         cap.release()
 
