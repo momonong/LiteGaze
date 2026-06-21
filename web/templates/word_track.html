@@ -1363,7 +1363,7 @@
               <button class="btn btn-info" id="guideQuizBtn" onclick="openAgenticQuizModal()" style="width:100%; font-size:11px; min-height:28px; margin-top:4px;" disabled>
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>互動認知理解測驗 (Gemini)
               </button>
-              <button class="btn btn-info" id="guideAdaptiveBtn" onclick="openAdaptiveTestModal()" style="width:100%; font-size:11px; min-height:28px; margin-top:4px;">
+              <button class="btn btn-info" id="guideAdaptiveBtn" onclick="openAdaptiveTestModal()" style="width:100%; font-size:11px; min-height:28px; margin-top:4px;" disabled>
                 <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px; margin-right:3px;"><path d="M12 2a10 10 0 0 1 7.07 17.07A10 10 0 0 1 4.93 4.93 10 10 0 0 1 12 2z"/><path d="M12 6v6l4 2"/></svg>適應性多輪認知診斷
               </button>
             </div>
@@ -2860,6 +2860,7 @@
       cognitiveOn = false;
       cognitiveResult = null;
       cogScoreMap.clear();
+      window.cognitiveLookup = null;
       cogStats.classList.remove('visible');
       cogList.classList.remove('visible');
       cogList.innerHTML = '';
@@ -2952,6 +2953,11 @@
               ent_type: w.ent_type || '',
             });
           }
+        });
+
+        window.cognitiveLookup = {};
+        cogScoreMap.forEach((val, key) => {
+          window.cognitiveLookup[key] = val;
         });
 
         cogProgressFill.style.width = '100%';
@@ -3299,6 +3305,9 @@
         const data = await res.json();
         if (!res.ok || !data.ok) throw new Error(data.error || '報告生成失敗');
 
+        // Store markdown for clipboard copying
+        window.lastGeneratedReportMd = data.report_md;
+
         // Also persist the gaze session with the correct participant-scoped ID
         if (typeof window.exportFusion === 'function') {
           window.exportFusion(data.analysis || {}, sessionId, true).catch(() => {});
@@ -3384,6 +3393,7 @@
         if (!res.ok) throw new Error('報告找不到');
         const data = await res.json();
         
+        window.lastGeneratedReportMd = data.markdown;
         cogReportContent.innerHTML = typeof marked !== 'undefined' ? marked.parse(data.markdown) : `<pre style="white-space:pre-wrap;">${data.markdown}</pre>`;
         cogReportModal.classList.add('open');
       } catch (e) {
@@ -3428,6 +3438,7 @@
       const cogReportModal           = document.getElementById('cogReportModal');
       const closeCogReportBtn        = document.getElementById('closeCogReportBtn');
       const closeCogReportFooterBtn  = document.getElementById('closeCogReportFooterBtn');
+      const copyCogReportBtn         = document.getElementById('copyCogReportBtn');
 
       function closeReportModal() {
         if (cogReportModal) cogReportModal.classList.remove('open');
@@ -3435,6 +3446,23 @@
 
       closeCogReportBtn?.addEventListener('click', closeReportModal);
       closeCogReportFooterBtn?.addEventListener('click', closeReportModal);
+      
+      copyCogReportBtn?.addEventListener('click', async () => {
+        if (!window.lastGeneratedReportMd) {
+          alert("目前無可複製的報告內容。");
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(window.lastGeneratedReportMd);
+          const originalText = copyCogReportBtn.innerHTML;
+          copyCogReportBtn.innerHTML = `✓ 已複製 Markdown`;
+          setTimeout(() => {
+            copyCogReportBtn.innerHTML = originalText;
+          }, 1500);
+        } catch (err) {
+          alert('複製失敗：' + err.message);
+        }
+      });
 
       cogReportModal?.addEventListener('click', (e) => {
         if (e.target === cogReportModal) closeReportModal();
@@ -3613,8 +3641,10 @@
       const step5Badge = document.getElementById('guideStep5Badge');
       const guideReportBtn = document.getElementById('guideReportBtn');
       const guideQuizBtn = document.getElementById('guideQuizBtn');
+      const guideAdaptiveBtn = document.getElementById('guideAdaptiveBtn');
       
       const hasAnalysis = lastInspectorAnalysisGazeHistory !== null;
+      const isSessionActive = window.lexiCurrentSessionId !== undefined && window.lexiCurrentSessionId !== null;
       
       if (step5 && step5Badge) {
         if (hasAnalysis) {
@@ -3623,13 +3653,15 @@
           step5.classList.remove('active');
           step5.classList.add('completed');
           if (guideReportBtn) guideReportBtn.disabled = false;
-          if (guideQuizBtn) guideQuizBtn.disabled = false;
+          if (guideQuizBtn) guideQuizBtn.disabled = !isSessionActive;
+          if (guideAdaptiveBtn) guideAdaptiveBtn.disabled = !isSessionActive;
         } else {
           step5Badge.textContent = '待執行';
           step5Badge.className = 'guide-step-badge';
           step5.classList.remove('completed');
           if (guideReportBtn) guideReportBtn.disabled = true;
-          if (guideQuizBtn) guideQuizBtn.disabled = true;
+          if (guideQuizBtn) guideQuizBtn.disabled = !isSessionActive;
+          if (guideAdaptiveBtn) guideAdaptiveBtn.disabled = !isSessionActive;
           
           if (!hasData) {
             step5.classList.remove('active');
@@ -3845,6 +3877,10 @@
     let originalFileState = null;
 
     window.openAdaptiveTestModal = function() {
+      if (!window.lexiCurrentSessionId) {
+        alert("請先載入與解析閱讀文件！");
+        return;
+      }
       const modal = document.getElementById('adaptiveTestModal');
       modal.classList.add('open');
       
@@ -4321,7 +4357,12 @@
         </div>
       `;
       
+      window.lastAdaptiveReportMd = reportMd;
       footer.innerHTML = `
+        <button class="btn btn-secondary" onclick="copyAdaptiveReportMarkdown(this)" style="display:flex; align-items:center; gap:4px; font-size:11px; padding:0.35rem 0.75rem; margin-right:auto;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          複製報告 Markdown
+        </button>
         <button class="btn btn-primary" onclick="finishAdaptiveSession()">儲存並關閉</button>
       `;
     }
@@ -4340,6 +4381,20 @@
       document.getElementById('adaptiveTestModal').classList.remove('open');
       if (typeof updateGuideUI === 'function') updateGuideUI();
       if (typeof loadHistory === 'function') loadHistory();
+    };
+
+    window.copyAdaptiveReportMarkdown = async function(btn) {
+      if (!window.lastAdaptiveReportMd) return;
+      try {
+        await navigator.clipboard.writeText(window.lastAdaptiveReportMd);
+        const originalText = btn.innerHTML;
+        btn.innerHTML = `✓ 已複製`;
+        setTimeout(() => {
+          btn.innerHTML = originalText;
+        }, 1500);
+      } catch (err) {
+        alert('複製失敗：' + err.message);
+      }
     };
 
     // Stepper bindings and sync
@@ -4416,6 +4471,10 @@
         <!-- Marked report content will be loaded here -->
       </div>
       <div style="padding: 1rem 1.5rem; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; background: var(--bg-elevated); flex-shrink: 0;">
+        <button class="btn btn-secondary" id="copyCogReportBtn" style="display:flex; align-items:center; gap:4px; font-size:11px; padding:0.35rem 0.75rem;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          複製報告 Markdown
+        </button>
         <button class="btn btn-secondary" id="closeCogReportFooterBtn">關閉</button>
       </div>
     </div>
