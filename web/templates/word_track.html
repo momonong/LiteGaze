@@ -4001,19 +4001,26 @@
       document.getElementById('hwBenchStatus').textContent = '偵測完成';
       document.querySelector('#hwBench .hw-val').textContent = Math.round(benchMs) + ' ms';
 
-      // Score: lower is faster. < 80ms = powerful, 80-200ms = medium, >200ms = slow
+      // Score: lower is faster.
+      const isLowCore = cores < 8;
+      const isLowMem  = memory && memory < 8;
+
       let score, recommendation, hwClass;
-      if (benchMs < 80) {
+      if (benchMs < 80 && !isLowCore && !isLowMem) {
         score = 'fast';
         recommendation = '您的硬體效能優異 ✅ — 建議使用<b>即時推論模式</b>，可獲得最佳即時注視點體驗。';
         hwClass = 'good';
-      } else if (benchMs < 200) {
+      } else if (benchMs < 200 && !isLowMem) {
         score = 'medium';
-        recommendation = '您的硬體效能中等 ⚠️ — 兩種模式皆可，建議調高推論間隔（300 ms）或使用<b>錄影分析模式</b>。';
+        if (isLowCore) {
+          recommendation = '您的硬體單核運算快，但核心數較少（' + cores + ' 核心）⚠️ — 建議使用<b>錄影分析模式</b>以確保瀏覽器順暢運作。';
+        } else {
+          recommendation = '您的硬體效能中等 ⚠️ — 兩種模式皆可，建議調高推論間隔（300 ms）或使用<b>錄影分析模式</b>。';
+        }
         hwClass = 'warn';
       } else {
         score = 'slow';
-        recommendation = '您的硬體效能較舊（如 2019 MacBook i5）🔴 — 強烈建議使用<b>錄影分析模式</b>，閱讀時不佔 CPU，結束後再分析。';
+        recommendation = '您的硬體效能較舊（如 2019 MacBook i5 或資源受限）🔴 — 強烈建議使用<b>錄影分析模式</b>，閱讀時不佔 CPU，結束後再分析。';
         hwClass = 'warn';
       }
 
