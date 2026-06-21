@@ -1300,6 +1300,13 @@
               <span class="guide-step-badge" id="guideStep4Badge">待執行</span>
             </div>
             
+            <!-- Webcam circle preview block — hidden by default, shown when camera is active -->
+            <div id="guideWebcamPreviewRow" style="display:none; justify-content:center; align-items:center; margin:6px 0;">
+              <div style="position:relative; width:54px; height:54px; border:2px solid var(--accent); border-radius:50%; overflow:hidden; background:var(--bg-highest); box-shadow:var(--shadow-sm); display:flex; justify-content:center; align-items:center;">
+                <video id="guideWebcamVideo" autoplay playsinline muted style="display:block; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); border-radius:50%;"></video>
+              </div>
+            </div>
+            
             <!-- Video Mode UI inside Step 4 -->
             <div id="guideVmControls" style="display:flex; flex-direction:column; gap:4px; margin-top:2px;">
               <div class="guide-step-desc">
@@ -1355,6 +1362,9 @@
               </button>
               <button class="btn btn-info" id="guideQuizBtn" onclick="openAgenticQuizModal()" style="width:100%; font-size:11px; min-height:28px; margin-top:4px;" disabled>
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>互動認知理解測驗 (Gemini)
+              </button>
+              <button class="btn btn-info" id="guideAdaptiveBtn" onclick="openAdaptiveTestModal()" style="width:100%; font-size:11px; min-height:28px; margin-top:4px;">
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px; margin-right:3px;"><path d="M12 2a10 10 0 0 1 7.07 17.07A10 10 0 0 1 4.93 4.93 10 10 0 0 1 12 2z"/><path d="M12 6v6l4 2"/></svg>適應性多輪認知診斷
               </button>
             </div>
           </div>
@@ -1440,6 +1450,13 @@
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.4rem;">
           <div class="panel-section-title" style="margin-bottom:0;">眼動追蹤</div>
           <span id="gazePerfModeTag" class="perf-mode-tag video" onclick="if(window.lexiOpenPerfModal) window.lexiOpenPerfModal();" title="點擊切換效能模式"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>錄影模式</span>
+        </div>
+
+        <!-- Webcam circle preview block — hidden by default, shown when camera is active -->
+        <div id="gazeWebcamPreviewRow" style="display:none; justify-content:center; align-items:center; margin:6px 0;">
+          <div style="position:relative; width:54px; height:54px; border:2px solid var(--accent); border-radius:50%; overflow:hidden; background:var(--bg-highest); box-shadow:var(--shadow-sm); display:flex; justify-content:center; align-items:center;">
+            <video id="gazeWebcamVideo" autoplay playsinline muted style="display:block; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); border-radius:50%;"></video>
+          </div>
         </div>
 
         <!-- ── Video-Record Mode Controls (shown when mode = video) ── -->
@@ -1716,6 +1733,10 @@
 
         <button class="btn btn-primary" id="inspectAnalyzeBtn" style="width:100%; margin-top:8px;">開始診斷認知能力</button>
         <button class="btn btn-secondary" id="inspectReportBtn" style="width:100%; margin-top:6px;" disabled>產生與儲存診斷報告</button>
+        <button class="btn btn-info" id="inspectAdaptiveBtn" onclick="openAdaptiveTestModal()" style="width:100%; margin-top:6px;">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px; margin-right:3px;"><path d="M12 2a10 10 0 0 1 7.07 17.07A10 10 0 0 1 4.93 4.93 10 10 0 0 1 12 2z"/><path d="M12 6v6l4 2"/></svg>
+          開始適應性多輪診斷
+        </button>
 
         <!-- Dynamic Diagnosis Results Card -->
         <div class="stats-card" id="inspectResultsCard" style="margin-top:12px; display:none; flex-direction:column; gap:10px; padding: 12px; background: rgba(0,0,0,0.02); border: 1px solid var(--line-strong);">
@@ -2271,7 +2292,15 @@
 
       const wrap = document.createElement('div');
       wrap.className = 'page-wrap doc-page';
-      wrap.style.width = '794px'; // standard A4 CSS width at 96 DPI
+      if (window.lexiAdaptiveConfig) {
+        wrap.style.width = `${window.lexiAdaptiveConfig.line_width}px`;
+        wrap.style.fontSize = `${window.lexiAdaptiveConfig.font_size}px`;
+        wrap.style.lineHeight = `${window.lexiAdaptiveConfig.line_height}`;
+        wrap.style.padding = '30px';
+        wrap.style.boxSizing = 'border-box';
+      } else {
+        wrap.style.width = '794px'; // standard A4 CSS width at 96 DPI
+      }
       wrap.appendChild(contentDiv);
 
       const overlayCanvas = document.createElement('canvas');
@@ -3809,6 +3838,510 @@
     closeQuizBtn.addEventListener('click', closeQuizModalFunc);
     closeQuizFooter.addEventListener('click', closeQuizModalFunc);
 
+    // ── Adaptive Agentic Testing Module Logic ───────────────────────────────────────
+    let adaptiveHistory = [];
+    let adaptiveCurrentRound = 1;
+    let adaptiveCurrentConfig = null;
+    let originalFileState = null;
+
+    window.openAdaptiveTestModal = function() {
+      const modal = document.getElementById('adaptiveTestModal');
+      modal.classList.add('open');
+      
+      // Backup original reader state
+      originalFileState = {
+        file: currentFile,
+        fileType: currentFileType,
+        extractedData: extractedData,
+        sessionId: window.lexiCurrentSessionId,
+        html: previewArea.innerHTML
+      };
+      
+      adaptiveHistory = [];
+      adaptiveCurrentRound = 1;
+      
+      renderAdaptiveStartView();
+    };
+
+    function renderAdaptiveStartView() {
+      const content = document.getElementById('adaptiveTestContent');
+      const footer = document.getElementById('adaptiveTestFooter');
+      
+      content.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:12px; font-size:12px; line-height:1.5;">
+          <div style="font-weight:700; font-size:13px; color:var(--accent);">適應性多輪認知診斷測驗</div>
+          <p style="margin: 0; color: var(--ink-secondary);">
+            本測驗包含 <b>3 輪</b> 閱讀與理解測試。系統將評估您的眼動軌跡（WPM、回看次數、注視長度）與理解能力，並據此<b>動態調整後續文字的排版大小、行寬與文意難度</b>。
+          </p>
+          <div style="background:var(--bg-highest); border:1px solid var(--line); padding:10px; border-radius:6px;">
+            <div style="font-weight:700; margin-bottom:4px;">📌 測試說明與步驟：</div>
+            <ol style="margin: 0; padding-left:14px; display:flex; flex-direction:column; gap:4px; color: var(--ink-secondary);">
+              <li>點擊下方「開始測試」載入第 1 輪基線文章。</li>
+              <li>點擊「開始閱讀」，系統將開啟相機。</li>
+              <li>專注且自然地閱讀右側主畫面中的文章段落。</li>
+              <li>讀完後，點擊「我讀完了」回答兩題理解選擇題。</li>
+              <li>答題完畢後，系統將決定下一輪的排版與難度，重複以上步驟至第 3 輪結束。</li>
+            </ol>
+          </div>
+          <div style="font-weight:600; color:var(--ink-secondary); margin-top: 4px;">
+            請選擇閱讀語言：
+            <select id="adaptiveLangSelect" style="font-size:11px; padding:3px 6px; border-radius:4px; border:1px solid var(--line-strong); background: var(--bg-base); color: var(--ink-primary);">
+              <option value="zh">繁體中文 (Chinese)</option>
+              <option value="en">English (英文)</option>
+            </select>
+          </div>
+        </div>
+      `;
+      
+      footer.innerHTML = `
+        <button class="btn btn-secondary" onclick="closeAdaptiveTestModal()">取消</button>
+        <button class="btn btn-primary" onclick="startAdaptiveSession()">開始測試</button>
+      `;
+    }
+
+    window.closeAdaptiveTestModal = function() {
+      document.getElementById('adaptiveTestModal').classList.remove('open');
+      // Restore original state
+      if (originalFileState) {
+        currentFile = originalFileState.file;
+        currentFileType = originalFileState.fileType;
+        extractedData = originalFileState.extractedData;
+        window.lexiCurrentSessionId = originalFileState.sessionId;
+        previewArea.innerHTML = originalFileState.html;
+        
+        window.lexiAdaptiveConfig = null;
+        if (typeof updateGuideUI === 'function') updateGuideUI();
+      }
+    };
+
+    window.startAdaptiveSession = async function() {
+      const lang = document.getElementById('adaptiveLangSelect')?.value || 'zh';
+      const content = document.getElementById('adaptiveTestContent');
+      
+      content.innerHTML = `
+        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:3rem; gap:1rem;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="animate-spin" style="color:var(--accent);"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>
+          <div style="font-size:12px; color:var(--ink-secondary);">正在載入第一輪測試，請稍候...</div>
+        </div>
+      `;
+      
+      try {
+        const res = await fetch('/api/inspector/adaptive/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lang })
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "無法啟動測試");
+        
+        adaptiveCurrentRound = 1;
+        adaptiveCurrentConfig = data;
+        adaptiveCurrentConfig.lang = lang;
+        
+        await loadAdaptiveRoundText(data);
+      } catch (err) {
+        alert("載入測試失敗：" + err.message);
+        renderAdaptiveStartView();
+      }
+    };
+
+    async function loadAdaptiveRoundText(data) {
+      window.lexiAdaptiveConfig = {
+        font_size: data.font_size,
+        line_width: data.line_width,
+        line_height: data.line_height
+      };
+      
+      const filename = `adaptive_round_${data.round}.md`;
+      const fileText = `# Round ${data.round} (${data.difficulty.toUpperCase()})\n\n${data.text}`;
+      const dummyFile = new File([fileText], filename, { type: 'text/markdown' });
+      
+      log(`[適應性測試] 載入第 ${data.round} 輪: 字級=${data.font_size}px, 欄寬=${data.line_width}px, 難度=${data.difficulty}`);
+      
+      loadFile(dummyFile);
+      
+      renderActiveRoundView(data);
+    }
+
+    function renderActiveRoundView(data) {
+      const content = document.getElementById('adaptiveTestContent');
+      const footer = document.getElementById('adaptiveTestFooter');
+      
+      const mode = window.lexiPerfMode || 'video';
+      const modeName = mode === 'video' ? '錄影分析模式' : '即時推論模式';
+      
+      content.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:12px; font-size:12px; line-height:1.5;">
+          <div style="display:flex; justify-content:space-between; align-items:center; background:var(--accent-soft); padding:6px 10px; border-radius:4px; border-left:3px solid var(--accent);">
+            <strong style="color:var(--accent); font-size:13px;">第 ${data.round} / 3 輪：閱讀中</strong>
+            <span style="font-size:10px; background:var(--bg-highest); padding:2px 6px; border-radius:10px; color:var(--ink-secondary); font-weight:600;">難度: ${data.difficulty.toUpperCase()}</span>
+          </div>
+          
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; background:var(--bg-highest); padding:8px; border-radius:6px; border:1px solid var(--line);">
+            <div><span style="color:var(--ink-muted);">字型大小：</span><strong>${data.font_size} px</strong></div>
+            <div><span style="color:var(--ink-muted);">區塊寬度：</span><strong>${data.line_width} px</strong></div>
+            <div><span style="color:var(--ink-muted);">排版行高：</span><strong>${data.line_height}</strong></div>
+            <div><span style="color:var(--ink-muted);">眼動分析模式：</span><strong style="color:var(--accent);">${modeName}</strong></div>
+          </div>
+          
+          <div style="font-size:11px; color:var(--ink-secondary); padding:4px 0;">
+            👉 <strong>操作指引</strong>：
+            <br>1. 請點選下方<b>「開啟相機並開始閱讀」</b>。
+            <br>2. 專注且自然地閱讀右側文件。
+            <br>3. 閱讀完畢後，點選下方<b>「我讀完了，進行理解測驗」</b>。
+          </div>
+          
+          <div id="adaptiveRunningStatus" style="font-size:11px; padding:6px 8px; border-radius:4px; background:var(--bg-elevated); color:var(--ink-muted); text-align:center; font-weight:600;">
+            狀態：尚未啟動相機
+          </div>
+        </div>
+      `;
+      
+      footer.innerHTML = `
+        <button class="btn btn-secondary" onclick="closeAdaptiveTestModal()">放棄並退出</button>
+        <button class="btn btn-success" id="adaptiveStartReadBtn" onclick="startAdaptiveReading()">▶ 開啟相機並開始閱讀</button>
+        <button class="btn btn-primary" id="adaptiveStopReadBtn" onclick="stopAdaptiveReading()" style="display:none;">✓ 我讀完了，進行理解測驗</button>
+      `;
+    }
+
+    let adaptiveStartTime = 0;
+    
+    window.startAdaptiveReading = async function() {
+      const mode = window.lexiPerfMode || 'video';
+      const statusDiv = document.getElementById('adaptiveRunningStatus');
+      const startBtn = document.getElementById('adaptiveStartReadBtn');
+      const stopBtn = document.getElementById('adaptiveStopReadBtn');
+      
+      statusDiv.innerHTML = "正在啟動鏡頭中，請稍候...";
+      statusDiv.style.color = "var(--accent)";
+      
+      try {
+        if (mode === 'video') {
+          if (typeof window.startVideoRecording === 'function') {
+            await window.startVideoRecording();
+          } else {
+            throw new Error("找不到錄影模組");
+          }
+        } else {
+          const toggle = document.getElementById('gazeToggle');
+          if (toggle && !toggle.classList.contains('active')) {
+            toggle.click();
+          }
+          if (typeof window.clearGazeHistory === 'function') window.clearGazeHistory();
+        }
+        
+        adaptiveStartTime = performance.now();
+        statusDiv.innerHTML = "🟢 追蹤中！請專注閱讀右側主畫面中的段落，讀完後點擊下方按鈕。";
+        statusDiv.style.color = "var(--success)";
+        
+        startBtn.style.display = "none";
+        stopBtn.style.display = "inline-flex";
+      } catch (err) {
+        statusDiv.innerHTML = "❌ 啟動失敗：" + err.message;
+        statusDiv.style.color = "var(--danger)";
+      }
+    };
+
+    window.stopAdaptiveReading = async function() {
+      const mode = window.lexiPerfMode || 'video';
+      const statusDiv = document.getElementById('adaptiveRunningStatus');
+      const stopBtn = document.getElementById('adaptiveStopReadBtn');
+      
+      statusDiv.innerHTML = "正在處理並暫停追蹤中...";
+      statusDiv.style.color = "var(--accent)";
+      stopBtn.disabled = true;
+      
+      const readingDurationMs = performance.now() - adaptiveStartTime;
+      let rawGazeHistory = [];
+      
+      try {
+        if (mode === 'video') {
+          if (typeof window.stopVideoRecording === 'function') {
+            window.stopVideoRecording();
+          }
+          
+          statusDiv.innerHTML = "正在上傳並分析影片視線，請稍候...";
+          
+          const blob = new Blob(window.lexiVmRecordedChunks, { type: window.lexiVmMimeType });
+          const formData = new FormData();
+          formData.append('video', blob, 'recording.webm');
+          formData.append('reading_timeline', JSON.stringify(vmReadingTimeline));
+          formData.append('model_name', document.getElementById('gazeModelSelect')?.value || 'before');
+          formData.append('viewport_width', String(window.innerWidth));
+          formData.append('viewport_height', String(window.innerHeight));
+          
+          const res = await fetch('/api/gaze/analyze_reading_video', { method: 'POST', body: formData });
+          const result = await res.json();
+          if (!result.ok) throw new Error(result.error || "影片分析失敗");
+          rawGazeHistory = result.gaze_history || [];
+        } else {
+          const toggle = document.getElementById('gazeToggle');
+          if (toggle && toggle.classList.contains('active')) {
+            toggle.click();
+          }
+          rawGazeHistory = typeof window.flushGazeHistory === 'function' ? window.flushGazeHistory() : [];
+        }
+        
+        const res = await fetch('/api/inspector/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gaze_history: rawGazeHistory,
+            lang: adaptiveCurrentConfig.lang || 'en'
+          })
+        });
+        const analysisData = await res.json();
+        const metrics = analysisData.ok ? analysisData.analysis.summary : {};
+        
+        adaptiveCurrentConfig.metrics = {
+          wpm: metrics.words_per_minute || Math.round((window.extractedData?.length || 50) / (readingDurationMs / 60000.0)),
+          regression_rate: metrics.regression_rate || 0.0,
+          avg_fixation_duration_ms: metrics.avg_fixation_duration_ms || 250.0,
+          gaze_history: rawGazeHistory
+        };
+        
+        renderAdaptiveQuizView();
+      } catch (err) {
+        alert("資料處理失敗：" + err.message);
+        statusDiv.innerHTML = "❌ 處理失敗，請重試。";
+        statusDiv.style.color = "var(--danger)";
+        stopBtn.disabled = false;
+      }
+    };
+
+    function renderAdaptiveQuizView() {
+      const content = document.getElementById('adaptiveTestContent');
+      const footer = document.getElementById('adaptiveTestFooter');
+      const quiz = adaptiveCurrentConfig.quiz;
+      
+      let html = `
+        <div style="display:flex; flex-direction:column; gap:12px; font-size:12px; line-height:1.5;">
+          <div style="background:var(--success-soft); padding:6px 10px; border-radius:4px; border-left:3px solid var(--success); font-weight:700; color:var(--success);">
+            ✓ 閱讀完成！請回答以下理解問題：
+          </div>
+      `;
+      
+      quiz.forEach((q, idx) => {
+        html += `
+          <div class="adaptive-quiz-question" style="border-bottom:1px solid var(--line); padding-bottom:8px; margin-bottom:8px;">
+            <div style="font-weight:600; margin-bottom:6px;">${idx + 1}. ${escHtml(q.question)}</div>
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              ${Object.entries(q.options).map(([key, val]) => `
+                <label style="display:flex; align-items:center; gap:6px; background:var(--bg-highest); padding:6px 8px; border-radius:4px; cursor:pointer; font-size:11px; border: 1px solid transparent;">
+                  <input type="radio" name="ad_q_${idx}" value="${key}">
+                  <span><strong>${key}.</strong> ${escHtml(val)}</span>
+                </label>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      });
+      
+      html += `</div>`;
+      content.innerHTML = html;
+      
+      footer.innerHTML = `
+        <button class="btn btn-secondary" onclick="closeAdaptiveTestModal()">放棄並退出</button>
+        <button class="btn btn-primary" onclick="submitAdaptiveQuiz()">送出並進入下一輪</button>
+      `;
+      
+      document.querySelectorAll('.adaptive-quiz-question label').forEach(label => {
+        const input = label.querySelector('input');
+        input.addEventListener('change', () => {
+          const parent = label.closest('.adaptive-quiz-question');
+          parent.querySelectorAll('label').forEach(l => {
+            l.style.background = 'var(--bg-highest)';
+            l.style.borderColor = 'transparent';
+          });
+          label.style.background = 'var(--accent-soft)';
+          label.style.borderColor = 'var(--accent)';
+        });
+      });
+    }
+
+    window.submitAdaptiveQuiz = async function() {
+      const quiz = adaptiveCurrentConfig.quiz;
+      let score = 0;
+      let unanswered = false;
+      
+      quiz.forEach((q, idx) => {
+        const checked = document.querySelector(`input[name="ad_q_${idx}"]:checked`);
+        if (!checked) {
+          unanswered = true;
+          return;
+        }
+        if (checked.value === q.answer) {
+          score++;
+        }
+      });
+      
+      if (unanswered) {
+        alert("請回答所有理解問題後再送出！");
+        return;
+      }
+      
+      const roundRecord = {
+        round: adaptiveCurrentConfig.round,
+        difficulty: adaptiveCurrentConfig.difficulty,
+        font_size: adaptiveCurrentConfig.font_size,
+        line_width: adaptiveCurrentConfig.line_width,
+        line_height: adaptiveCurrentConfig.line_height,
+        wpm: adaptiveCurrentConfig.metrics.wpm,
+        regression_rate: adaptiveCurrentConfig.metrics.regression_rate,
+        avg_fixation_duration_ms: adaptiveCurrentConfig.metrics.avg_fixation_duration_ms,
+        quiz_score: score,
+        quiz_total: quiz.length,
+        gaze_history: adaptiveCurrentConfig.metrics.gaze_history
+      };
+      
+      adaptiveHistory.push(roundRecord);
+      
+      if (adaptiveCurrentRound < 3) {
+        const content = document.getElementById('adaptiveTestContent');
+        content.innerHTML = `
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:3rem; gap:1rem;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="animate-spin" style="color:var(--accent);"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>
+            <div style="font-size:12px; color:var(--ink-secondary);">代理人正在評估您的表現，並動態配置下一輪排版與文句中，請稍候...</div>
+          </div>
+        `;
+        
+        try {
+          const res = await fetch('/api/inspector/adaptive/next', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              lang: adaptiveCurrentConfig.lang || 'en',
+              current_round: adaptiveCurrentRound,
+              history: adaptiveHistory
+            })
+          });
+          const data = await res.json();
+          if (!data.ok) throw new Error(data.error || "無法載入下一輪");
+          
+          adaptiveCurrentRound++;
+          adaptiveCurrentConfig = data;
+          
+          await loadAdaptiveRoundText(data);
+        } catch (err) {
+          alert("載入下一輪失敗，載入備用基線文章");
+          const target_diff = score === quiz.length ? 'medium' : 'easy';
+          const mockData = {
+            round: adaptiveCurrentRound + 1,
+            lang: adaptiveCurrentConfig.lang,
+            difficulty: target_diff,
+            font_size: target_diff === 'medium' ? 14 : 18,
+            line_width: target_diff === 'medium' ? 550 : 750,
+            line_height: target_diff === 'medium' ? 1.5 : 1.8,
+            text: target_diff === 'medium' ? "The rapid acceleration of global urbanization presents complex socio-ecological challenges. As urban populations swell, cities must optimize infrastructure, energy distribution, and resource consumption." : "Water is essential for all living things. Animals need water to drink, and plants need water to grow. Without clean water, people can get very sick.",
+            quiz: [
+              {
+                question: target_diff === 'medium' ? "What swelling factor presents complex challenges?" : "What happens if people do not have access to clean water?",
+                options: target_diff === 'medium' ? {"A": "Global urbanization", "B": "Smart devices", "C": "Solar energy", "D": "Tax rates"} : {"A": "They run faster", "B": "They can get very sick", "C": "They get rich", "D": "They sleep better"},
+                answer: target_diff === 'medium' ? "A" : "B",
+                explanation: "Based on the text."
+              },
+              {
+                question: target_diff === 'medium' ? "What do cities distribute?" : "Why should we protect lakes?",
+                options: target_diff === 'medium' ? {"A": "Exhaust gases", "B": "Energy", "C": "Gold", "D": "Exotic pets"} : {"A": "To ensure clean water", "B": "For boat races", "C": "For clean fishes", "D": "To increase wind"},
+                answer: target_diff === 'medium' ? "B" : "A",
+                explanation: "Based on the text."
+              }
+            ]
+          };
+          adaptiveCurrentRound++;
+          adaptiveCurrentConfig = mockData;
+          await loadAdaptiveRoundText(mockData);
+        }
+      } else {
+        renderAdaptiveReportGenerating();
+      }
+    };
+
+    async function renderAdaptiveReportGenerating() {
+      const content = document.getElementById('adaptiveTestContent');
+      const footer = document.getElementById('adaptiveTestFooter');
+      
+      content.innerHTML = `
+        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:3rem; gap:1rem;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="animate-spin" style="color:var(--accent);"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>
+          <div style="font-size:12px; color:var(--ink-secondary);">🎉 測試完成！系統正在進行跨階段認知負載與排版分析，正在生成專屬診斷報告...</div>
+        </div>
+      `;
+      footer.innerHTML = '';
+      
+      try {
+        const participantId = document.getElementById('inspectParticipantInput')?.value || 'anonymous';
+        const res = await fetch('/api/inspector/adaptive/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lang: adaptiveCurrentConfig.lang || 'zh',
+            history: adaptiveHistory,
+            participant_id: participantId,
+            persist: true
+          })
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "報告生成失敗");
+        
+        renderAdaptiveFinalReport(data.report_md, data.summary);
+      } catch (err) {
+        alert("報告生成失敗：" + err.message);
+        closeAdaptiveTestModal();
+      }
+    }
+
+    function renderAdaptiveFinalReport(reportMd, summary) {
+      const content = document.getElementById('adaptiveTestContent');
+      const footer = document.getElementById('adaptiveTestFooter');
+      const reportHtml = typeof marked !== 'undefined' ? marked.parse(reportMd) : `<pre style="font-size:10px;">${escHtml(reportMd)}</pre>`;
+      
+      content.innerHTML = `
+        <div style="font-size:12px; line-height:1.5;">
+          <div style="background:var(--success-soft); padding:8px 12px; border-radius:6px; border-left:4px solid var(--success); margin-bottom:1rem; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <span style="color:var(--success); font-weight:700; font-size:13px;">✓ 認知與排版適應性評估完成！</span>
+              <br><span style="font-size:9.5px; color:var(--ink-secondary);">已儲存報告至 docs/cognitive_reports/</span>
+            </div>
+            <div style="text-align:right;">
+              <span style="font-size:9px; color:var(--ink-muted);">理解答對率</span>
+              <br><strong style="font-size:16px; color:var(--success);">${summary.comprehension_rate}%</strong>
+            </div>
+          </div>
+          
+          <div style="background:var(--bg-highest); border:1px solid var(--line-strong); padding:10px; border-radius:6px; margin-bottom:1rem; font-size:11px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;">
+            <div style="text-align:center; border-right:1px solid var(--line);"><span style="color:var(--ink-muted); display:block; font-size:9px;">最佳字級建議</span><strong style="font-size:14px; color:var(--accent);">${summary.optimal_font_size} px</strong></div>
+            <div style="text-align:center; border-right:1px solid var(--line);"><span style="color:var(--ink-muted); display:block; font-size:9px;">最佳行寬建議</span><strong style="font-size:14px; color:var(--accent);">${summary.optimal_line_width} px</strong></div>
+            <div style="text-align:center;"><span style="color:var(--ink-muted); display:block; font-size:9px;">建議行高設定</span><strong style="font-size:14px; color:var(--accent);">${summary.optimal_line_height}</strong></div>
+          </div>
+          
+          <div class="markdown-body" style="background:#fff; border:1px solid var(--line); border-radius:6px; padding:16px; max-height:280px; overflow-y:auto; box-shadow:inset var(--shadow-sm); color:#374151;">
+            ${reportHtml}
+          </div>
+        </div>
+      `;
+      
+      footer.innerHTML = `
+        <button class="btn btn-primary" onclick="finishAdaptiveSession()">儲存並關閉</button>
+      `;
+    }
+
+    window.finishAdaptiveSession = function() {
+      if (originalFileState) {
+        currentFile = originalFileState.file;
+        currentFileType = originalFileState.fileType;
+        extractedData = originalFileState.extractedData;
+        window.lexiCurrentSessionId = originalFileState.sessionId;
+        previewArea.innerHTML = originalFileState.html;
+        originalFileState = null;
+      }
+      
+      window.lexiAdaptiveConfig = null;
+      document.getElementById('adaptiveTestModal').classList.remove('open');
+      if (typeof updateGuideUI === 'function') updateGuideUI();
+      if (typeof loadHistory === 'function') loadHistory();
+    };
+
     // Stepper bindings and sync
     window.addEventListener('DOMContentLoaded', () => {
       // Upload Document click bridge
@@ -3977,6 +4510,30 @@
       <div style="padding: 1rem 1.5rem; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; background: var(--bg-elevated); flex-shrink: 0;" id="quizFooter">
         <button class="btn btn-secondary" id="closeQuizFooterBtn">關閉</button>
         <button class="btn btn-primary" id="submitQuizBtn" style="display:none;">提交答案</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Adaptive Testing Modal -->
+  <div class="modal-backdrop" id="adaptiveTestModal">
+    <div class="modal-card" style="max-width: 600px; max-height: 90vh;">
+      <div class="modal-header">
+        <h3 style="display:flex; align-items:center; gap:6px;">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 0 1 7.07 17.07A10 10 0 0 1 4.93 4.93 10 10 0 0 1 12 2z"/><path d="M12 6v6l4 2"/></svg>
+          適應性多輪認知診斷測驗
+        </h3>
+        <button class="modal-close-btn" onclick="closeAdaptiveTestModal()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-content" id="adaptiveTestContent" style="padding: 1.5rem; overflow-y: auto;">
+        <!-- Dynamic content -->
+      </div>
+      <div style="padding: 1rem 1.5rem; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; background: var(--bg-elevated); flex-shrink: 0;" id="adaptiveTestFooter">
+        <!-- Dynamic footer buttons -->
       </div>
     </div>
   </div>
@@ -4547,6 +5104,22 @@
         window.lexiVmReadingTimeline = vmReadingTimeline;
 
         _setRecordingUI({ recording: true });
+
+        // Show webcam preview circle inside step 4 guide card
+        const guideVideo = document.getElementById('guideWebcamVideo');
+        if (guideVideo) {
+          guideVideo.srcObject = vmStream;
+          const previewRow = document.getElementById('guideWebcamPreviewRow');
+          if (previewRow) previewRow.style.display = 'flex';
+        }
+        // Show webcam preview circle inside panel-gaze as well
+        const gazeVideo = document.getElementById('gazeWebcamVideo');
+        if (gazeVideo) {
+          gazeVideo.srcObject = vmStream;
+          const gazePreviewRow = document.getElementById('gazeWebcamPreviewRow');
+          if (gazePreviewRow) gazePreviewRow.style.display = 'flex';
+        }
+
         startWordTimeline();
         log('錄影模式啟動，開始錄製鏡頭影片', 'ok');
         if (typeof updateGuideUI === 'function') updateGuideUI();
@@ -4562,6 +5135,22 @@
       vmRecorder.stop();
       if (vmStream) { vmStream.getTracks().forEach(t => t.stop()); vmStream = null; }
       vmIsRecording = false;
+
+      // Reset guide preview circle
+      const guideVideo = document.getElementById('guideWebcamVideo');
+      if (guideVideo) {
+        guideVideo.srcObject = null;
+        const previewRow = document.getElementById('guideWebcamPreviewRow');
+        if (previewRow) previewRow.style.display = 'none';
+      }
+      // Reset gaze preview circle
+      const gazeVideo = document.getElementById('gazeWebcamVideo');
+      if (gazeVideo) {
+        gazeVideo.srcObject = null;
+        const gazePreviewRow = document.getElementById('gazeWebcamPreviewRow');
+        if (gazePreviewRow) gazePreviewRow.style.display = 'none';
+      }
+
       stopWordTimeline();
 
       // If no timeline entries were captured during recording, do a final snapshot now

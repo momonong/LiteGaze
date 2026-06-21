@@ -169,6 +169,21 @@
     state.video.muted = true;
     state.video.playsInline = true;
     await state.video.play();
+
+    // Stream to guide preview circle if it exists
+    const guideVideo = document.getElementById('guideWebcamVideo');
+    if (guideVideo) {
+      guideVideo.srcObject = state.stream;
+      const previewRow = document.getElementById('guideWebcamPreviewRow');
+      if (previewRow) previewRow.style.display = 'flex';
+    }
+    // Stream to gaze panel preview circle if it exists
+    const gazeVideo = document.getElementById('gazeWebcamVideo');
+    if (gazeVideo) {
+      gazeVideo.srcObject = state.stream;
+      const gazePreviewRow = document.getElementById('gazeWebcamPreviewRow');
+      if (gazePreviewRow) gazePreviewRow.style.display = 'flex';
+    }
   }
 
   function stopCamera() {
@@ -177,6 +192,21 @@
       state.stream = null;
     }
     state.video.srcObject = null;
+
+    // Reset guide preview circle
+    const guideVideo = document.getElementById('guideWebcamVideo');
+    if (guideVideo) {
+      guideVideo.srcObject = null;
+      const previewRow = document.getElementById('guideWebcamPreviewRow');
+      if (previewRow) previewRow.style.display = 'none';
+    }
+    // Reset gaze preview circle
+    const gazeVideo = document.getElementById('gazeWebcamVideo');
+    if (gazeVideo) {
+      gazeVideo.srcObject = null;
+      const gazePreviewRow = document.getElementById('gazeWebcamPreviewRow');
+      if (gazePreviewRow) gazePreviewRow.style.display = 'none';
+    }
   }
 
   function captureFrame() {
