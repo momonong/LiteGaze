@@ -16,7 +16,7 @@ mimetypes.add_type('text/javascript', '.js')
 def create_app():
     # Flask app initialization with static_folder pointing to 'static' and templates to 'templates'
     app = Flask(__name__, static_folder='static', template_folder='templates')
-    app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB upload limit
+    app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500 MB upload limit
     
     # Register blueprints from submodules
     from web.routes.gaze import gaze_api_bp, gaze_bp
