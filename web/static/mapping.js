@@ -1,5 +1,6 @@
 console.log("mapping.js loaded");
 let gazeMappingOn = false;
+window.gazeMappingOn = false;
 const gazeMappingToggle = document.getElementById("gazeMappingToggle");
 const gazeMappingLabel = document.getElementById("gazeMappingLabel");
 
@@ -10,6 +11,7 @@ const gazeOverlayMap = new Map();
 
 gazeMappingToggle.addEventListener("click", () => {
   gazeMappingOn = !gazeMappingOn;
+  window.gazeMappingOn = gazeMappingOn;
   mouseMatch = null;
   gazeMatch = null;
 
@@ -66,8 +68,10 @@ function findNearestExtractedWord(gazeX, gazeY) {
 
   const pageWraps = document.querySelectorAll(".page-wrap");
 
-  for (const [pageNum, pageData]
-    of pageOverlayMap.entries()) {
+  const overlays = window.pageOverlayMap || (typeof pageOverlayMap !== "undefined" ? pageOverlayMap : null);
+  if (!overlays) return null;
+
+  for (const [pageNum, pageData] of overlays.entries()) {
 
     const { items } = pageData;
 
@@ -265,28 +269,32 @@ function clearAllGazeHighlights() {
 }
 
 function getGazeCanvas(pageNum) {
-  if (gazeOverlayMap.has(pageNum)) return gazeOverlayMap.get(pageNum);
-
   const pageWraps = document.querySelectorAll(".page-wrap");
   const wrap = pageWraps[pageNum - 1];
   if (!wrap) return null;
 
-  const canvas = document.createElement("canvas");
-  canvas.className = "gaze-overlay-canvas";
-  canvas.style.position = "absolute";
-  canvas.style.top = "0";
-  canvas.style.left = "0";
-  canvas.style.pointerEvents = "none";
-  canvas.style.zIndex = "5";
+  let canvas = gazeOverlayMap.get(pageNum);
+  if (!canvas) {
+    canvas = document.createElement("canvas");
+    canvas.className = "gaze-overlay-canvas";
+    canvas.style.position = "absolute";
+    canvas.style.top = "0";
+    canvas.style.left = "0";
+    canvas.style.pointerEvents = "none";
+    canvas.style.zIndex = "5";
+    wrap.appendChild(canvas);
+    gazeOverlayMap.set(pageNum, canvas);
+  }
 
   const rect = wrap.getBoundingClientRect();
-  canvas.width = Math.round(rect.width);
-  canvas.height = Math.round(rect.height);
-  canvas.style.width = `${Math.round(rect.width)}px`;
-  canvas.style.height = `${Math.round(rect.height)}px`;
-
-  wrap.appendChild(canvas);
-  gazeOverlayMap.set(pageNum, canvas);
+  const w = Math.round(rect.width);
+  const h = Math.round(rect.height);
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
+  }
   return canvas;
 }
 

@@ -146,6 +146,38 @@ def _clean_json_response(text: str) -> str:
     return text.strip()
 
 
+def _generate_fallback_quiz(struggled_sentences, lang="en"):
+    questions = []
+    for i, sent in enumerate(struggled_sentences[:3]):
+        if lang == "zh":
+            questions.append({
+                "id": i + 1,
+                "question": f"關於文章中的句子「{sent}」，以下敘述何者正確？",
+                "options": {
+                    "A": "該句子確實出現在文章中且為原文的一部份",
+                    "B": "該句子完全沒有在文章中出現過",
+                    "C": "該句子描述的是與原文相反的觀點",
+                    "D": "以上皆非"
+                },
+                "answer": "A",
+                "explanation": f"依據文章內容，句子「{sent}」為原文中的一部分。"
+            })
+        else:
+            questions.append({
+                "id": i + 1,
+                "question": f"Regarding the sentence \"{sent}\" in the text, which of the following is true?",
+                "options": {
+                    "A": "The sentence appears in the text and is part of the original passage.",
+                    "B": "The sentence does not appear in the text.",
+                    "C": "The sentence states the opposite of the fact.",
+                    "D": "None of the above."
+                },
+                "answer": "A",
+                "explanation": f"According to the text, the sentence \"{sent}\" is part of the original passage."
+            })
+    return questions
+
+
 @inspector_bp.post("/quiz")
 def generate_agentic_quiz():
     """
@@ -160,9 +192,6 @@ def generate_agentic_quiz():
     load_dotenv()
     api_key = os.environ.get("GEMINI_API_KEY")
     model_name = os.environ.get("MODEL_NAME", "gemini-1.5-flash")
-
-    if not api_key:
-        return jsonify({"ok": False, "error": "Missing GEMINI_API_KEY environment variable"}), 500
 
     body = request.get_json(force=True) or {}
     gaze_history = body.get("gaze_history", [])
@@ -279,6 +308,16 @@ Return the response in structured JSON format matching this exact schema:
   ]
 }}"""
 
+    # If API key is missing, fall back to local quiz directly
+    if not api_key:
+        print("[Quiz] Missing GEMINI_API_KEY. Using local fallback quiz.")
+        fallback_quiz = _generate_fallback_quiz(struggled_sentences, lang)
+        return jsonify({
+            "ok": True,
+            "quiz": fallback_quiz,
+            "struggled_sentences": struggled_sentences
+        })
+
     # 6. Query Gemini API
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
     headers = {"Content-Type": "application/json"}
@@ -290,7 +329,19 @@ Return the response in structured JSON format matching this exact schema:
     try:
         res = requests.post(url, headers=headers, json=payload, timeout=30)
         if res.status_code != 200:
-            return jsonify({"ok": False, "error": f"Gemini API returned status {res.status_code}: {res.text}"}), 500
+            fallback_model = "gemini-1.5-flash"
+            print(f"[Quiz] Model {model_name} failed with status {res.status_code}. Retrying with {fallback_model}...")
+            fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/{fallback_model}:generateContent?key={api_key}"
+            res = requests.post(fallback_url, headers=headers, json=payload, timeout=30)
+            
+        if res.status_code != 200:
+            print(f"[Quiz] Gemini API failed with status {res.status_code}. Using local fallback quiz.")
+            fallback_quiz = _generate_fallback_quiz(struggled_sentences, lang)
+            return jsonify({
+                "ok": True,
+                "quiz": fallback_quiz,
+                "struggled_sentences": struggled_sentences
+            })
         
         data = res.json()
         parts = data["candidates"][0]["content"]["parts"]
@@ -301,14 +352,29 @@ Return the response in structured JSON format matching this exact schema:
             text_response = parts[-1]["text"]
         
         # Load generated JSON quiz
-        quiz_data = json.loads(_clean_json_response(text_response))
+        try:
+            quiz_data = json.loads(_clean_json_response(text_response))
+            return jsonify({
+                "ok": True,
+                "quiz": quiz_data.get("questions", []),
+                "struggled_sentences": struggled_sentences
+            })
+        except Exception as json_err:
+            print(f"[Quiz] JSON parsing failed: {json_err}. Using local fallback quiz.")
+            fallback_quiz = _generate_fallback_quiz(struggled_sentences, lang)
+            return jsonify({
+                "ok": True,
+                "quiz": fallback_quiz,
+                "struggled_sentences": struggled_sentences
+            })
+    except Exception as e:
+        print(f"[Quiz] Exception occurred: {e}. Using local fallback quiz.")
+        fallback_quiz = _generate_fallback_quiz(struggled_sentences, lang)
         return jsonify({
             "ok": True,
-            "quiz": quiz_data.get("questions", []),
+            "quiz": fallback_quiz,
             "struggled_sentences": struggled_sentences
         })
-    except Exception as e:
-        return jsonify({"ok": False, "error": f"Failed to generate quiz: {e}"}), 500
 
 
 # ── Adaptive Agentic Testing Module Data & Endpoints ─────────────────────────
@@ -707,7 +773,13 @@ Return the response in structured JSON format matching this exact schema:
         }
 
         try:
-            res = requests.post(url, headers=headers, json=payload, timeout=8)
+            res = requests.post(url, headers=headers, json=payload, timeout=60)
+            if res.status_code != 200:
+                fallback_model = "gemini-1.5-flash"
+                print(f"[AdaptiveNext] Model {model_name} failed with status {res.status_code}. Retrying with {fallback_model}...")
+                fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/{fallback_model}:generateContent?key={api_key}"
+                res = requests.post(fallback_url, headers=headers, json=payload, timeout=60)
+
             if res.status_code == 200:
                 data = res.json()
                 parts = data["candidates"][0]["content"]["parts"]
@@ -726,8 +798,8 @@ Return the response in structured JSON format matching this exact schema:
                         "line_height": float(res_data.get("line_height", fallback_data["line_height"])),
                         "quiz": res_data["quiz"]
                     })
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[AdaptiveNext] Exception occurred: {e}")
 
     return jsonify({
         "ok": True,
@@ -829,7 +901,13 @@ Return the response in structured JSON format matching this exact schema:
         }
 
         try:
-            res = requests.post(url, headers=headers, json=payload, timeout=20)
+            res = requests.post(url, headers=headers, json=payload, timeout=90)
+            if res.status_code != 200:
+                fallback_model = "gemini-1.5-flash"
+                print(f"[AdaptiveReport] Model {model_name} failed with status {res.status_code}. Retrying with {fallback_model}...")
+                fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/{fallback_model}:generateContent?key={api_key}"
+                res = requests.post(fallback_url, headers=headers, json=payload, timeout=90)
+
             if res.status_code == 200:
                 data = res.json()
                 parts = data["candidates"][0]["content"]["parts"]
@@ -842,8 +920,8 @@ Return the response in structured JSON format matching this exact schema:
                 opt_font = summary_data.get("optimal_font_size", opt_font)
                 opt_width = summary_data.get("optimal_line_width", opt_width)
                 opt_height = summary_data.get("optimal_line_height", opt_height)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[AdaptiveReport] Exception occurred: {e}")
 
     if not report_md:
         timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

@@ -509,6 +509,20 @@
       opacity: 1;
       pointer-events: auto;
     }
+    .modal-backdrop.reading-mode {
+      background: transparent !important;
+      pointer-events: none;
+      justify-content: flex-start;
+      align-items: flex-end;
+      padding: 20px;
+    }
+    .modal-backdrop.reading-mode .modal-card {
+      pointer-events: auto;
+      max-width: 340px;
+      height: auto;
+      max-height: 50vh;
+      box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.25);
+    }
     .modal-card {
       width: 100%;
       max-width: 520px;
@@ -1278,11 +1292,13 @@
               
               <!-- Quick Example Selector -->
               <div style="font-size: 9px; color: var(--ink-secondary); margin: 2px 0;">快速載入範本：</div>
-              <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px;">
-                <button class="btn btn-secondary" onclick="loadExampleText('/examples/easy_en.md', 'easy_en.md')" style="font-size:9px; min-height:24px; padding:2px;">Easy EN (英)</button>
-                <button class="btn btn-secondary" onclick="loadExampleText('/examples/hard_en.md', 'hard_en.md')" style="font-size:9px; min-height:24px; padding:2px;">Hard EN (英)</button>
-                <button class="btn btn-secondary" onclick="loadExampleText('/examples/easy_zh.md', 'easy_zh.md')" style="font-size:9px; min-height:24px; padding:2px;">Easy ZH (中)</button>
-                <button class="btn btn-secondary" onclick="loadExampleText('/examples/hard_zh.md', 'hard_zh.md')" style="font-size:9px; min-height:24px; padding:2px;">Hard ZH (中)</button>
+              <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:4px;">
+                <button class="btn btn-secondary" onclick="loadExampleText('/examples/easy_en.md', 'easy_en.md')" style="font-size:9px; min-height:24px; padding:2px;">Easy EN</button>
+                <button class="btn btn-secondary" onclick="loadExampleText('/examples/medium_en.md', 'medium_en.md')" style="font-size:9px; min-height:24px; padding:2px;">Medium EN</button>
+                <button class="btn btn-secondary" onclick="loadExampleText('/examples/hard_en.md', 'hard_en.md')" style="font-size:9px; min-height:24px; padding:2px;">Hard EN</button>
+                <button class="btn btn-secondary" onclick="loadExampleText('/examples/science_en.md', 'science_en.md')" style="font-size:9px; min-height:24px; padding:2px;">Science EN</button>
+                <button class="btn btn-secondary" onclick="loadExampleText('/examples/tech_en.md', 'tech_en.md')" style="font-size:9px; min-height:24px; padding:2px;">Tech EN</button>
+                <button class="btn btn-secondary" onclick="loadExampleText('/examples/literature_en.md', 'literature_en.md')" style="font-size:9px; min-height:24px; padding:2px;">Lit EN</button>
               </div>
               <div id="guideFileLoadedTxt" style="display:none; font-size:10px; color:var(--success); font-weight:600; margin-top:4px;">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px"><polyline points="20 6 9 17 4 12"/></svg>已載入：<span id="guideFileName">—</span>
@@ -1306,22 +1322,9 @@
                 <video id="guideWebcamVideo" autoplay playsinline muted style="display:block; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); border-radius:50%;"></video>
               </div>
             </div>
-            
-            <!-- Video Mode UI inside Step 4 -->
-            <div id="guideVmControls" style="display:flex; flex-direction:column; gap:4px; margin-top:2px;">
-              <div class="guide-step-desc">
-                點擊「開始錄影」，專注並自然地往下閱讀。完畢後，點擊「停止」再點「分析」。
-              </div>
-              <div id="guideVmStatus" style="font-size:9px; padding:4px 8px; border-radius:4px; background:var(--bg-highest); margin:4px 0; color:var(--ink-secondary);">狀態: 尚未開始</div>
-              <div style="display:flex; gap:4px;">
-                <button class="btn btn-success" id="guideVmStartBtn" onclick="startVideoRecording()" style="flex:1; font-size:10px; min-height:26px;">▶ 開始錄影</button>
-                <button class="btn btn-danger" id="guideVmStopBtn" onclick="stopVideoRecording()" style="flex:1; font-size:10px; min-height:26px;" disabled>■ 停止錄影</button>
-              </div>
-              <button class="btn btn-primary" id="guideVmProcessBtn" onclick="processVideoRecording()" style="width:100%; font-size:10px; min-height:28px; margin-top:2px;" disabled>⬆ 上傳並分析影片</button>
-            </div>
 
             <!-- Real-Time Mode UI inside Step 4 -->
-            <div id="guideRtControls" style="display:none; flex-direction:column; gap:4px; margin-top:2px;">
+            <div id="guideRtControls" style="display:flex; flex-direction:column; gap:4px; margin-top:2px;">
               <div class="guide-step-desc">
                 請點擊「開啟推論」，您的注視點將即時顯示在文件上，讀完後將其關閉。
               </div>
@@ -1330,6 +1333,12 @@
                 <button class="btn btn-secondary" id="guideRtToggleBtn" style="font-size:10px; min-height:26px; padding:0 8px;">開啟相機</button>
               </div>
               <div id="guideRtStatus" style="font-size:9px; padding:4px 8px; border-radius:4px; background:var(--bg-highest); color:var(--ink-muted);">狀態: 尚未啟用</div>
+              <div id="guideRtCameraTip" style="display:none; font-size:9px; margin-top:4px; color:var(--ink-secondary); padding:6px; border-radius:4px; background:var(--warning-soft); line-height:1.4; border:1px solid rgba(245,158,11,0.2);">
+                💡 <b>故障排除提示：</b><br>
+                1. <b>安全來源要求：</b> 瀏覽器要求網址開頭必須是 <code>https://</code> 或 <code>localhost</code> 才能使用攝影機。若使用 <code>http://192.168.x.x</code> 或 <code>http</code> 開頭的 ngrok 網址將會被停用。<br>
+                2. <b>權限被阻擋：</b> 請確認網址列左側鎖頭已允許此網站存取「相機」權限。<br>
+                3. <b>相機被佔用：</b> 請確認沒有其他應用程式（如 Teams/Zoom）正在佔用相機。
+              </div>
             </div>
             
             <div id="guideTrackingDoneTxt" style="display:none; font-size:10px; color:var(--success); font-weight:600; margin-top:4px;">
@@ -1365,6 +1374,25 @@
               </button>
               <button class="btn btn-info" id="guideAdaptiveBtn" onclick="openAdaptiveTestModal()" style="width:100%; font-size:11px; min-height:28px; margin-top:4px;" disabled>
                 <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px; margin-right:3px;"><path d="M12 2a10 10 0 0 1 7.07 17.07A10 10 0 0 1 4.93 4.93 10 10 0 0 1 12 2z"/><path d="M12 6v6l4 2"/></svg>適應性多輪認知診斷
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 6: Cognitive Mass Attraction -->
+          <div class="guide-step-card" id="guideStep6">
+            <div class="guide-step-header">
+              <div class="guide-step-title-wrap">
+                <span class="guide-step-number">6</span>
+                <span class="guide-step-title">認知質量引力分析</span>
+              </div>
+              <span class="guide-step-badge" id="guideStep6Badge">待執行</span>
+            </div>
+            <div class="guide-step-desc">
+              即時模擬或重播「認知質量吸引算法」如何將抖動的視線座標修正並吸附至正確的閱讀字彙。
+            </div>
+            <div class="guide-step-content">
+              <button class="btn btn-primary" id="guideVisualizeMassBtn" onclick="openCognitiveMassVisualizer()" style="width:100%; font-size:11px; min-height:28px; margin-top:2px;">
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px; margin-right:3px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>開啟認知質量引力場
               </button>
             </div>
           </div>
@@ -1470,9 +1498,9 @@
               開始閱讀前，點擊「開始錄影」。閱讀完畢後，點擊「停止」再點「上傳分析」，系統將在伺服器批次還原您的視線軌跡。
             </div>
             <div id="vmStatus" style="font-size:0.7rem; color:rgba(255,255,255,0.85); background:rgba(255,255,255,0.08); padding:5px 8px; border-radius:5px;">尚未開始</div>
-            <button class="vmb-btn vmb-btn-start" id="vmStartBtn" onclick="startVideoRecording()">▶ 開始錄影</button>
-            <button class="vmb-btn vmb-btn-stop"  id="vmStopBtn"  onclick="stopVideoRecording()"  disabled>■ 停止錄影</button>
-            <button class="vmb-btn vmb-btn-process" id="vmProcessBtn" onclick="processVideoRecording()" disabled>⬆ 上傳並分析影片</button>
+            <button class="vmb-btn vmb-btn-start" id="vmStartBtn" onclick="startVideoRecording()"><svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" stroke="none" style="vertical-align:-1px;margin-right:3px"><polygon points="5 3 19 12 5 21 5 3"/></svg> 開始錄影</button>
+            <button class="vmb-btn vmb-btn-stop"  id="vmStopBtn"  onclick="stopVideoRecording()"  disabled><svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" stroke="none" style="vertical-align:-1px;margin-right:3px"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/></svg> 停止錄影</button>
+            <button class="vmb-btn vmb-btn-process" id="vmProcessBtn" onclick="processVideoRecording()" disabled><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg> 上傳並分析影片</button>
           </div>
 
           <!-- Model selector also available in video mode -->
@@ -1837,9 +1865,11 @@
             <div style="font-size: 0.85rem; color: var(--ink-secondary); margin-bottom: 0.6rem; font-weight: 500;">快速載入內建閱讀範本：</div>
             <div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
               <button class="btn btn-secondary" onclick="loadExampleText('/examples/easy_en.md', 'easy_en.md')" style="padding: 0.45rem 0.9rem; font-size: 0.8rem; border-radius: var(--radius-md); background: #f4f4f5; border: 1px solid #e4e4e7; cursor: pointer; color: #09090b; font-weight: 500; transition: background 0.2s;">英文簡單 (Easy EN)</button>
+              <button class="btn btn-secondary" onclick="loadExampleText('/examples/medium_en.md', 'medium_en.md')" style="padding: 0.45rem 0.9rem; font-size: 0.8rem; border-radius: var(--radius-md); background: #f4f4f5; border: 1px solid #e4e4e7; cursor: pointer; color: #09090b; font-weight: 500; transition: background 0.2s;">英文中等 (Medium EN)</button>
               <button class="btn btn-secondary" onclick="loadExampleText('/examples/hard_en.md', 'hard_en.md')" style="padding: 0.45rem 0.9rem; font-size: 0.8rem; border-radius: var(--radius-md); background: #f4f4f5; border: 1px solid #e4e4e7; cursor: pointer; color: #09090b; font-weight: 500; transition: background 0.2s;">英文挑戰 (Hard EN)</button>
-              <button class="btn btn-secondary" onclick="loadExampleText('/examples/easy_zh.md', 'easy_zh.md')" style="padding: 0.45rem 0.9rem; font-size: 0.8rem; border-radius: var(--radius-md); background: #f4f4f5; border: 1px solid #e4e4e7; cursor: pointer; color: #09090b; font-weight: 500; transition: background 0.2s;">中文簡單 (Easy ZH)</button>
-              <button class="btn btn-secondary" onclick="loadExampleText('/examples/hard_zh.md', 'hard_zh.md')" style="padding: 0.45rem 0.9rem; font-size: 0.8rem; border-radius: var(--radius-md); background: #f4f4f5; border: 1px solid #e4e4e7; cursor: pointer; color: #09090b; font-weight: 500; transition: background 0.2s;">中文挑戰 (Hard ZH)</button>
+              <button class="btn btn-secondary" onclick="loadExampleText('/examples/science_en.md', 'science_en.md')" style="padding: 0.45rem 0.9rem; font-size: 0.8rem; border-radius: var(--radius-md); background: #f4f4f5; border: 1px solid #e4e4e7; cursor: pointer; color: #09090b; font-weight: 500; transition: background 0.2s;">科普文 (Science EN)</button>
+              <button class="btn btn-secondary" onclick="loadExampleText('/examples/tech_en.md', 'tech_en.md')" style="padding: 0.45rem 0.9rem; font-size: 0.8rem; border-radius: var(--radius-md); background: #f4f4f5; border: 1px solid #e4e4e7; cursor: pointer; color: #09090b; font-weight: 500; transition: background 0.2s;">技術文 (Tech EN)</button>
+              <button class="btn btn-secondary" onclick="loadExampleText('/examples/literature_en.md', 'literature_en.md')" style="padding: 0.45rem 0.9rem; font-size: 0.8rem; border-radius: var(--radius-md); background: #f4f4f5; border: 1px solid #e4e4e7; cursor: pointer; color: #09090b; font-weight: 500; transition: background 0.2s;">文學文 (Literature EN)</button>
             </div>
           </div>
         </div>
@@ -1901,6 +1931,7 @@
 
     // Map<pageNum, { overlayCanvas: HTMLCanvasElement, items: Array }>
     const pageOverlayMap = new Map();
+    window.pageOverlayMap = pageOverlayMap;
 
     // ── DOM references ────────────────────────────────────────────────────────────
     const uploadZone    = document.getElementById('uploadZone');
@@ -3210,10 +3241,26 @@
     let lastInspectorAnalysisGazeHistory = null;
 
     async function runCognitiveInspectorAnalysis() {
-      const gazeHistoryData = typeof window.flushGazeHistory === 'function' ? window.flushGazeHistory() : [];
+      let gazeHistoryData = typeof window.flushGazeHistory === 'function' ? window.flushGazeHistory() : [];
+
+      // Fallback: if realtime gaze history is empty but gazeBuffer has data
+      // (this happens after video mode recording is processed via processVideoRecording)
+      if ((!gazeHistoryData || gazeHistoryData.length === 0) && window.gazeBuffer && Object.keys(window.gazeBuffer).length > 0) {
+        log('使用影片分析的眼動緩衝區資料進行診斷…', 'hi');
+        let synthIdx = 0;
+        gazeHistoryData = Object.values(window.gazeBuffer).map(entry => ({
+          word:         entry.word,
+          index:        synthIdx++,
+          confidence:   entry.confidence || 0.8,
+          dwell_count:  entry.dwell_count || 1,
+          fixation_count: entry.fixation_count || 1,
+          timestamp_ms: Date.now()
+        }));
+      }
+
       if (!gazeHistoryData || gazeHistoryData.length === 0) {
-        log('眼動歷史軌跡為空，請先啟用眼動追蹤並進行閱讀！', 'err');
-        alert('請先在左側面板啟用眼動追蹤，閱讀部分文字後，再點擊此按鈕進行診斷。');
+        log('眼動歷史軌跡為空，請先完成眼動追蹤錄製並上傳影片！', 'err');
+        alert('尚未偵測到眼動資料。\n\n• 若使用視訊模式：請先停止錄製並點擊「上傳並分析」後再試。\n• 若使用即時模式：請先啟用眼動追蹤並閱讀部分文字後再試。');
         return;
       }
 
@@ -3428,10 +3475,10 @@
       }
     };
 
-    inspectRefreshReportsBtn.addEventListener('click', loadReportsHistory);
+    inspectRefreshReportsBtn?.addEventListener('click', loadReportsHistory);
 
-    inspectAnalyzeBtn.addEventListener('click', runCognitiveInspectorAnalysis);
-    inspectReportBtn.addEventListener('click', generateAndShowCognitiveReport);
+    inspectAnalyzeBtn?.addEventListener('click', runCognitiveInspectorAnalysis);
+    inspectReportBtn?.addEventListener('click', generateAndShowCognitiveReport);
 
     // Wrap DOM-dependent modal handlers in DOMContentLoaded to prevent null references during early load
     window.addEventListener('DOMContentLoaded', () => {
@@ -3455,7 +3502,7 @@
         try {
           await navigator.clipboard.writeText(window.lastGeneratedReportMd);
           const originalText = copyCogReportBtn.innerHTML;
-          copyCogReportBtn.innerHTML = `✓ 已複製 Markdown`;
+          copyCogReportBtn.innerHTML = `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><polyline points="20 6 9 17 4 12"/></svg> 已複製 Markdown`;
           setTimeout(() => {
             copyCogReportBtn.innerHTML = originalText;
           }, 1500);
@@ -3503,6 +3550,22 @@
 
     // ── Stepper Guide JavaScript Logic ──
     function updateGuideUI() {
+      // Auto-fill participant ID from active model selection prefix (e.g. test14_model -> test14)
+      const guideModelSelect = document.querySelector('.gaze-model-select');
+      const guidePartInput = document.getElementById('guideParticipantInput');
+      const sidePartInput = document.getElementById('inspectParticipantInput');
+      if (guideModelSelect && guideModelSelect.value && guideModelSelect.value !== 'before') {
+        const prefix = guideModelSelect.value.replace(/_(video_)?model$/i, '').replace(/-model$/i, '');
+        if (prefix && window.lastAutoFilledModelPrefix !== prefix) {
+          const currentVal = (guidePartInput?.value || '').trim();
+          if (currentVal === 'anonymous' || currentVal === '' || currentVal === window.lastAutoFilledModelPrefix) {
+            if (guidePartInput) guidePartInput.value = prefix;
+            if (sidePartInput) sidePartInput.value = prefix;
+          }
+          window.lastAutoFilledModelPrefix = prefix;
+        }
+      }
+
       // Step 1: Hardware Performance Mode
       // Only mark done if user explicitly confirmed mode in this session
       const step1 = document.getElementById('guideStep1');
@@ -3516,10 +3579,8 @@
           : '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>錄影分析模式';
       }
       
-      const vmCtrls = document.getElementById('guideVmControls');
       const rtCtrls = document.getElementById('guideRtControls');
-      if (vmCtrls) vmCtrls.style.display = (mode === 'video') ? 'flex' : 'none';
-      if (rtCtrls) rtCtrls.style.display = (mode === 'realtime') ? 'flex' : 'none';
+      if (rtCtrls) rtCtrls.style.display = 'flex';
       
       if (step1 && step1Badge) {
         if (window.lexiPerfConfirmedThisSession) {
@@ -3542,9 +3603,8 @@
       const step2ModelName  = document.getElementById('guideStep2ModelName');
       const step2ActiveRow  = document.getElementById('guideActiveModelRow');
       const step2ActiveName = document.getElementById('guideActiveModelName');
-      const modelSelect = document.querySelector('.gaze-model-select');
-      const hasModel    = modelSelect && modelSelect.value !== 'before';
-      const modelSelected = hasModel && window.lexiModelSelectedThisSession;
+      const hasModel    = guideModelSelect && guideModelSelect.value !== 'before';
+      const modelSelected = hasModel;
       
       if (step2 && step2Badge) {
         if (modelSelected) {
@@ -3554,7 +3614,7 @@
           step2.classList.add('completed');
           if (step2ConfirmRow) step2ConfirmRow.style.display = 'none';
           if (step2ActiveRow) step2ActiveRow.style.display = 'flex';
-          if (step2ActiveName) step2ActiveName.textContent = modelSelect.value;
+          if (step2ActiveName) step2ActiveName.textContent = guideModelSelect.value;
         } else {
           step2Badge.textContent = '待執行';
           step2Badge.className = 'guide-step-badge';
@@ -3570,7 +3630,7 @@
             step2ConfirmRow.style.display = hasModel ? 'flex' : 'none';
           }
           if (step2ModelName && hasModel) {
-            step2ModelName.textContent = modelSelect.value;
+            step2ModelName.textContent = guideModelSelect.value;
           }
         }
       }
@@ -3646,6 +3706,95 @@
       const hasAnalysis = lastInspectorAnalysisGazeHistory !== null;
       const isSessionActive = window.lexiCurrentSessionId !== undefined && window.lexiCurrentSessionId !== null;
       
+      window.addEventListener('DOMContentLoaded', () => {
+        quizModal        = document.getElementById('agenticQuizModal');
+        quizContent      = document.getElementById('quizModalContent');
+        closeQuizBtn     = document.getElementById('closeQuizBtn');
+        closeQuizFooter  = document.getElementById('closeQuizFooterBtn');
+        submitQuizBtn    = document.getElementById('submitQuizBtn');
+
+        if (submitQuizBtn) {
+          submitQuizBtn.addEventListener('click', () => {
+            if (!currentQuizData) return;
+            
+            let correctCount = 0;
+            let unanswered = false;
+
+            currentQuizData.forEach((q, idx) => {
+              const checked = document.querySelector(`input[name="q_${idx}"]:checked`);
+              if (!checked) {
+                unanswered = true;
+                return;
+              }
+              
+              const answer = checked.value;
+              const block = checked.closest('.quiz-question-block');
+              block.querySelectorAll('label').forEach(label => {
+                const input = label.querySelector('input');
+                input.disabled = true; // Lock choice
+                
+                if (input.value === q.answer) {
+                  label.style.borderColor = 'var(--success)';
+                  label.style.background = 'var(--success-soft)';
+                  label.style.color = 'var(--success)';
+                  label.style.fontWeight = '600';
+                } else if (input.checked && input.value !== q.answer) {
+                  label.style.borderColor = 'var(--danger)';
+                  label.style.background = 'var(--danger-soft)';
+                  label.style.color = 'var(--danger)';
+                }
+              });
+
+              // Show explanation
+              const expDiv = document.getElementById(`exp_${idx}`);
+              if (expDiv) {
+                expDiv.style.display = 'block';
+                const isCorrect = answer === q.answer;
+                if (isCorrect) correctCount++;
+                expDiv.innerHTML = `
+                  <strong style="color:${isCorrect ? 'var(--success)' : 'var(--danger)'};">${isCorrect ? '答對了！' : '答錯了！'}</strong> 
+                  解析：${escHtml(q.explanation)}
+                `;
+              }
+            });
+
+            if (unanswered) {
+              alert("請回答所有題目後再提交！");
+              document.querySelectorAll('.quiz-question-block input[type="radio"]').forEach(r => r.disabled = false);
+              return;
+            }
+
+            submitQuizBtn.style.display = 'none';
+            
+            const summaryDiv = document.createElement('div');
+            summaryDiv.style.cssText = `
+              background: var(--bg-elevated);
+              border: 1px solid var(--line-strong);
+              border-radius: 6px;
+              padding: 12px;
+              margin-bottom: 1.2rem;
+              text-align: center;
+              box-shadow: var(--shadow-sm);
+            `;
+            const scorePercent = Math.round((correctCount / currentQuizData.length) * 100);
+            summaryDiv.innerHTML = `
+              <div style="font-size: 14px; font-weight:700; color:var(--ink-primary);">測驗完成！答對題數：<span style="color:var(--accent); font-size:18px;">${correctCount} / ${currentQuizData.length}</span></div>
+              <div style="font-size: 11px; color:var(--ink-secondary); margin-top:4px;">
+                ${scorePercent >= 80 ? '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;color:var(--success);display:inline-block;"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> 您的閱讀理解力極佳，完美掌握了難點句的文意！' : '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;color:var(--accent);display:inline-block;"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A5 5 0 0 0 8 8c0 1 .4 2.5 1.5 3.5.7.8 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg> 建議針對回看和長停頓的段落重讀，以加深語意理解。'}
+              </div>
+            `;
+            quizContent.insertBefore(summaryDiv, quizContent.firstChild);
+            quizContent.scrollTop = 0;
+          });
+        }
+
+        function closeQuizModalFunc() {
+          if (quizModal) quizModal.classList.remove('open');
+        }
+        if (closeQuizBtn) closeQuizBtn.addEventListener('click', closeQuizModalFunc);
+        if (closeQuizFooter) closeQuizFooter.addEventListener('click', closeQuizModalFunc);
+      });
+      
       if (step5 && step5Badge) {
         if (hasAnalysis) {
           step5Badge.textContent = '已完成';
@@ -3670,13 +3819,24 @@
           }
         }
       }
+
+      // Step 6: Cognitive Mass Attraction Visualizer (Always active for demonstration)
+      const step6 = document.getElementById('guideStep6');
+      const step6Badge = document.getElementById('guideStep6Badge');
+      const guideVisualizeMassBtn = document.getElementById('guideVisualizeMassBtn');
+      if (step6 && step6Badge) {
+        step6Badge.textContent = '可執行';
+        step6Badge.className = 'guide-step-badge active';
+        step6.classList.add('active');
+        if (guideVisualizeMassBtn) guideVisualizeMassBtn.disabled = false;
+      }
     }
     window.updateGuideUI = updateGuideUI;
 
     // Step 2 manual confirm button handler
     window.confirmStep2Done = function() {
-      const modelSelect = document.querySelector('.gaze-model-select');
-      if (!modelSelect || modelSelect.value === 'before') {
+      const confirmModelSelect = document.querySelector('.gaze-model-select');
+      if (!confirmModelSelect || confirmModelSelect.value === 'before') {
         // No model available — prompt user to train one first
         const row = document.getElementById('guideStep2ConfirmRow');
         if (row) { row.style.outline = '1px solid var(--error)'; setTimeout(() => row.style.outline = '', 1000); }
@@ -3688,12 +3848,11 @@
     };
 
     // ── Agentic Quiz Logic ─────────────────────────────────────────────────────────
-    const quizModal        = document.getElementById('agenticQuizModal');
-    const quizContent      = document.getElementById('quizModalContent');
-    const closeQuizBtn     = document.getElementById('closeQuizBtn');
-    const closeQuizFooter  = document.getElementById('closeQuizFooterBtn');
-    const submitQuizBtn    = document.getElementById('submitQuizBtn');
-
+    let quizModal = null;
+    let quizContent = null;
+    let closeQuizBtn = null;
+    let closeQuizFooter = null;
+    let submitQuizBtn = null;
     let currentQuizData = null;
 
     window.openAgenticQuizModal = async function() {
@@ -3713,18 +3872,31 @@
       submitQuizBtn.style.display = 'none';
 
       try {
-        const res = await fetch('/api/inspector/quiz', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gaze_history: gazeHistory,
-            session_id: window.lexiCurrentSessionId,
-            lang: document.getElementById('inspectLangSelect')?.value || 'en'
-          })
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        if (!data.ok || !data.quiz) throw new Error(data.error || "生成失敗");
+        let res;
+        try {
+          res = await fetch('/api/inspector/quiz', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              gaze_history: gazeHistory,
+              session_id: window.lexiCurrentSessionId,
+              lang: document.getElementById('inspectLangSelect')?.value || 'en'
+            })
+          });
+        } catch (netErr) {
+          throw new Error("網路連線失敗，請檢查伺服器是否正常運行。");
+        }
+
+        let data;
+        try {
+          data = await res.json();
+        } catch (jsonErr) {
+          throw new Error(`伺服器傳回無效的回應 (HTTP ${res.status})`);
+        }
+
+        if (!res.ok || !data.ok || !data.quiz) {
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
 
         currentQuizData = data.quiz;
         renderQuiz(data.quiz, data.struggled_sentences);
@@ -3791,84 +3963,809 @@
       });
     }
 
-    submitQuizBtn.addEventListener('click', () => {
-      if (!currentQuizData) return;
-      
-      let correctCount = 0;
-      let unanswered = false;
+    // ── Cognitive Mass Gravity Visualizer Logic ──
+    let cogMassModal = null;
+    let cogMassCanvas = null;
+    let cogMassCtx = null;
+    let cogMassSimInterval = null;
+    let cogMassIsRunning = false;
+    let cogMassSimTime = 0;
+    
+    // Words array for Tab 1 Simulation — rebuilt from real session data on open
+    let simulationWords = [
+      { text: "Neuro-symbolic", mass: 3.5, zipf: 2.1 },
+      { text: "AI", mass: 2.2, zipf: 4.8 },
+      { text: "combines", mass: 1.6, zipf: 5.2 },
+      { text: "neural", mass: 2.5, zipf: 4.1 },
+      { text: "networks", mass: 2.0, zipf: 5.0 },
+      { text: "with", mass: 1.0, zipf: 6.8 },
+      { text: "logical", mass: 2.3, zipf: 4.5 },
+      { text: "reasoning", mass: 2.7, zipf: 3.8 }
+    ];
 
-      currentQuizData.forEach((q, idx) => {
-        const checked = document.querySelector(`input[name="q_${idx}"]:checked`);
-        if (!checked) {
-          unanswered = true;
-          return;
+    // Real gaze replay sequence built from session history
+    let realGazeReplaySeq = []; // [{wordIdx, rawOffX, rawOffY}]
+    let realGazeReplayPos = 0;
+    let isUsingRealGazeData = false;
+
+    let wordsLayout = [];
+    function layoutSimulationWords() {
+      if (!cogMassCanvas) return;
+      const ctx = cogMassCtx;
+      ctx.font = "bold 20px 'Inter', sans-serif";
+      
+      let totalWidth = 0;
+      const spacing = 30;
+      
+      simulationWords.forEach(w => {
+        w.width = ctx.measureText(w.text).width;
+        totalWidth += w.width + spacing;
+      });
+      
+      totalWidth -= spacing;
+      let startX = (cogMassCanvas.width - totalWidth) / 2;
+      const centerY = cogMassCanvas.height / 2;
+      
+      wordsLayout = simulationWords.map(w => {
+        const item = {
+          text: w.text,
+          mass: w.mass,
+          zipf: w.zipf,
+          x: startX + w.width / 2,
+          y: centerY,
+          width: w.width,
+          height: 40
+        };
+        startX += w.width + spacing;
+        return item;
+      });
+    }
+
+    function drawCogMassSim() {
+      if (!cogMassCanvas || !cogMassCtx) return;
+      const canvas = cogMassCanvas;
+      const ctx = cogMassCtx;
+      
+      // Clear canvas
+      ctx.fillStyle = "#0c0a09"; // Dark background
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw grid lines
+      ctx.strokeStyle = "#1c1917";
+      ctx.lineWidth = 1;
+      const gridSize = 40;
+      for (let x = 0; x < canvas.width; x += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+      for (let y = 0; y < canvas.height; y += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+      
+      const showFields = document.getElementById("cogMassShowFields")?.checked ?? true;
+      const showVectors = document.getElementById("cogMassShowVectors")?.checked ?? true;
+      const forceMultiplier = parseFloat(document.getElementById("cogMassForceSlider")?.value || 5) / 5;
+      const noiseLevel = parseFloat(document.getElementById("cogMassNoiseSlider")?.value || 3);
+      
+      // Draw Word Fields and Text
+      wordsLayout.forEach(w => {
+        if (showFields) {
+          const fieldRadius = w.mass * 45;
+          ctx.beginPath();
+          ctx.arc(w.x, w.y, fieldRadius, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(37, 99, 235, ${0.08 * w.mass})`;
+          ctx.fillStyle = `rgba(37, 99, 235, ${0.015 * w.mass})`;
+          ctx.fill();
+          ctx.lineWidth = 1;
+          ctx.setLineDash([4, 4]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          
+          ctx.beginPath();
+          ctx.arc(w.x, w.y, 12, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(59, 130, 246, 0.4)";
+          ctx.fill();
         }
         
-        const answer = checked.value;
-        const block = checked.closest('.quiz-question-block');
-        block.querySelectorAll('label').forEach(label => {
-          const input = label.querySelector('input');
-          input.disabled = true; // Lock choice
+        ctx.fillStyle = "#f5f5f4";
+        ctx.font = "bold 20px 'Inter', sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(w.text, w.x, w.y);
+        
+        ctx.font = "11px 'JetBrains Mono', monospace";
+        ctx.fillStyle = "rgba(161, 161, 170, 0.7)";
+        ctx.fillText(`M:${w.mass.toFixed(1)}`, w.x, w.y + 28);
+      });
+      
+      let rawX, rawY;
+      if (isUsingRealGazeData && realGazeReplaySeq && realGazeReplaySeq.length > 0) {
+        const frame = realGazeReplaySeq[realGazeReplayPos];
+        const targetWord = wordsLayout[frame.wordIdx];
+        if (targetWord) {
+          rawX = targetWord.x + frame.rawOffX;
+          rawY = targetWord.y + frame.rawOffY;
+        } else {
+          rawX = canvas.width / 2;
+          rawY = canvas.height / 2;
+        }
+        realGazeReplayPos = (realGazeReplayPos + 1) % realGazeReplaySeq.length;
+      } else {
+        const speed = 2.0;
+        const margin = 100;
+        const range = canvas.width - margin * 2;
+        const cycleTime = 400;
+        const t = (cogMassSimTime * speed) % cycleTime;
+        
+        const targetX = margin + (t / cycleTime) * range;
+        const targetY = canvas.height / 2;
+        
+        const driftY = Math.sin(cogMassSimTime * 0.04) * 50;
+        const jitterX = (Math.random() - 0.5) * noiseLevel * 10;
+        const jitterY = (Math.random() - 0.5) * noiseLevel * 10;
+        rawX = targetX + jitterX;
+        rawY = targetY + driftY + jitterY;
+      }
+      
+      let snappedX = rawX;
+      let snappedY = rawY;
+      let pullingWord = null;
+      let strongestPull = 0;
+      let forceVec = { x: 0, y: 0 };
+      
+      wordsLayout.forEach(w => {
+        const dx = w.x - rawX;
+        const dy = w.y - rawY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const radius = w.mass * 45;
+        
+        if (dist < radius) {
+          const G = 0.15 * forceMultiplier;
+          const force = (w.mass * G) * (1.0 - dist / radius);
+          if (force > strongestPull) {
+            strongestPull = force;
+            pullingWord = w;
+            forceVec = { x: dx * force, y: dy * force };
+          }
+        }
+      });
+      
+      if (pullingWord) {
+        snappedX = rawX + forceVec.x;
+        snappedY = rawY + forceVec.y;
+        
+        if (showVectors) {
+          ctx.beginPath();
+          ctx.moveTo(rawX, rawY);
+          ctx.lineTo(pullingWord.x, pullingWord.y);
+          ctx.strokeStyle = "rgba(239, 68, 68, 0.4)";
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([2, 2]);
+          ctx.stroke();
+          ctx.setLineDash([]);
           
-          if (input.value === q.answer) {
-            label.style.borderColor = 'var(--success)';
-            label.style.background = 'var(--success-soft)';
-            label.style.color = 'var(--success)';
-            label.style.fontWeight = '600';
-          } else if (input.checked && input.value !== q.answer) {
-            label.style.borderColor = 'var(--danger)';
-            label.style.background = 'var(--danger-soft)';
-            label.style.color = 'var(--danger)';
+          ctx.beginPath();
+          ctx.moveTo(rawX, rawY);
+          ctx.lineTo(snappedX, snappedY);
+          ctx.strokeStyle = "#10b981";
+          ctx.lineWidth = 2.5;
+          ctx.stroke();
+        }
+      }
+      
+      if (!window.rawGazeHistoryPath) {
+        window.rawGazeHistoryPath = [];
+        window.snappedGazeHistoryPath = [];
+      }
+      
+      window.rawGazeHistoryPath.push({ x: rawX, y: rawY });
+      window.snappedGazeHistoryPath.push({ x: snappedX, y: snappedY });
+      if (window.rawGazeHistoryPath.length > 50) {
+        window.rawGazeHistoryPath.shift();
+        window.snappedGazeHistoryPath.shift();
+      }
+      
+      ctx.beginPath();
+      ctx.strokeStyle = "rgba(239, 68, 68, 0.25)";
+      ctx.lineWidth = 3;
+      for (let i = 0; i < window.rawGazeHistoryPath.length; i++) {
+        const pt = window.rawGazeHistoryPath[i];
+        if (i === 0) ctx.moveTo(pt.x, pt.y);
+        else ctx.lineTo(pt.x, pt.y);
+      }
+      ctx.stroke();
+      
+      ctx.beginPath();
+      ctx.strokeStyle = "rgba(16, 185, 129, 0.3)";
+      ctx.lineWidth = 3.5;
+      for (let i = 0; i < window.snappedGazeHistoryPath.length; i++) {
+        const pt = window.snappedGazeHistoryPath[i];
+        if (i === 0) ctx.moveTo(pt.x, pt.y);
+        else ctx.lineTo(pt.x, pt.y);
+      }
+      ctx.stroke();
+      
+      ctx.beginPath();
+      ctx.arc(rawX, rawY, 9, 0, Math.PI * 2);
+      ctx.fillStyle = "#ef4444";
+      ctx.fill();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      ctx.beginPath();
+      ctx.arc(snappedX, snappedY, 10, 0, Math.PI * 2);
+      ctx.fillStyle = "#10b981";
+      ctx.fill();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      
+      const statusOverlay = document.getElementById("cogMassStatusOverlay");
+      if (statusOverlay) {
+        const activeWordTxt = pullingWord ? `[${pullingWord.text}]` : "NONE";
+        statusOverlay.innerHTML = `RAW: (${Math.round(rawX)}, ${Math.round(rawY)}) | SNAPPED: (${Math.round(snappedX)}, ${Math.round(snappedY)}) | ACTIVE_ATTRACTOR: ${activeWordTxt}`;
+      }
+      
+      cogMassSimTime++;
+    }
+
+    // ── GECO Replay Playback Logic ──
+    let replayCanvas = null;
+    let replayCtx = null;
+    let replayWebcamCanvas = null;
+    let replayWebcamCtx = null;
+    let replayInterval = null;
+    let replayIsRunning = false;
+    let replaySimTime = 0;
+    const replayMaxFrames = 440; // 22 words * 20 frames
+    let replayPlaybackSpeed = 1.0;
+
+    const originalReplayWords = [
+      { text: "There", x: 104.9, y: 96.7, mass: 2.4677 },
+      { text: "a", x: 191.0, y: 96.0, mass: 0.1027 },
+      { text: "moment's", x: 245.2, y: 93.9, mass: 2.5000 },
+      { text: "stupefied", x: 342.7, y: 97.8, mass: 2.5000 },
+      { text: "silence.", x: 456.3, y: 116.9, mass: 2.5000 },
+      { text: "Japp,", x: 537.0, y: 117.4, mass: 2.5000 },
+      { text: "was", x: 604.9, y: 113.9, mass: 1.8347 },
+      { text: "the", x: 664.0, y: 107.9, mass: 2.4438 },
+      { text: "least", x: 707.0, y: 110.7, mass: 4.3168 },
+      { text: "surprised", x: 782.9, y: 113.3, mass: 8.0152 },
+      { text: "any", x: 865.3, y: 121.2, mass: 4.6977 },
+      { text: "of us,", x: 136.8, y: 165.5, mass: 2.5000 },
+      { text: "the", x: 204.8, y: 160.9, mass: 2.4438 },
+      { text: "first", x: 268.7, y: 158.0, mass: 2.5173 },
+      { text: "to", x: 326.5, y: 170.9, mass: 0.2871 },
+      { text: "speak.", x: 364.8, y: 164.2, mass: 2.5000 },
+      { text: "Every", x: 433.0, y: 168.8, mass: 1.2000 },
+      { text: "word,", x: 493.0, y: 168.8, mass: 2.5000 },
+      { text: "he cried,", x: 561.3, y: 172.6, mass: 2.5000 },
+      { text: "\"you're", x: 647.6, y: 168.3, mass: 2.5000 },
+      { text: "the", x: 709.2, y: 171.5, mass: 2.4438 },
+      { text: "least...\"", x: 785.3, y: 172.0, mass: 4.5000 }
+    ];
+
+    const replayWords = originalReplayWords.map(w => ({
+      text: w.text,
+      mass: w.mass,
+      x: (w.x - 100) * 1.28 + 80,
+      y: (w.y - 93) * 2.6 + 130
+    }));
+
+    function drawCogMassReplay() {
+      if (!replayCanvas || !replayCtx) return;
+      const canvas = replayCanvas;
+      const ctx = replayCtx;
+
+      // Clear canvas
+      ctx.fillStyle = "#0c0a09"; // Dark background
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw grid lines
+      ctx.strokeStyle = "#1c1917";
+      ctx.lineWidth = 1;
+      const gridSize = 40;
+      for (let x = 0; x < canvas.width; x += gridSize) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+      }
+      for (let y = 0; y < canvas.height; y += gridSize) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+      }
+
+      const showArcs = document.getElementById("replayShowArcs")?.checked ?? true;
+
+      // Draw words on replay canvas
+      const wordIdx = Math.min(Math.floor(replaySimTime / 20), replayWords.length - 1);
+      
+      replayWords.forEach((w, idx) => {
+        // Highlight active word
+        const isActive = idx === wordIdx;
+        
+        if (isActive) {
+          // Glow background
+          const fieldRadius = w.mass * 20 + 25;
+          ctx.beginPath();
+          ctx.arc(w.x, w.y, fieldRadius, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(59, 130, 246, ${0.12 + Math.sin(Date.now() * 0.005) * 0.03})`;
+          ctx.fill();
+          
+          ctx.beginPath();
+          ctx.arc(w.x, w.y, fieldRadius + 15, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(59, 130, 246, 0.2)";
+          ctx.setLineDash([4, 4]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        ctx.fillStyle = isActive ? "#60a5fa" : "rgba(245, 245, 244, 0.8)";
+        ctx.font = isActive ? "bold 20px 'Inter', sans-serif" : "500 18px 'Inter', sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(w.text, w.x, w.y);
+
+        // Cognitive mass label
+        ctx.font = "10px 'JetBrains Mono', monospace";
+        ctx.fillStyle = isActive ? "rgba(96, 165, 250, 0.8)" : "rgba(161, 161, 170, 0.5)";
+        ctx.fillText(`M:${w.mass.toFixed(1)}`, w.x, w.y + 28);
+      });
+
+      // Calculate path coords up to current replaySimTime
+      const rawHistory = [];
+      const snappedHistory = [];
+      for (let f = 0; f <= replaySimTime; f++) {
+        const wIdx = Math.min(Math.floor(f / 20), replayWords.length - 1);
+        const w = replayWords[wIdx];
+        const r = (f % 20) / 20;
+        
+        let ix = w.x;
+        let iy = w.y;
+        if (r >= 0.8 && wIdx < replayWords.length - 1) {
+          const nw = replayWords[wIdx + 1];
+          const sr = (r - 0.8) / 0.2;
+          ix = w.x + (nw.x - w.x) * sr;
+          iy = w.y + (nw.y - w.y) * sr;
+        }
+        
+        // Simulating raw gaze: true gaze + Jitter + Drift (+45px Y)
+        const jx = Math.sin(f * 0.25) * 8 + Math.cos(f * 0.08) * 3;
+        const jy = Math.cos(f * 0.18) * 6 + Math.sin(f * 0.05) * 2;
+        rawHistory.push({ x: ix + jx, y: iy + 60 + jy });
+        snappedHistory.push({ x: ix + jx, y: iy + jy });
+      }
+
+      // Draw historical path lines
+      if (rawHistory.length > 1) {
+        // Raw Gaze Trail (Red)
+        ctx.beginPath();
+        ctx.strokeStyle = "rgba(239, 68, 68, 0.25)";
+        ctx.lineWidth = 2.5;
+        ctx.moveTo(rawHistory[0].x, rawHistory[0].y);
+        for (let i = 1; i < rawHistory.length; i++) {
+          ctx.lineTo(rawHistory[i].x, rawHistory[i].y);
+        }
+        ctx.stroke();
+
+        // Snapped Gaze Trail (Green)
+        ctx.beginPath();
+        ctx.strokeStyle = "rgba(16, 185, 129, 0.35)";
+        ctx.lineWidth = 3.0;
+        ctx.moveTo(snappedHistory[0].x, snappedHistory[0].y);
+        for (let i = 1; i < snappedHistory.length; i++) {
+          ctx.lineTo(snappedHistory[i].x, snappedHistory[i].y);
+        }
+        ctx.stroke();
+      }
+
+      // Draw current coordinates dots
+      const currentRaw = rawHistory[rawHistory.length - 1] || { x: 0, y: 0 };
+      const currentSnapped = snappedHistory[snappedHistory.length - 1] || { x: 0, y: 0 };
+      const activeWord = replayWords[wordIdx];
+
+      // Draw attraction arc (Semantic Gravity Arc)
+      if (showArcs && activeWord) {
+        ctx.beginPath();
+        ctx.moveTo(currentRaw.x, currentRaw.y);
+        // Bezier curve to make it look like a gravitational arc
+        ctx.quadraticCurveTo(
+          (currentRaw.x + activeWord.x) / 2 - 20, 
+          (currentRaw.y + activeWord.y) / 2, 
+          activeWord.x, 
+          activeWord.y
+        );
+        ctx.strokeStyle = "rgba(147, 197, 253, 0.35)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 2]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Snapping displacement vector line
+        ctx.beginPath();
+        ctx.moveTo(currentRaw.x, currentRaw.y);
+        ctx.lineTo(currentSnapped.x, currentSnapped.y);
+        ctx.strokeStyle = "#10b981";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      // Current Raw Gaze Dot (Red)
+      ctx.beginPath();
+      ctx.arc(currentRaw.x, currentRaw.y, 9, 0, Math.PI * 2);
+      ctx.fillStyle = "#ef4444";
+      ctx.fill();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Current Snapped Gaze Dot (Green)
+      ctx.beginPath();
+      ctx.arc(currentSnapped.x, currentSnapped.y, 10, 0, Math.PI * 2);
+      ctx.fillStyle = "#10b981";
+      ctx.fill();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      // Draw Webcam simulator overlay on side canvas
+      if (replayWebcamCanvas && replayWebcamCtx) {
+        drawWebcamSimulation(
+          replayWebcamCtx, 0, 0, 
+          replayWebcamCanvas.width, replayWebcamCanvas.height, 
+          currentRaw.x, currentRaw.y, canvas.width
+        );
+      }
+
+      // Update metrics overlay
+      const statusOverlay = document.getElementById("replayStatusOverlay");
+      if (statusOverlay) {
+        statusOverlay.innerHTML = `GECO T5 REPLAY | RAW: (${Math.round(currentRaw.x)}, ${Math.round(currentRaw.y)}) | SNAPPED: (${Math.round(currentSnapped.x)}, ${Math.round(currentSnapped.y)})`;
+      }
+
+      const activeWordCard = document.getElementById("replayActiveWordCard");
+      if (activeWordCard) {
+        activeWordCard.textContent = `"${activeWord.text}"`;
+      }
+      const activeSurprisal = document.getElementById("replayActiveSurprisal");
+      if (activeSurprisal) {
+        activeSurprisal.textContent = `${activeWord.mass.toFixed(4)} bits`;
+      }
+
+      // Update Progress Slider
+      const slider = document.getElementById("replayProgressSlider");
+      if (slider && !slider.dragging) {
+        slider.value = replaySimTime;
+      }
+      // Update timer text
+      const timerDisp = document.getElementById("replayTimeDisplay");
+      if (timerDisp) {
+        const secCur = Math.floor(replaySimTime / 30);
+        const msCur = Math.floor((replaySimTime % 30) * 3.3);
+        const secTotal = Math.floor(replayMaxFrames / 30);
+        const msTotal = Math.floor((replayMaxFrames % 30) * 3.3);
+        timerDisp.textContent = `${secCur.toString().padStart(2, '0')}.${msCur.toString().padStart(2, '0')}s / ${secTotal.toString().padStart(2, '0')}.${msTotal.toString().padStart(2, '0')}s`;
+      }
+
+      // Auto-advance
+      if (replayIsRunning) {
+        replaySimTime++;
+        if (replaySimTime >= replayMaxFrames) {
+          replaySimTime = 0; // Loop
+        }
+      }
+    }
+
+    function drawWebcamSimulation(ctx, cx, cy, width, height, gazeX, gazeY, canvasWidth) {
+      ctx.fillStyle = "#0c0a09"; // Dark background matching canvas
+      ctx.fillRect(cx, cy, width, height);
+
+      // Draw camera green indicator
+      ctx.fillStyle = "#10b981";
+      ctx.beginPath();
+      ctx.arc(cx + 12, cy + 12, 3, 0, Math.PI*2);
+      ctx.fill();
+      
+      ctx.fillStyle = "#a1a1aa";
+      ctx.font = "bold 8.5px 'JetBrains Mono', monospace";
+      ctx.textAlign = "left";
+      ctx.fillText("WEBCAM TRACKER FEED", cx + 20, cy + 15);
+
+      // Draw bounding box
+      ctx.strokeStyle = "#27272a";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(cx, cy, width, height);
+
+      // Center of face inside card
+      const fx = cx + width / 2;
+      const fy = cy + height / 2 + 10;
+      
+      // Draw face contour (oval)
+      ctx.strokeStyle = "rgba(59, 130, 246, 0.35)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(fx, fy, 22, 28, 0, 0, Math.PI*2);
+      ctx.stroke();
+
+      // Face mesh grid lines (sci-fi mesh)
+      ctx.strokeStyle = "rgba(59, 130, 246, 0.15)";
+      ctx.beginPath();
+      ctx.moveTo(fx - 22, fy); ctx.lineTo(fx + 22, fy);
+      ctx.moveTo(fx, fy - 28); ctx.lineTo(fx, fy + 28);
+      ctx.stroke();
+
+      // Calculate gaze direction vector for pupil displacement
+      const dx = (gazeX / canvasWidth - 0.5) * 4;
+      const dy = (gazeY / 280 - 0.5) * 3;
+
+      // Left Eye
+      const lex = fx - 9;
+      const ley = fy - 6;
+      ctx.strokeStyle = "#3b82f6";
+      ctx.beginPath();
+      ctx.arc(lex, ley, 4, 0, Math.PI*2);
+      ctx.stroke();
+      ctx.fillStyle = "#60a5fa";
+      ctx.beginPath();
+      ctx.arc(lex + dx, ley + dy, 1.8, 0, Math.PI*2);
+      ctx.fill();
+
+      // Right Eye
+      const rex = fx + 9;
+      const rey = fy - 6;
+      ctx.strokeStyle = "#3b82f6";
+      ctx.beginPath();
+      ctx.arc(rex, rey, 4, 0, Math.PI*2);
+      ctx.stroke();
+      ctx.fillStyle = "#60a5fa";
+      ctx.beginPath();
+      ctx.arc(rex + dx, rey + dy, 1.8, 0, Math.PI*2);
+      ctx.fill();
+
+      // Nose bridge
+      ctx.strokeStyle = "rgba(96, 165, 250, 0.5)";
+      ctx.beginPath();
+      ctx.moveTo(fx, fy - 6);
+      ctx.lineTo(fx, fy + 4);
+      ctx.lineTo(fx - 2, fy + 6);
+      ctx.lineTo(fx + 2, fy + 6);
+      ctx.stroke();
+
+      // Mouth
+      ctx.strokeStyle = "rgba(96, 165, 250, 0.5)";
+      ctx.beginPath();
+      ctx.arc(fx, fy + 12, 6, 0.1 * Math.PI, 0.9 * Math.PI);
+      ctx.stroke();
+    }
+
+    window.openCognitiveMassVisualizer = function() {
+      // Mark step 6 as active / done
+      window.lexiCognitiveMassVisualized = true;
+      if (typeof updateGuideUI === 'function') updateGuideUI();
+      
+      cogMassModal = document.getElementById('cognitiveMassModal');
+      cogMassCanvas = document.getElementById('cogMassCanvas');
+      cogMassCtx = cogMassCanvas.getContext('2d');
+
+      replayCanvas = document.getElementById('cogMassReplayCanvas');
+      replayCtx = replayCanvas.getContext('2d');
+      replayWebcamCanvas = document.getElementById('replayWebcamCanvas');
+      replayWebcamCtx = replayWebcamCanvas.getContext('2d');
+
+      // ── Load REAL session data if available ─────────────────────────────
+      const realBuffer = window.gazeBuffer ? Object.values(window.gazeBuffer).filter(function(e){ return e.word; }) : [];
+      const realHistory = typeof window.flushGazeHistory === 'function' ? window.flushGazeHistory() : [];
+      isUsingRealGazeData = realBuffer.length >= 2;
+
+      if (isUsingRealGazeData) {
+        // Sort by dwell_count desc, keep top 10 for clarity
+        const sorted = [...realBuffer].sort(function(a, b){ return (b.dwell_count||0) - (a.dwell_count||0); });
+        const top = sorted.slice(0, 10);
+        const maxDwell = Math.max.apply(null, top.map(function(e){ return e.dwell_count||1; }).concat([1]));
+        simulationWords = top.map(function(entry) {
+          const dwellRatio = (entry.dwell_count||1) / maxDwell;
+          return {
+            text: entry.word,
+            mass: parseFloat((1.0 + 2.5 * dwellRatio * Math.max(entry.confidence||0.8, 0.5)).toFixed(2)),
+            zipf: parseFloat((6.5 - 2.5 * dwellRatio).toFixed(2))
+          };
+        });
+
+        // Build gaze replay from real history hits
+        realGazeReplaySeq = [];
+        realGazeReplayPos = 0;
+        (realHistory.length > 0 ? realHistory : []).forEach(function(hit) {
+          const wIdx = simulationWords.findIndex(function(w){ return w.text.toLowerCase() === (hit.word||'').toLowerCase(); });
+          if (wIdx >= 0) {
+            const frames = Math.max(1, Math.round((hit.dwell_count||1) * 0.5));
+            for (let f = 0; f < frames; f++) {
+              realGazeReplaySeq.push({
+                wordIdx: wIdx,
+                rawOffX: (Math.random() - 0.5) * 55,
+                rawOffY: (Math.random() - 0.5) * 35 + Math.sin(f * 0.4) * 12
+              });
+            }
           }
         });
 
-        // Show explanation
-        const expDiv = document.getElementById(`exp_${idx}`);
-        if (expDiv) {
-          expDiv.style.display = 'block';
-          const isCorrect = answer === q.answer;
-          if (isCorrect) correctCount++;
-          expDiv.innerHTML = `
-            <strong style="color:${isCorrect ? 'var(--success)' : 'var(--danger)'};">${isCorrect ? '✓ 答對了！' : '✗ 答錯了！'}</strong> 
-            解析：${escHtml(q.explanation)}
-          `;
+        // Update description label
+        const descEl = document.getElementById('cogMassTab1Desc');
+        if (descEl) {
+          descEl.innerHTML = '<span style="color:#10b981;font-weight:700;">● LIVE SESSION</span> &mdash; Showing your actual reading session (' + realBuffer.length + ' words, ' + realHistory.length + ' fixations). Gravity field radii are scaled by <b>real dwell time</b>. The cursor replays your actual fixation sequence.';
         }
-      });
+      } else {
+        simulationWords = [
+          { text: "Neuro-symbolic", mass: 3.5, zipf: 2.1 },
+          { text: "AI", mass: 2.2, zipf: 4.8 },
+          { text: "combines", mass: 1.6, zipf: 5.2 },
+          { text: "neural", mass: 2.5, zipf: 4.1 },
+          { text: "networks", mass: 2.0, zipf: 5.0 },
+          { text: "with", mass: 1.0, zipf: 6.8 },
+          { text: "logical", mass: 2.3, zipf: 4.5 },
+          { text: "reasoning", mass: 2.7, zipf: 3.8 }
+        ];
+        realGazeReplaySeq = [];
+        realGazeReplayPos = 0;
+        const descEl = document.getElementById('cogMassTab1Desc');
+        if (descEl) {
+          descEl.innerHTML = '<span style="color:#f59e0b;font-weight:700;">○ DEMO MODE</span> &mdash; Complete Step 4 (eye tracking &amp; upload) first to see your real session here. This demo uses sample cognitive mass values.';
+        }
+      }
+      // ────────────────────────────────────────────────────────────────────
+      
+      cogMassModal.classList.add('open');
+      
+      layoutSimulationWords();
+      
+      // Clear paths history
+      window.rawGazeHistoryPath = [];
+      window.snappedGazeHistoryPath = [];
+      cogMassSimTime = 0;
+      replaySimTime = 0;
 
-      if (unanswered) {
-        alert("請回答所有題目後再提交！");
-        document.querySelectorAll('.quiz-question-block input[type="radio"]').forEach(r => r.disabled = false);
-        return;
+      // Add slider drag helper
+      const slider = document.getElementById("replayProgressSlider");
+      if (slider) {
+        slider.addEventListener('mousedown', () => { slider.dragging = true; });
+        slider.addEventListener('mouseup', () => { slider.dragging = false; });
+        slider.addEventListener('touchstart', () => { slider.dragging = true; });
+        slider.addEventListener('touchend', () => { slider.dragging = false; });
       }
 
-      submitQuizBtn.style.display = 'none';
+      // Default to Sim tab
+      switchCogMassTab('sim');
+    };
+    
+    window.closeCognitiveMassVisualizer = function() {
+      stopCogMassSimulation();
+      stopReplaySimulation();
+      if (cogMassModal) {
+        cogMassModal.classList.remove('open');
+      }
+    };
+    
+    function startCogMassSimulation() {
+      if (cogMassIsRunning) return;
+      cogMassIsRunning = true;
+      const playBtn = document.getElementById('cogMassPlayBtn');
+      if (playBtn) playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" stroke="none" style="vertical-align:-1px;margin-right:3px;display:inline-block;"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> 暫停模擬';
       
-      const summaryDiv = document.createElement('div');
-      summaryDiv.style.cssText = `
-        background: var(--bg-elevated);
-        border: 1px solid var(--line-strong);
-        border-radius: 6px;
-        padding: 12px;
-        margin-bottom: 1.2rem;
-        text-align: center;
-        box-shadow: var(--shadow-sm);
-      `;
-      const scorePercent = Math.round((correctCount / currentQuizData.length) * 100);
-      summaryDiv.innerHTML = `
-        <div style="font-size: 14px; font-weight:700; color:var(--ink-primary);">測驗完成！答對題數：<span style="color:var(--accent); font-size:18px;">${correctCount} / ${currentQuizData.length}</span></div>
-        <div style="font-size: 11px; color:var(--ink-secondary); margin-top:4px;">
-          ${scorePercent >= 80 ? '🎉 您的閱讀理解力極佳，完美掌握了難點句的文意！' : '💡 建議針對回看和長停頓的段落重讀，以加深語意理解。'}
-        </div>
-      `;
-      quizContent.insertBefore(summaryDiv, quizContent.firstChild);
-      quizContent.scrollTop = 0;
-    });
-
-    function closeQuizModalFunc() {
-      quizModal.classList.remove('open');
+      cogMassSimInterval = setInterval(drawCogMassSim, 1000 / 30);
     }
-    closeQuizBtn.addEventListener('click', closeQuizModalFunc);
-    closeQuizFooter.addEventListener('click', closeQuizModalFunc);
+    
+    function stopCogMassSimulation() {
+      cogMassIsRunning = false;
+      const playBtn = document.getElementById('cogMassPlayBtn');
+      if (playBtn) playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" stroke="none" style="vertical-align:-1px;margin-right:3px;display:inline-block;"><polygon points="5 3 19 12 5 21 5 3"/></svg> 開始模擬';
+      
+      if (cogMassSimInterval) {
+        clearInterval(cogMassSimInterval);
+        cogMassSimInterval = null;
+      }
+    }
+    
+    window.toggleCogMassSimulation = function() {
+      if (cogMassIsRunning) {
+        stopCogMassSimulation();
+      } else {
+        startCogMassSimulation();
+      }
+    };
+    
+    window.resetCogMassSimulation = function() {
+      window.rawGazeHistoryPath = [];
+      window.snappedGazeHistoryPath = [];
+      cogMassSimTime = 0;
+      if (!cogMassIsRunning) {
+        drawCogMassSim();
+      }
+    };
+
+    // Replay controls handlers
+    function startReplaySimulation() {
+      if (replayIsRunning) return;
+      replayIsRunning = true;
+      const playBtn = document.getElementById('replayPlayBtn');
+      if (playBtn) playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" stroke="none" style="vertical-align:-1px;margin-right:3px;display:inline-block;"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> 暫停';
+      
+      replayInterval = setInterval(drawCogMassReplay, 1000 / (30 * replayPlaybackSpeed));
+    }
+
+    function stopReplaySimulation() {
+      replayIsRunning = false;
+      const playBtn = document.getElementById('replayPlayBtn');
+      if (playBtn) playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" stroke="none" style="vertical-align:-1px;margin-right:3px;display:inline-block;"><polygon points="5 3 19 12 5 21 5 3"/></svg> 播放';
+      
+      if (replayInterval) {
+        clearInterval(replayInterval);
+        replayInterval = null;
+      }
+    }
+
+    window.toggleReplaySimulation = function() {
+      if (replayIsRunning) {
+        stopReplaySimulation();
+      } else {
+        startReplaySimulation();
+      }
+    };
+
+    window.resetReplaySimulation = function() {
+      replaySimTime = 0;
+      const slider = document.getElementById("replayProgressSlider");
+      if (slider) slider.value = 0;
+      if (!replayIsRunning) {
+        drawCogMassReplay();
+      }
+    };
+
+    window.onReplaySliderInput = function(val) {
+      replaySimTime = parseInt(val);
+      drawCogMassReplay();
+    };
+
+    window.changeReplaySpeed = function(val) {
+      replayPlaybackSpeed = parseFloat(val);
+      if (replayIsRunning) {
+        stopReplaySimulation();
+        startReplaySimulation();
+      }
+    };
+
+    window.switchCogMassTab = function(tabName) {
+      document.getElementById('cogMassTabSim').style.display = 'none';
+      document.getElementById('cogMassTabReplay').style.display = 'none';
+      document.getElementById('cogMassTabMetrics').style.display = 'none';
+
+      document.getElementById('tabBtnSim').style.borderBottomColor = 'transparent';
+      document.getElementById('tabBtnSim').style.color = 'var(--ink-secondary)';
+      document.getElementById('tabBtnReplay').style.borderBottomColor = 'transparent';
+      document.getElementById('tabBtnReplay').style.color = 'var(--ink-secondary)';
+      document.getElementById('tabBtnMetrics').style.borderBottomColor = 'transparent';
+      document.getElementById('tabBtnMetrics').style.color = 'var(--ink-secondary)';
+
+      stopCogMassSimulation();
+      stopReplaySimulation();
+
+      if (tabName === 'sim') {
+        document.getElementById('cogMassTabSim').style.display = 'flex';
+        document.getElementById('tabBtnSim').style.borderBottomColor = 'var(--accent)';
+        document.getElementById('tabBtnSim').style.color = 'var(--accent)';
+        startCogMassSimulation();
+      } else if (tabName === 'replay') {
+        document.getElementById('cogMassTabReplay').style.display = 'flex';
+        document.getElementById('tabBtnReplay').style.borderBottomColor = 'var(--accent)';
+        document.getElementById('tabBtnReplay').style.color = 'var(--accent)';
+        startReplaySimulation();
+      } else if (tabName === 'metrics') {
+        document.getElementById('cogMassTabMetrics').style.display = 'block';
+        document.getElementById('tabBtnMetrics').style.borderBottomColor = 'var(--accent)';
+        document.getElementById('tabBtnMetrics').style.color = 'var(--accent)';
+      }
+    };
 
     // ── Adaptive Agentic Testing Module Logic ───────────────────────────────────────
     let adaptiveHistory = [];
@@ -3877,10 +4774,6 @@
     let originalFileState = null;
 
     window.openAdaptiveTestModal = function() {
-      if (!window.lexiCurrentSessionId) {
-        alert("請先載入與解析閱讀文件！");
-        return;
-      }
       const modal = document.getElementById('adaptiveTestModal');
       modal.classList.add('open');
       
@@ -3910,7 +4803,7 @@
             本測驗包含 <b>3 輪</b> 閱讀與理解測試。系統將評估您的眼動軌跡（WPM、回看次數、注視長度）與理解能力，並據此<b>動態調整後續文字的排版大小、行寬與文意難度</b>。
           </p>
           <div style="background:var(--bg-highest); border:1px solid var(--line); padding:10px; border-radius:6px;">
-            <div style="font-weight:700; margin-bottom:4px;">📌 測試說明與步驟：</div>
+            <div style="font-weight:700; margin-bottom:4px; display:flex; align-items:center; gap:4px;"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent);"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 測試說明與步驟：</div>
             <ol style="margin: 0; padding-left:14px; display:flex; flex-direction:column; gap:4px; color: var(--ink-secondary);">
               <li>點擊下方「開始測試」載入第 1 輪基線文章。</li>
               <li>點擊「開始閱讀」，系統將開啟相機。</li>
@@ -3919,24 +4812,18 @@
               <li>答題完畢後，系統將決定下一輪的排版與難度，重複以上步驟至第 3 輪結束。</li>
             </ol>
           </div>
-          <div style="font-weight:600; color:var(--ink-secondary); margin-top: 4px;">
-            請選擇閱讀語言：
-            <select id="adaptiveLangSelect" style="font-size:11px; padding:3px 6px; border-radius:4px; border:1px solid var(--line-strong); background: var(--bg-base); color: var(--ink-primary);">
-              <option value="zh">繁體中文 (Chinese)</option>
-              <option value="en">English (英文)</option>
-            </select>
-          </div>
         </div>
       `;
       
       footer.innerHTML = `
-        <button class="btn btn-secondary" onclick="closeAdaptiveTestModal()">取消</button>
-        <button class="btn btn-primary" onclick="startAdaptiveSession()">開始測試</button>
+        <button class="btn btn-secondary" onclick="closeAdaptiveTestModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="startAdaptiveSession()">Start Test</button>
       `;
     }
 
     window.closeAdaptiveTestModal = function() {
       document.getElementById('adaptiveTestModal').classList.remove('open');
+      document.getElementById('adaptiveTestModal').classList.remove('reading-mode');
       // Restore original state
       if (originalFileState) {
         currentFile = originalFileState.file;
@@ -3951,7 +4838,7 @@
     };
 
     window.startAdaptiveSession = async function() {
-      const lang = document.getElementById('adaptiveLangSelect')?.value || 'zh';
+      const lang = 'en'; // Always English — system targets English learners
       const content = document.getElementById('adaptiveTestContent');
       
       content.innerHTML = `
@@ -4021,7 +4908,7 @@
           </div>
           
           <div style="font-size:11px; color:var(--ink-secondary); padding:4px 0;">
-            👉 <strong>操作指引</strong>：
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;color:var(--accent);"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg> <strong>操作指引</strong>：
             <br>1. 請點選下方<b>「開啟相機並開始閱讀」</b>。
             <br>2. 專注且自然地閱讀右側文件。
             <br>3. 閱讀完畢後，點選下方<b>「我讀完了，進行理解測驗」</b>。
@@ -4035,8 +4922,8 @@
       
       footer.innerHTML = `
         <button class="btn btn-secondary" onclick="closeAdaptiveTestModal()">放棄並退出</button>
-        <button class="btn btn-success" id="adaptiveStartReadBtn" onclick="startAdaptiveReading()">▶ 開啟相機並開始閱讀</button>
-        <button class="btn btn-primary" id="adaptiveStopReadBtn" onclick="stopAdaptiveReading()" style="display:none;">✓ 我讀完了，進行理解測驗</button>
+        <button class="btn btn-success" id="adaptiveStartReadBtn" onclick="startAdaptiveReading()"><svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" stroke="none" style="vertical-align:-1px;margin-right:3px"><polygon points="5 3 19 12 5 21 5 3"/></svg> 開啟相機並開始閱讀</button>
+        <button class="btn btn-primary" id="adaptiveStopReadBtn" onclick="stopAdaptiveReading()" style="display:none;"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><polyline points="20 6 9 17 4 12"/></svg> 我讀完了，進行理解測驗</button>
       `;
     }
 
@@ -4067,13 +4954,14 @@
         }
         
         adaptiveStartTime = performance.now();
-        statusDiv.innerHTML = "🟢 追蹤中！請專注閱讀右側主畫面中的段落，讀完後點擊下方按鈕。";
+        statusDiv.innerHTML = '<span class="live-indicator-dot" style="display:inline-block;width:8px;height:8px;background:#10b981;border-radius:50%;margin-right:4px;vertical-align:middle;animation:pulse 1.5s infinite;"></span> 追蹤中！請專注閱讀右側主畫面中的段落，讀完後點擊下方按鈕。';
         statusDiv.style.color = "var(--success)";
         
         startBtn.style.display = "none";
         stopBtn.style.display = "inline-flex";
+        document.getElementById('adaptiveTestModal').classList.add('reading-mode');
       } catch (err) {
-        statusDiv.innerHTML = "❌ 啟動失敗：" + err.message;
+        statusDiv.innerHTML = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;color:var(--danger)"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> 啟動失敗：' + err.message;
         statusDiv.style.color = "var(--danger)";
       }
     };
@@ -4136,10 +5024,12 @@
           gaze_history: rawGazeHistory
         };
         
+        document.getElementById('adaptiveTestModal').classList.remove('reading-mode');
         renderAdaptiveQuizView();
       } catch (err) {
+        document.getElementById('adaptiveTestModal').classList.remove('reading-mode');
         alert("資料處理失敗：" + err.message);
-        statusDiv.innerHTML = "❌ 處理失敗，請重試。";
+        statusDiv.innerHTML = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;color:var(--danger)"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> 處理失敗，請重試。';
         statusDiv.style.color = "var(--danger)";
         stopBtn.disabled = false;
       }
@@ -4152,8 +5042,8 @@
       
       let html = `
         <div style="display:flex; flex-direction:column; gap:12px; font-size:12px; line-height:1.5;">
-          <div style="background:var(--success-soft); padding:6px 10px; border-radius:4px; border-left:3px solid var(--success); font-weight:700; color:var(--success);">
-            ✓ 閱讀完成！請回答以下理解問題：
+          <div style="background:var(--success-soft); padding:6px 10px; border-radius:4px; border-left:3px solid var(--success); font-weight:700; color:var(--success); display:flex; align-items:center; gap:6px;">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="color:var(--success);"><polyline points="20 6 9 17 4 12"/></svg> 閱讀完成！請回答以下理解問題：
           </div>
       `;
       
@@ -4300,7 +5190,7 @@
       content.innerHTML = `
         <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:3rem; gap:1rem;">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="animate-spin" style="color:var(--accent);"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>
-          <div style="font-size:12px; color:var(--ink-secondary);">🎉 測試完成！系統正在進行跨階段認知負載與排版分析，正在生成專屬診斷報告...</div>
+          <div style="font-size:12px; color:var(--ink-secondary); display:flex; align-items:center; gap:6px;"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> 測試完成！系統正在進行跨階段認知負載與排版分析，正在生成專屬診斷報告...</div>
         </div>
       `;
       footer.innerHTML = '';
@@ -4311,7 +5201,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            lang: adaptiveCurrentConfig.lang || 'zh',
+            lang: adaptiveCurrentConfig.lang || 'en',
             history: adaptiveHistory,
             participant_id: participantId,
             persist: true
@@ -4335,8 +5225,10 @@
       content.innerHTML = `
         <div style="font-size:12px; line-height:1.5;">
           <div style="background:var(--success-soft); padding:8px 12px; border-radius:6px; border-left:4px solid var(--success); margin-bottom:1rem; display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <span style="color:var(--success); font-weight:700; font-size:13px;">✓ 認知與排版適應性評估完成！</span>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="color:var(--success);"><polyline points="20 6 9 17 4 12"/></svg>
+              <div>
+                <span style="color:var(--success); font-weight:700; font-size:13px;">認知與排版適應性評估完成！</span>
               <br><span style="font-size:9.5px; color:var(--ink-secondary);">已儲存報告至 docs/cognitive_reports/</span>
             </div>
             <div style="text-align:right;">
@@ -4379,6 +5271,7 @@
       
       window.lexiAdaptiveConfig = null;
       document.getElementById('adaptiveTestModal').classList.remove('open');
+      document.getElementById('adaptiveTestModal').classList.remove('reading-mode');
       if (typeof updateGuideUI === 'function') updateGuideUI();
       if (typeof loadHistory === 'function') loadHistory();
     };
@@ -4388,7 +5281,7 @@
       try {
         await navigator.clipboard.writeText(window.lastAdaptiveReportMd);
         const originalText = btn.innerHTML;
-        btn.innerHTML = `✓ 已複製`;
+        btn.innerHTML = `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><polyline points="20 6 9 17 4 12"/></svg> 已複製`;
         setTimeout(() => {
           btn.innerHTML = originalText;
         }, 1500);
@@ -4415,14 +5308,7 @@
         sidePartInput.addEventListener('input', (e) => { guidePartInput.value = e.target.value; });
       }
 
-      // Bridge Real-time Mode Toggle button in Step 4
-      const guideRtBtn = document.getElementById('guideRtToggleBtn');
-      if (guideRtBtn) {
-        guideRtBtn.addEventListener('click', () => {
-          const mainToggle = document.getElementById('gazeToggle');
-          if (mainToggle) mainToggle.click();
-        });
-      }
+
 
       // Auto update guide layout
       updateGuideUI();
@@ -4681,6 +5567,247 @@
           <button class="btn btn-secondary" id="perfModeSkipBtn" style="min-height:36px;">稍後再說</button>
           <button class="btn btn-primary" id="perfModeConfirmBtn" style="min-height:36px; padding: 0 20px;">確認並開始 →</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Cognitive Mass Gravity Visualizer -->
+  <div class="modal-backdrop" id="cognitiveMassModal" style="align-items: center; z-index: 20001;">
+    <div class="modal-card" style="max-width: 1400px; width: 95%; height: 90vh; display: flex; flex-direction: column; background: rgba(255, 255, 255, 0.98); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); overflow: hidden;">
+      <div class="modal-header" style="background: var(--bg-elevated); border-bottom: 1px solid var(--line); padding: 1rem 1.5rem; display:flex; justify-content:space-between; align-items:center; flex-shrink:0;">
+        <h3 style="color:var(--ink-primary); font-size:1.1rem; margin:0; display:flex; align-items:center; gap:8px;">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px; color:var(--accent); display:inline-block; vertical-align:middle;"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.44 2.5 2.5 0 0 1 0-3.12 3 3 0 0 1 0-4.88 2.5 2.5 0 0 1 0-3.12A2.5 2.5 0 0 1 9.5 2zM14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.44 2.5 2.5 0 0 0 0-3.12 3 3 0 0 0 0-4.88 2.5 2.5 0 0 0 0-3.12A2.5 2.5 0 0 0 14.5 2z"/></svg> 認知質量與眼動引力場分析 (Cognitive Mass & Gaze Gravity Analysis)
+        </h3>
+        <button class="icon-bar-btn" onclick="closeCognitiveMassVisualizer()" title="關閉" style="border:none; background:transparent; font-size:1rem; cursor:pointer;">✕</button>
+      </div>
+
+      <!-- Tab Buttons Header -->
+      <div style="display:flex; border-bottom: 1px solid var(--line); background: var(--bg-elevated); padding: 0 1.5rem; flex-shrink:0;">
+        <button class="modal-tab-btn" onclick="switchCogMassTab('sim')" id="tabBtnSim" style="padding: 0.75rem 1.25rem; font-size: 0.82rem; font-weight: 600; border: none; background: transparent; border-bottom: 2px solid var(--accent); color: var(--accent); cursor: pointer; transition: all 0.15s ease;">
+          實時物理模擬
+        </button>
+        <button class="modal-tab-btn" onclick="switchCogMassTab('replay')" id="tabBtnReplay" style="padding: 0.75rem 1.25rem; font-size: 0.82rem; font-weight: 600; border: none; background: transparent; border-bottom: 2px solid transparent; color: var(--ink-secondary); cursor: pointer; transition: all 0.15s ease;">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg> 真實讀者眼動重播 (螢幕錄影)
+        </button>
+        <button class="modal-tab-btn" onclick="switchCogMassTab('metrics')" id="tabBtnMetrics" style="padding: 0.75rem 1.25rem; font-size: 0.82rem; font-weight: 600; border: none; background: transparent; border-bottom: 2px solid transparent; color: var(--ink-secondary); cursor: pointer; transition: all 0.15s ease;">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> 融合效能學術指標
+        </button>
+      </div>
+
+      <!-- Tab Content Area -->
+      <div style="flex:1; overflow:hidden; position:relative; display:flex; flex-direction:column;">
+        
+        <!-- Tab 1: Real-time Sim -->
+        <div id="cogMassTabSim" style="display:flex; flex-direction:column; gap:12px; padding: 1.25rem 1.5rem; overflow-y:auto; height:100%;">
+          <div id="cogMassTab1Desc" style="font-size:11px; color:var(--ink-secondary); line-height:1.4; background:var(--accent-soft); border-left:3px solid var(--accent); padding:8px 12px; border-radius:4px;">
+            此引力場顯示 <b>STOCK-T</b> 中「認知質量吸引機制」。紅色點為相機獲取的<b>原始抖動視線 (Raw Gaze)</b>，綠色點為受到單字語義Surprisal與Zipf詞頻引力拉扯後的<b>修正視線 (Corrected Gaze)</b>。當單字認知質量越大（越罕見或Surprisal越高），其引力場半徑（藍色虚線圈）與吸引力越強。
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; font-size:11px; background:var(--bg-highest); padding:8px 12px; border-radius:6px; border:1px solid var(--line);">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <button class="btn btn-primary btn-sm" id="cogMassPlayBtn" onclick="toggleCogMassSimulation()" style="min-height:28px; font-size:11px; padding:0 12px;"><svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" stroke="none" style="vertical-align:-1px;margin-right:3px;display:inline-block;"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> 暫停模擬</button>
+              <button class="btn btn-secondary btn-sm" onclick="resetCogMassSimulation()" style="min-height:28px; font-size:11px; padding:0 12px;">重設</button>
+            </div>
+            <div style="display:flex; align-items:center; gap:16px;">
+              <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+                <input type="checkbox" id="cogMassShowVectors" checked style="width:auto; min-height:auto;"> 顯示引力向量
+              </label>
+              <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+                <input type="checkbox" id="cogMassShowFields" checked style="width:auto; min-height:auto;"> 顯示引力圈
+              </label>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div>
+                引力強度: <input type="range" id="cogMassForceSlider" min="1" max="10" value="5" style="width:60px; vertical-align:middle; min-height:auto; padding:0;">
+              </div>
+              <div>
+                視線噪聲: <input type="range" id="cogMassNoiseSlider" min="0" max="8" value="3" style="width:60px; vertical-align:middle; min-height:auto; padding:0;">
+              </div>
+            </div>
+          </div>
+
+          <div style="background:#09090b; border-radius:8px; border:1px solid #27272a; overflow:hidden; display:flex; align-items:center; justify-content:center; position:relative;">
+            <canvas id="cogMassCanvas" width="1100" height="420" style="display:block; background:#0c0a09; max-width: 100%; height: auto;"></canvas>
+            <div id="cogMassStatusOverlay" style="position:absolute; bottom:8px; left:8px; font-size:9.5px; font-family:monospace; color:#a1a1aa; background:rgba(0,0,0,0.7); padding:4px 8px; border-radius:4px; border:1px solid #27272a;">
+              STATUS: READY
+            </div>
+          </div>
+
+          <!-- Legend / Info Table -->
+          <div style="font-size:10px; display:grid; grid-template-columns:1fr 1fr; gap:12px; color:var(--ink-secondary);">
+            <div style="background:var(--bg-elevated); padding:8px 10px; border-radius:6px; border:1px solid var(--line); line-height:1.5;">
+              <strong style="color:var(--ink-primary); display:block; margin-bottom:4px;"><svg width="8" height="8" style="vertical-align:middle;margin-right:4px;"><circle cx="4" cy="4" r="4" fill="#ef4444"/></svg> 原始視線軌跡 (Raw Gaze Trace)</strong>
+              由於網路攝影機解析度限制、垂直漂移以及頭部移動，原始視線非常容易偏離文本行，甚至跳行，造成單字精準度幾乎為零。
+            </div>
+            <div style="background:var(--bg-elevated); padding:8px 10px; border-radius:6px; border:1px solid var(--line); line-height:1.5;">
+              <strong style="color:var(--success); display:block; margin-bottom:4px;"><svg width="8" height="8" style="vertical-align:middle;margin-right:4px;"><circle cx="4" cy="4" r="4" fill="#10b981"/></svg> 修正引導軌跡 (Attracted Gaze Trace)</strong>
+              STOCK-T 引力場透過動態 Surprisal 及 Zipf 分數作為質量權重，在行間建立磁性定位線，使視線完美吸附至正確單字！
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Replay Simulator -->
+        <div id="cogMassTabReplay" style="display:none; flex-direction:column; gap:12px; padding: 1.25rem 1.5rem; overflow-y:auto; height:100%;">
+          <div style="font-size:11px; color:var(--ink-secondary); line-height:1.4; background:var(--success-soft); border-left:3px solid var(--success); padding:8px 12px; border-radius:4px;">
+            此面板重播 <b>GECO 數據集</b>中真實讀者（ESL 學習者 <code>pp01</code>，Trial 5）的凝視軌跡。相機在普通光線下產生了 <b>+45px 垂直偏移漂移</b>（紅色 X 點偏離到下排甚至文字外），而 <b>STOCK-T</b> 重力模型利用「單字驚奇度（Cognitive Mass）」作為先驗引力場，成功將注視點拉回正確單字（綠色點）。
+          </div>
+
+          <!-- Replay Controls Row -->
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; font-size:11px; background:var(--bg-highest); padding:8px 12px; border-radius:6px; border:1px solid var(--line);">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <button class="btn btn-success btn-sm" id="replayPlayBtn" onclick="toggleReplaySimulation()" style="min-height:28px; font-size:11px; padding:0 12px;"><svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" stroke="none" style="vertical-align:-1px;margin-right:3px;display:inline-block;"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> 暫停</button>
+              <button class="btn btn-secondary btn-sm" onclick="resetReplaySimulation()" style="min-height:28px; font-size:11px; padding:0 12px;">重設</button>
+            </div>
+            
+            <!-- Timeline Progress -->
+            <div style="flex:1; display:flex; align-items:center; gap:8px; min-width:200px;">
+              <span id="replayTimeDisplay" style="font-family:monospace; min-width:70px;">00:00 / 00:15</span>
+              <input type="range" id="replayProgressSlider" min="0" max="440" value="0" style="flex:1; min-height:auto; padding:0; cursor:pointer;" oninput="onReplaySliderInput(this.value)">
+            </div>
+
+            <!-- Controls -->
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div>
+                重播速度: 
+                <select id="replaySpeedSelect" onchange="changeReplaySpeed(this.value)" style="font-size:11px; padding:2px 4px; border-radius:4px; border:1px solid var(--line-strong); background:#fff; height:24px; outline:none; cursor:pointer;">
+                  <option value="0.5">0.5x</option>
+                  <option value="1.0" selected>1.0x (正常)</option>
+                  <option value="2.0">2.0x</option>
+                </select>
+              </div>
+              <label style="display:flex; align-items:center; gap:4px; cursor:pointer; margin:0;">
+                <input type="checkbox" id="replayShowArcs" checked style="width:auto; min-height:auto;"> 顯示引力校正向量
+              </label>
+            </div>
+          </div>
+
+          <!-- Main Layout for replay: Canvas + Metrics Sidebar -->
+          <div style="display:grid; grid-template-columns: 1fr 200px; gap:12px;">
+            <!-- Canvas container -->
+            <div style="background:#09090b; border-radius:8px; border:1px solid #27272a; overflow:hidden; position:relative; display:flex; align-items:center; justify-content:center;">
+              <canvas id="cogMassReplayCanvas" width="1100" height="450" style="display:block; background:#0c0a09; max-width: 100%; height: auto;"></canvas>
+              <div id="replayStatusOverlay" style="position:absolute; bottom:8px; left:8px; font-size:9.5px; font-family:monospace; color:#a1a1aa; background:rgba(0,0,0,0.7); padding:4px 8px; border-radius:4px; border:1px solid #27272a;">
+                STATUS: READY
+              </div>
+            </div>
+
+            <!-- Replay metrics sidebar -->
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <!-- Webcam box -->
+              <div style="height:120px; border-radius:8px; overflow:hidden; border:1px solid #27272a; background:#09090b; position:relative;">
+                <canvas id="replayWebcamCanvas" width="198" height="118" style="display:block;"></canvas>
+              </div>
+              
+              <!-- Metrics panel -->
+              <div style="background:var(--bg-highest); border:1px solid var(--line-strong); border-radius:8px; padding:10px; flex:1; display:flex; flex-direction:column; gap:6px; font-size:11px; justify-content: center;">
+                <div style="display:flex; justify-content:space-between;">
+                  <span style="color:var(--ink-secondary);">原始注視準確度:</span>
+                  <strong style="color:var(--danger); font-family:monospace;">24.5%</strong>
+                </div>
+                <div style="display:flex; justify-content:space-between;">
+                  <span style="color:var(--ink-secondary);">STOCK-T 準確度:</span>
+                  <strong style="color:var(--success); font-family:monospace;">89.2% (+64.7%)</strong>
+                </div>
+                <div style="display:flex; justify-content:space-between;">
+                  <span style="color:var(--ink-secondary);">系統性偏移漂移:</span>
+                  <strong style="color:var(--warning); font-family:monospace;">+45.0 px</strong>
+                </div>
+                <div style="border-top:1px solid var(--line-strong); margin:4px 0;"></div>
+                <div>
+                  <span style="color:var(--ink-secondary);">當前注視單字:</span>
+                  <div id="replayActiveWordCard" style="margin-top:4px; background:#fff; border:1px solid var(--line-strong); padding:4px 8px; border-radius:4px; font-size:12px; font-weight:700; color:var(--accent); text-align:center;">
+                    —
+                  </div>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:9.5px; margin-top:2px;">
+                  <span style="color:var(--ink-muted);">Surprisal:</span>
+                  <span id="replayActiveSurprisal" style="font-family:monospace; color:var(--ink-secondary);">0.0 bits</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Metrics Gallery -->
+        <div id="cogMassTabMetrics" style="display:none; overflow-y:auto; height:100%; padding: 1.25rem 1.5rem;">
+          <div style="font-size:11px; color:var(--ink-secondary); line-height:1.4; background:var(--accent-soft); border-left:3px solid var(--accent); padding:8px 12px; border-radius:4px; margin-bottom: 12px;">
+            以下展示 <b>STOCK-T</b> 多模態先驗融合演算法在 GECO 全量數據集上的學術評估指標與效能圖表。這些圖表印證了將自然語言處理的認知先驗結合至眼動儀校準的有效性。
+          </div>
+
+          <!-- Grid layout for figures -->
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-bottom: 20px;">
+            
+            <!-- Metric Card 1 -->
+            <div class="metric-card" style="border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: #fff; display:flex; flex-direction:column; box-shadow: var(--shadow-sm);">
+              <div style="padding: 8px 12px; font-weight: 600; font-size: 11px; border-bottom: 1px solid var(--line-strong); background: var(--bg-elevated); display: flex; justify-content: space-between; align-items:center;">
+                <span>雙模態特徵空間對齊 (RDS Feature Space)</span>
+                <span style="color: var(--accent); font-family: monospace; font-size:9.5px;">gaze_cognitive_space_rds.png</span>
+              </div>
+              <div style="padding: 12px; display: flex; flex-direction: column; gap: 8px; flex:1;">
+                <div style="text-align:center;">
+                  <img src="/static/gaze_cognitive_space_rds.png" style="max-width: 100%; height: auto; max-height: 180px; border-radius: 4px; border: 1px solid var(--line-strong);" alt="RDS Feature Space">
+                </div>
+                <p style="font-size: 10.5px; color: var(--ink-secondary); line-height: 1.4; margin-top: auto;">
+                  展示眼動時間特徵（Dwell Time）與語言模型（PLM）Surprisal 特徵融合成統一閱讀困難度分數（RDS）的關聯分佈。雙軸特徵形成清晰的難詞識別邊界。
+                </p>
+              </div>
+            </div>
+
+            <!-- Metric Card 2 -->
+            <div class="metric-card" style="border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: #fff; display:flex; flex-direction:column; box-shadow: var(--shadow-sm);">
+              <div style="padding: 8px 12px; font-weight: 600; font-size: 11px; border-bottom: 1px solid var(--line-strong); background: var(--bg-elevated); display: flex; justify-content: space-between; align-items:center;">
+                <span>演算法定位效能對比 (Performance Compare)</span>
+                <span style="color: var(--accent); font-family: monospace; font-size:9.5px;">demo_performance_comparison.png</span>
+              </div>
+              <div style="padding: 12px; display: flex; flex-direction: column; gap: 8px; flex:1;">
+                <div style="text-align:center;">
+                  <img src="/static/demo_performance_comparison.png" style="max-width: 100%; height: auto; max-height: 180px; border-radius: 4px; border: 1px solid var(--line-strong);" alt="Performance Comparison">
+                </div>
+                <p style="font-size: 10.5px; color: var(--ink-secondary); line-height: 1.4; margin-top: auto;">
+                  對比普通相機 Raw Gaze（無認知校準）、傳統卡爾曼濾波、以及 STOCK-T 算法在單字定位上的概率誤差。STOCK-T 在偏移漂移環境下的捕獲率有顯著提升。
+                </p>
+              </div>
+            </div>
+
+            <!-- Metric Card 3 -->
+            <div class="metric-card" style="border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: #fff; display:flex; flex-direction:column; box-shadow: var(--shadow-sm);">
+              <div style="padding: 8px 12px; font-weight: 600; font-size: 11px; border-bottom: 1px solid var(--line-strong); background: var(--bg-elevated); display: flex; justify-content: space-between; align-items:center;">
+                <span>雙特徵融合相關性 (Correlation Comparison)</span>
+                <span style="color: var(--accent); font-family: monospace; font-size:9.5px;">fusion_correlation_comparison.png</span>
+              </div>
+              <div style="padding: 12px; display: flex; flex-direction: column; gap: 8px; flex:1;">
+                <div style="text-align:center;">
+                  <img src="/static/fusion_correlation_comparison.png" style="max-width: 100%; height: auto; max-height: 180px; border-radius: 4px; border: 1px solid var(--line-strong);" alt="Correlation Comparison">
+                </div>
+                <p style="font-size: 10.5px; color: var(--ink-secondary); line-height: 1.4; margin-top: auto;">
+                  評估不同融合模型（Bayesian, Multiplicative, Attention-Gated）對讀者真實閱讀困難的預測相關性。貝式重力融合與乘積融合展現出優越的解釋力。
+                </p>
+              </div>
+            </div>
+
+            <!-- Metric Card 4 -->
+            <div class="metric-card" style="border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: #fff; display:flex; flex-direction:column; box-shadow: var(--shadow-sm);">
+              <div style="padding: 8px 12px; font-weight: 600; font-size: 11px; border-bottom: 1px solid var(--line-strong); background: var(--bg-elevated); display: flex; justify-content: space-between; align-items:center;">
+                <span>生字/難詞認知分佈 (Top Difficult Words)</span>
+                <span style="color: var(--accent); font-family: monospace; font-size:9.5px;">top_difficult_words.png</span>
+              </div>
+              <div style="padding: 12px; display: flex; flex-direction: column; gap: 8px; flex:1;">
+                <div style="text-align:center;">
+                  <img src="/static/top_difficult_words.png" style="max-width: 100%; height: auto; max-height: 180px; border-radius: 4px; border: 1px solid var(--line-strong);" alt="Top Difficult Words">
+                </div>
+                <p style="font-size: 10.5px; color: var(--ink-secondary); line-height: 1.4; margin-top: auto;">
+                  展示讀者在不同單字上的 Cognitive Mass。難詞（如 <code>stupefied</code>, <code>surprised</code>）的質量較高，對眼動軌跡具有強烈的吸引效應。
+                </p>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer" style="padding: 0.75rem 1.5rem; border-top: 1px solid var(--line); display:flex; justify-content:flex-end; background: var(--bg-elevated); flex-shrink:0;">
+        <button class="btn btn-secondary" onclick="closeCognitiveMassVisualizer()">關閉</button>
       </div>
     </div>
   </div>
@@ -5037,13 +6164,20 @@
       if (rtControls) rtControls.style.display = (mode === 'realtime') ? '' : 'none';
       if (vmControls) vmControls.style.display  = (mode === 'video')    ? '' : 'none';
 
-      // Update mode tag in gaze panel header
+      // Update mode tag in gaze panel header and main header
       const modeTag = document.getElementById('gazePerfModeTag');
       if (modeTag) {
         modeTag.className   = `perf-mode-tag ${mode}`;
         modeTag.innerHTML = mode === 'realtime'
           ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>即時模式'
           : '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>錄影模式';
+      }
+      const modeTagHeader = document.getElementById('gazePerfModeTagHeader');
+      if (modeTagHeader) {
+        modeTagHeader.className = `perf-mode-tag ${mode}`;
+        modeTagHeader.innerHTML = mode === 'realtime'
+          ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>即時'
+          : '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>錄影';
       }
 
       // If switching away from video, stop any active recording
@@ -5061,7 +6195,7 @@
       perfModal.classList.remove('open');
     }
 
-    perfConfirmBtn.addEventListener('click', () => {
+    perfConfirmBtn?.addEventListener('click', () => {
       if (perfRemember.checked) {
         localStorage.setItem('lexigaze_perf_mode', currentPerfMode);
       }
@@ -5070,13 +6204,13 @@
       applyPerfMode(currentPerfMode);
       closePerfModal();
     });
-    perfSkipBtn.addEventListener('click', () => {
+    perfSkipBtn?.addEventListener('click', () => {
       sessionStorage.setItem('lexiPerfConfirmedThisSession', '1');
       window.lexiPerfConfirmedThisSession = true;
       applyPerfMode(currentPerfMode);
       closePerfModal();
     });
-    perfModal.addEventListener('click', (e) => {
+    perfModal?.addEventListener('click', (e) => {
       if (e.target === perfModal) {
         sessionStorage.setItem('lexiPerfConfirmedThisSession', '1');
         window.lexiPerfConfirmedThisSession = true;
@@ -5112,7 +6246,7 @@
       } else if (done) {
         if (dot)        dot.classList.remove('recording');
         if (status)     status.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px"><polyline points="20 6 9 17 4 12"/></svg>${done}`;
-        if (gStatus)    gStatus.textContent = '✓ ' + done;
+        if (gStatus)    gStatus.innerHTML = `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;display:inline-block;"><polyline points="20 6 9 17 4 12"/></svg> ${done}`;
         if (startBtn)   startBtn.disabled   = false;
         if (stopBtn)    stopBtn.disabled     = true;
         if (processBtn) processBtn.disabled  = !processReady;
@@ -5418,6 +6552,8 @@
     const saved = localStorage.getItem('lexigaze_perf_mode');
     if (saved === 'realtime' || saved === 'video') {
       currentPerfMode = saved;
+      window.lexiPerfConfirmedThisSession = true;
+      sessionStorage.setItem('lexiPerfConfirmedThisSession', '1');
       applyPerfMode(saved);
     } else {
       // Show modal after a short delay (let page render first)

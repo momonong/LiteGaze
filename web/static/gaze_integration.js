@@ -108,7 +108,23 @@
   }
 
   function setStatus(message) {
-    els.status.textContent = message;
+    if (els.status) {
+      els.status.textContent = message;
+    }
+    const guideRtStatus = document.getElementById("guideRtStatus");
+    if (guideRtStatus) {
+      guideRtStatus.textContent = `狀態: ${message}`;
+      const cameraTip = document.getElementById("guideRtCameraTip");
+      if (message.includes("失敗") || message.includes("不支援") || message.includes("錯誤")) {
+        guideRtStatus.style.color = "var(--danger)";
+        guideRtStatus.style.backgroundColor = "var(--danger-soft)";
+        if (cameraTip) cameraTip.style.display = "block";
+      } else {
+        guideRtStatus.style.color = "var(--accent)";
+        guideRtStatus.style.backgroundColor = "var(--accent-soft)";
+        if (cameraTip) cameraTip.style.display = "none";
+      }
+    }
   }
 
   function updateSmoothLabel() {
@@ -158,13 +174,21 @@
   }
 
   async function startCamera() {
+    console.log("[Gaze] startCamera request. navigator.mediaDevices:", !!navigator.mediaDevices);
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      console.error("[Gaze] navigator.mediaDevices.getUserMedia is not available");
       throw new Error("不支援相機存取");
     }
-    state.stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
-      audio: false,
-    });
+    try {
+      state.stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+        audio: false,
+      });
+      console.log("[Gaze] getUserMedia stream acquired successfully:", state.stream.id);
+    } catch (exc) {
+      console.error("[Gaze] getUserMedia failed:", exc);
+      throw exc;
+    }
     state.video.srcObject = state.stream;
     state.video.muted = true;
     state.video.playsInline = true;
@@ -320,6 +344,9 @@
       } catch (err) {
         clearTimeout(timeout);
         state._currentAbort = null;
+        if (!state.enabled) {
+          break;
+        }
         if (err.name === "AbortError") {
           setStatus("推論超時，重試中...");
         } else {
@@ -374,8 +401,9 @@
     }
 
     if (enabled) {
-      if (typeof gazeMappingToggle !== "undefined" && gazeMappingToggle && typeof gazeMappingOn !== "undefined" && !gazeMappingOn) {
-        gazeMappingToggle.click();
+      const mappingToggle = document.getElementById("gazeMappingToggle");
+      if (mappingToggle && !window.gazeMappingOn) {
+        mappingToggle.click();
       }
 
       if (els.gazeCursor) {
@@ -447,7 +475,13 @@
     });
   });
 
-  els.toggle.addEventListener("click", () => setEnabled(!state.enabled));
+  const handleToggle = () => setEnabled(!state.enabled);
+  els.toggle.addEventListener("click", handleToggle);
+
+  const guideRtBtn = document.getElementById("guideRtToggleBtn");
+  if (guideRtBtn) {
+    guideRtBtn.addEventListener("click", handleToggle);
+  }
   els.smoothSlider.addEventListener("input", updateSmoothLabel);
   if (els.intervalSlider) {
     els.intervalSlider.addEventListener("input", updateIntervalLabel);
