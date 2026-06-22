@@ -1,0 +1,78 @@
+{
+  "session_id": "test13_session_1782100600394",
+  "fusion_version": "1.0",
+  "generated_at": "2026-06-22T11:56:40",
+  "elapsed_ms": 0,
+  "weights": {
+    "dwell": 0.35,
+    "fixation": 0.25,
+    "load": 0.4
+  },
+  "summary": {
+    "total_words_tracked": 2,
+    "gaze_events_ingested": 2,
+    "difficulty_count": 0,
+    "attention_count": 0,
+    "fluent_count": 2,
+    "mean_rds": 0.175
+  },
+  "difficulty_words": [],
+  "attention_words": [],
+  "cognitive_model": null,
+  "cognitive_lang": null,
+  "cognitive_domain": null,
+  "rds_results": [
+    {
+      "word": "Easy",
+      "rds": 0.35,
+      "rds_level": "fluent",
+      "dwell_ms": 1080,
+      "dwell_norm": 1.0,
+      "fixation_count": 3,
+      "fix_norm": 0.0,
+      "hit_count": 1,
+      "confidence_counts": {
+        "high": 1,
+        "medium": 0,
+        "low": 0
+      },
+      "load_score": 0.0,
+      "load_level": "",
+      "pos": "",
+      "surprisal": null,
+      "entropy": null,
+      "renyi_entropy": null,
+      "dependency_load": null,
+      "zipf_score": null,
+      "word_length": null,
+      "aoa_score": null,
+      "pos_score": null
+    },
+    {
+      "word": "Reading",
+      "rds": 0.0,
+      "rds_level": "fluent",
+      "dwell_ms": 720,
+      "dwell_norm": 0.0,
+      "fixation_count": 3,
+      "fix_norm": 0.0,
+      "hit_count": 1,
+      "confidence_counts": {
+        "high": 1,
+        "medium": 0,
+        "low": 0
+      },
+      "load_score": 0.0,
+      "load_level": "",
+      "pos": "",
+      "surprisal": null,
+      "entropy": null,
+      "renyi_entropy": null,
+      "dependency_load": null,
+      "zipf_score": null,
+      "word_length": null,
+      "aoa_score": null,
+      "pos_score": null
+    }
+  ]
+}

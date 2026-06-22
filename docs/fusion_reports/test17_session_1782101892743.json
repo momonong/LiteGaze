@@ -1,0 +1,158 @@
+{
+  "session_id": "test17_session_1782101892743",
+  "fusion_version": "1.0",
+  "generated_at": "2026-06-22T12:18:13",
+  "elapsed_ms": 0,
+  "weights": {
+    "dwell": 0.35,
+    "fixation": 0.25,
+    "load": 0.4
+  },
+  "summary": {
+    "total_words_tracked": 5,
+    "gaze_events_ingested": 5,
+    "difficulty_count": 0,
+    "attention_count": 1,
+    "fluent_count": 4,
+    "mean_rds": 0.2167
+  },
+  "difficulty_words": [],
+  "attention_words": [
+    "Easy"
+  ],
+  "cognitive_model": null,
+  "cognitive_lang": null,
+  "cognitive_domain": null,
+  "rds_results": [
+    {
+      "word": "Easy",
+      "rds": 0.6,
+      "rds_level": "attention",
+      "dwell_ms": 1560,
+      "dwell_norm": 1.0,
+      "fixation_count": 2,
+      "fix_norm": 1.0,
+      "hit_count": 1,
+      "confidence_counts": {
+        "high": 0,
+        "medium": 1,
+        "low": 0
+      },
+      "load_score": 0.0,
+      "load_level": "",
+      "pos": "",
+      "surprisal": null,
+      "entropy": null,
+      "renyi_entropy": null,
+      "dependency_load": null,
+      "zipf_score": null,
+      "word_length": null,
+      "aoa_score": null,
+      "pos_score": null
+    },
+    {
+      "word": "Reading",
+      "rds": 0.3375,
+      "rds_level": "fluent",
+      "dwell_ms": 480,
+      "dwell_norm": 0.25,
+      "fixation_count": 2,
+      "fix_norm": 1.0,
+      "hit_count": 1,
+      "confidence_counts": {
+        "high": 0,
+        "medium": 0,
+        "low": 1
+      },
+      "load_score": 0.0,
+      "load_level": "",
+      "pos": "",
+      "surprisal": null,
+      "entropy": null,
+      "renyi_entropy": null,
+      "dependency_load": null,
+      "zipf_score": null,
+      "word_length": null,
+      "aoa_score": null,
+      "pos_score": null
+    },
+    {
+      "word": "English",
+      "rds": 0.0875,
+      "rds_level": "fluent",
+      "dwell_ms": 480,
+      "dwell_norm": 0.25,
+      "fixation_count": 1,
+      "fix_norm": 0.0,
+      "hit_count": 1,
+      "confidence_counts": {
+        "high": 0,
+        "medium": 0,
+        "low": 1
+      },
+      "load_score": 0.0,
+      "load_level": "",
+      "pos": "",
+      "surprisal": null,
+      "entropy": null,
+      "renyi_entropy": null,
+      "dependency_load": null,
+      "zipf_score": null,
+      "word_length": null,
+      "aoa_score": null,
+      "pos_score": null
+    },
+    {
+      "word": "going",
+      "rds": 0.0583,
+      "rds_level": "fluent",
+      "dwell_ms": 360,
+      "dwell_norm": 0.1667,
+      "fixation_count": 1,
+      "fix_norm": 0.0,
+      "hit_count": 1,
+      "confidence_counts": {
+        "high": 0,
+        "medium": 1,
+        "low": 0
+      },
+      "load_score": 0.0,
+      "load_level": "",
+      "pos": "",
+      "surprisal": null,
+      "entropy": null,
+      "renyi_entropy": null,
+      "dependency_load": null,
+      "zipf_score": null,
+      "word_length": null,
+      "aoa_score": null,
+      "pos_score": null
+    },
+    {
+      "word": "sleep",
+      "rds": 0.0,
+      "rds_level": "fluent",
+      "dwell_ms": 120,
+      "dwell_norm": 0.0,
+      "fixation_count": 1,
+      "fix_norm": 0.0,
+      "hit_count": 1,
+      "confidence_counts": {
+        "high": 0,
+        "medium": 1,
+        "low": 0
+      },
+      "load_score": 0.0,
+      "load_level": "",
+      "pos": "",
+      "surprisal": null,
+      "entropy": null,
+      "renyi_entropy": null,
+      "dependency_load": null,
+      "zipf_score": null,
+      "word_length": null,
+      "aoa_score": null,
+      "pos_score": null
+    }
+  ]
+}

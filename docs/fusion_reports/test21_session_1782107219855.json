@@ -1,0 +1,107 @@
+{
+  "session_id": "test21_session_1782107219855",
+  "fusion_version": "1.0",
+  "generated_at": "2026-06-22T13:47:00",
+  "elapsed_ms": 0,
+  "weights": {
+    "dwell": 0.35,
+    "fixation": 0.25,
+    "load": 0.4
+  },
+  "summary": {
+    "total_words_tracked": 3,
+    "gaze_events_ingested": 3,
+    "difficulty_count": 0,
+    "attention_count": 2,
+    "fluent_count": 1,
+    "mean_rds": 0.3333
+  },
+  "difficulty_words": [],
+  "attention_words": [
+    "Medium",
+    "English"
+  ],
+  "cognitive_model": null,
+  "cognitive_lang": null,
+  "cognitive_domain": null,
+  "rds_results": [
+    {
+      "word": "Medium",
+      "rds": 0.525,
+      "rds_level": "attention",
+      "dwell_ms": 1920,
+      "dwell_norm": 0.7857,
+      "fixation_count": 3,
+      "fix_norm": 1.0,
+      "hit_count": 1,
+      "confidence_counts": {
+        "high": 1,
+        "medium": 0,
+        "low": 0
+      },
+      "load_score": 0.0,
+      "load_level": "",
+      "pos": "",
+      "surprisal": null,
+      "entropy": null,
+      "renyi_entropy": null,
+      "dependency_load": null,
+      "zipf_score": null,
+      "word_length": null,
+      "aoa_score": null,
+      "pos_score": null
+    },
+    {
+      "word": "English",
+      "rds": 0.475,
+      "rds_level": "attention",
+      "dwell_ms": 2280,
+      "dwell_norm": 1.0,
+      "fixation_count": 2,
+      "fix_norm": 0.5,
+      "hit_count": 1,
+      "confidence_counts": {
+        "high": 1,
+        "medium": 0,
+        "low": 0
+      },
+      "load_score": 0.0,
+      "load_level": "",
+      "pos": "",
+      "surprisal": null,
+      "entropy": null,
+      "renyi_entropy": null,
+      "dependency_load": null,
+      "zipf_score": null,
+      "word_length": null,
+      "aoa_score": null,
+      "pos_score": null
+    },
+    {
+      "word": "populations",
+      "rds": 0.0,
+      "rds_level": "fluent",
+      "dwell_ms": 600,
+      "dwell_norm": 0.0,
+      "fixation_count": 1,
+      "fix_norm": 0.0,
+      "hit_count": 1,
+      "confidence_counts": {
+        "high": 0,
+        "medium": 0,
+        "low": 1
+      },
+      "load_score": 0.0,
+      "load_level": "",
+      "pos": "",
+      "surprisal": null,
+      "entropy": null,
+      "renyi_entropy": null,
+      "dependency_load": null,
+      "zipf_score": null,
+      "word_length": null,
+      "aoa_score": null,
+      "pos_score": null
+    }
+  ]
+}
