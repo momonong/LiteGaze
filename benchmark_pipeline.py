@@ -1,6 +1,6 @@
 
 import json
-from cognitive_load_pipeline import CognitiveLoadPipeline
+from core.cognition import CognitiveLoadPipeline
 
 # 定義測試組
 BENCHMARK_SUITE = [

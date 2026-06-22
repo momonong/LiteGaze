@@ -98,7 +98,7 @@ def load_cognitive_result(path: Path) -> dict:
 
 def run_cognitive_pipeline(text: str, lang: str = "en") -> dict:
     """直接呼叫 weichi CognitiveLoadPipeline 對文字進行分析。"""
-    from cognitive_load_pipeline import CognitiveLoadPipeline
+    from core.cognition import CognitiveLoadPipeline
     model_type = "bert" if lang == "zh" else "gpt2"
     print(f"[Orchestrator] 啟動 CognitiveLoadPipeline (lang={lang}, model={model_type})…")
     pipeline = CognitiveLoadPipeline(model_type=model_type, lang=lang)

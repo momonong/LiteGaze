@@ -1,5 +1,5 @@
 import json
-from cognitive_load_pipeline import CognitiveLoadPipeline
+from core.cognition import CognitiveLoadPipeline
 from visualize_load import generate_html_heatmap
 
 ENGLISH_TEXTS = [

@@ -32,7 +32,7 @@ pip install flask opencv-python-headless numpy torch unigaze-personalization
 ### Step 1.3: Launch the Flask Server
 Run the Flask server with UTF-8 support:
 ```bash
-python3 -X utf8 chenghao/server.py
+python3 -X utf8 run.py
 ```
 *The local server is now serving at `http://localhost:8080`.*
 

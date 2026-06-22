@@ -325,11 +325,11 @@ async function saveSample(point, pointIndex, repeatIndex) {
     });
     const data = await res.json();
     if (data.face_detected === false) {
-      log(`⚠️ 點 ${pointIndex + 1}: 偵測不到臉部，已跳過此幀（請確保臉部在鏡頭範圍內）`);
+      log(`[!] 點 ${pointIndex + 1}: 偵測不到臉部，已跳過此幀（請確保臉部在鏡頭範圍內）`);
     }
   } catch (err) {
     // Network or server error — log but don't abort the whole calibration loop
-    log(`⚠️ 點 ${pointIndex + 1} 上傳失敗: ${err.message}，繼續下一點...`);
+    log(`[!] 點 ${pointIndex + 1} 上傳失敗: ${err.message}，繼續下一點...`);
   }
   els.target.classList.remove("capturing");
 }
@@ -567,6 +567,16 @@ async function toggleTest() {
     els.phase.textContent = "待命";
   }
 }
+
+// Sync output model name with participant name
+els.participantName.addEventListener("input", (e) => {
+  const pName = e.target.value.trim();
+  if (pName) {
+    els.outputModelName.value = `${pName}_model`;
+  } else {
+    els.outputModelName.value = "my_gaze_model";
+  }
+});
 
 // Collect modal
 els.calibrationBtn.addEventListener("click", () => {
