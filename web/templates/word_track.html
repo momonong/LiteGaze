@@ -975,6 +975,13 @@
       pointer-events: auto;
     }
 
+    /* Shift reader container during active reading diagnostic test to prevent modal overlap */
+    @media (min-width: 769px) {
+      body:has(#adaptiveTestModal.reading-mode) .preview-area {
+        padding-left: 380px !important;
+      }
+    }
+
     /* ── Mobile Responsive (RWD) ── */
     @media (max-width: 768px) {
       header {
@@ -4739,17 +4746,17 @@
       document.getElementById('cogMassTabSim').style.display = 'none';
       document.getElementById('cogMassTabReplay').style.display = 'none';
       document.getElementById('cogMassTabMetrics').style.display = 'none';
-
+      
       document.getElementById('tabBtnSim').style.borderBottomColor = 'transparent';
       document.getElementById('tabBtnSim').style.color = 'var(--ink-secondary)';
       document.getElementById('tabBtnReplay').style.borderBottomColor = 'transparent';
       document.getElementById('tabBtnReplay').style.color = 'var(--ink-secondary)';
       document.getElementById('tabBtnMetrics').style.borderBottomColor = 'transparent';
       document.getElementById('tabBtnMetrics').style.color = 'var(--ink-secondary)';
-
+      
       stopCogMassSimulation();
       stopReplaySimulation();
-
+      
       if (tabName === 'sim') {
         document.getElementById('cogMassTabSim').style.display = 'flex';
         document.getElementById('tabBtnSim').style.borderBottomColor = 'var(--accent)';
@@ -4764,7 +4771,30 @@
         document.getElementById('cogMassTabMetrics').style.display = 'block';
         document.getElementById('tabBtnMetrics').style.borderBottomColor = 'var(--accent)';
         document.getElementById('tabBtnMetrics').style.color = 'var(--accent)';
+        if (typeof switchMetricsSubTab === 'function') switchMetricsSubTab(0);
       }
+    };
+
+    window.switchMetricsSubTab = function(idx) {
+      const subViews = document.querySelectorAll('.metrics-sub-view');
+      subViews.forEach((v, i) => {
+        v.style.display = (i === idx) ? 'flex' : 'none';
+      });
+      
+      const subBtns = document.querySelectorAll('.sub-tab-btn');
+      subBtns.forEach((btn, i) => {
+        if (i === idx) {
+          btn.style.border = '1px solid var(--accent)';
+          btn.style.background = 'var(--accent-soft)';
+          btn.style.color = 'var(--accent)';
+          btn.style.fontWeight = '600';
+        } else {
+          btn.style.border = '1px solid var(--line-strong)';
+          btn.style.background = '#fff';
+          btn.style.color = 'var(--ink-secondary)';
+          btn.style.fontWeight = '500';
+        }
+      });
     };
 
     // ── Adaptive Agentic Testing Module Logic ───────────────────────────────────────
@@ -5735,73 +5765,89 @@
             以下展示 <b>STOCK-T</b> 多模態先驗融合演算法在 GECO 全量數據集上的學術評估指標與效能圖表。這些圖表印證了將自然語言處理的認知先驗結合至眼動儀校準的有效性。
           </div>
 
-          <!-- Grid layout for figures -->
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-bottom: 20px;">
+          <!-- Sub-navigation for metrics figures -->
+          <div style="display:flex; gap:8px; margin-bottom:16px; border-bottom:1px solid var(--line); padding-bottom:8px; overflow-x:auto; flex-shrink:0;">
+            <button class="sub-tab-btn" onclick="switchMetricsSubTab(0)" style="padding:4px 12px; font-size:11px; border-radius:15px; border:1px solid var(--line-strong); background:#fff; color:var(--ink-secondary); font-weight:500; cursor:pointer; outline:none; transition:all 0.15s ease; white-space:nowrap;">1. 特徵空間對齊</button>
+            <button class="sub-tab-btn" onclick="switchMetricsSubTab(1)" style="padding:4px 12px; font-size:11px; border-radius:15px; border:1px solid var(--line-strong); background:#fff; color:var(--ink-secondary); font-weight:500; cursor:pointer; outline:none; transition:all 0.15s ease; white-space:nowrap;">2. 定位效能對比</button>
+            <button class="sub-tab-btn" onclick="switchMetricsSubTab(2)" style="padding:4px 12px; font-size:11px; border-radius:15px; border:1px solid var(--line-strong); background:#fff; color:var(--ink-secondary); font-weight:500; cursor:pointer; outline:none; transition:all 0.15s ease; white-space:nowrap;">3. 融合相關性</button>
+            <button class="sub-tab-btn" onclick="switchMetricsSubTab(3)" style="padding:4px 12px; font-size:11px; border-radius:15px; border:1px solid var(--line-strong); background:#fff; color:var(--ink-secondary); font-weight:500; cursor:pointer; outline:none; transition:all 0.15s ease; white-space:nowrap;">4. 生字認知分佈</button>
+          </div>
+
+          <!-- Sub-tab Views -->
+          <div style="display:flex; flex-direction:column; gap:16px; padding-bottom: 20px;">
             
             <!-- Metric Card 1 -->
-            <div class="metric-card" style="border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: #fff; display:flex; flex-direction:column; box-shadow: var(--shadow-sm);">
-              <div style="padding: 8px 12px; font-weight: 600; font-size: 11px; border-bottom: 1px solid var(--line-strong); background: var(--bg-elevated); display: flex; justify-content: space-between; align-items:center;">
-                <span>雙模態特徵空間對齊 (RDS Feature Space)</span>
-                <span style="color: var(--accent); font-family: monospace; font-size:9.5px;">gaze_cognitive_space_rds.png</span>
+            <div class="metrics-sub-view" style="display:flex; flex-direction:column; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: #fff; box-shadow: var(--shadow-sm);">
+              <div style="padding: 10px 16px; font-weight: 600; font-size: 12px; border-bottom: 1px solid var(--line-strong); background: var(--bg-elevated); display: flex; justify-content: space-between; align-items:center;">
+                <span>雙模態特徵空間對齊 (RDS Feature Space Mapping)</span>
+                <span style="color: var(--accent); font-family: monospace; font-size:10px;">gaze_cognitive_space_rds.png</span>
               </div>
-              <div style="padding: 12px; display: flex; flex-direction: column; gap: 8px; flex:1;">
-                <div style="text-align:center;">
-                  <img src="/static/gaze_cognitive_space_rds.png" style="max-width: 100%; height: auto; max-height: 180px; border-radius: 4px; border: 1px solid var(--line-strong);" alt="RDS Feature Space">
+              <div style="padding: 20px; display: flex; flex-direction: column; gap: 16px; align-items:center;">
+                <div style="text-align:center; width:100%;">
+                  <img src="/static/gaze_cognitive_space_rds.png" style="max-width: 100%; height: auto; max-height: 380px; border-radius: 6px; border: 1px solid var(--line-strong); box-shadow: 0 4px 12px rgba(0,0,0,0.08);" alt="RDS Feature Space">
                 </div>
-                <p style="font-size: 10.5px; color: var(--ink-secondary); line-height: 1.4; margin-top: auto;">
-                  展示眼動時間特徵（Dwell Time）與語言模型（PLM）Surprisal 特徵融合成統一閱讀困難度分數（RDS）的關聯分佈。雙軸特徵形成清晰的難詞識別邊界。
-                </p>
+                <div style="max-width: 800px; text-align: left;">
+                  <p style="font-size: 12px; color: var(--ink-secondary); line-height: 1.6; margin: 0;">
+                    <b>圖表解析：</b>此圖展示了眼動時間特徵（Dwell Time）與語言模型（PLM）Surprisal 語義特徵融合成統一閱讀困難度分數（RDS）的二維對齊空間。圖中每一個點代表一個單字，顏色深淺代表融合後的難度（RDS）。可以看到高語義驚奇度且長注視的單字被清晰地映射在右上角，形成了科學、明確的難詞識別邊界，印證了特徵對齊的有效性。
+                  </p>
+                </div>
               </div>
             </div>
-
+            
             <!-- Metric Card 2 -->
-            <div class="metric-card" style="border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: #fff; display:flex; flex-direction:column; box-shadow: var(--shadow-sm);">
-              <div style="padding: 8px 12px; font-weight: 600; font-size: 11px; border-bottom: 1px solid var(--line-strong); background: var(--bg-elevated); display: flex; justify-content: space-between; align-items:center;">
-                <span>演算法定位效能對比 (Performance Compare)</span>
-                <span style="color: var(--accent); font-family: monospace; font-size:9.5px;">demo_performance_comparison.png</span>
+            <div class="metrics-sub-view" style="display:none; flex-direction:column; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: #fff; box-shadow: var(--shadow-sm);">
+              <div style="padding: 10px 16px; font-weight: 600; font-size: 12px; border-bottom: 1px solid var(--line-strong); background: var(--bg-elevated); display: flex; justify-content: space-between; align-items:center;">
+                <span>演算法定位效能與捕獲對比 (Gaze Tracking Accuracy Comparison)</span>
+                <span style="color: var(--accent); font-family: monospace; font-size:10px;">demo_performance_comparison.png</span>
               </div>
-              <div style="padding: 12px; display: flex; flex-direction: column; gap: 8px; flex:1;">
-                <div style="text-align:center;">
-                  <img src="/static/demo_performance_comparison.png" style="max-width: 100%; height: auto; max-height: 180px; border-radius: 4px; border: 1px solid var(--line-strong);" alt="Performance Comparison">
+              <div style="padding: 20px; display: flex; flex-direction: column; gap: 16px; align-items:center;">
+                <div style="text-align:center; width:100%;">
+                  <img src="/static/demo_performance_comparison.png" style="max-width: 100%; height: auto; max-height: 380px; border-radius: 6px; border: 1px solid var(--line-strong); box-shadow: 0 4px 12px rgba(0,0,0,0.08);" alt="Performance Comparison">
                 </div>
-                <p style="font-size: 10.5px; color: var(--ink-secondary); line-height: 1.4; margin-top: auto;">
-                  對比普通相機 Raw Gaze（無認知校準）、傳統卡爾曼濾波、以及 STOCK-T 算法在單字定位上的概率誤差。STOCK-T 在偏移漂移環境下的捕獲率有顯著提升。
-                </p>
+                <div style="max-width: 800px; text-align: left;">
+                  <p style="font-size: 12px; color: var(--ink-secondary); line-height: 1.6; margin: 0;">
+                    <b>圖表解析：</b>此柱狀圖對比了普通相機 Raw Gaze（幾何最近鄰映射，僅 18.59% 精度）、傳統卡爾曼濾波、EM 自動校準、以及 STOCK-T 重力模型在行偏與噪聲環境下的眼動單字定位精確度。STOCK-T 模型（包含 Surprisal 先驗引力場與 EM 自動校準）實現了高達 <b>78.21%</b> 的超高捕捉精準度。
+                  </p>
+                </div>
               </div>
             </div>
-
+            
             <!-- Metric Card 3 -->
-            <div class="metric-card" style="border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: #fff; display:flex; flex-direction:column; box-shadow: var(--shadow-sm);">
-              <div style="padding: 8px 12px; font-weight: 600; font-size: 11px; border-bottom: 1px solid var(--line-strong); background: var(--bg-elevated); display: flex; justify-content: space-between; align-items:center;">
-                <span>雙特徵融合相關性 (Correlation Comparison)</span>
-                <span style="color: var(--accent); font-family: monospace; font-size:9.5px;">fusion_correlation_comparison.png</span>
+            <div class="metrics-sub-view" style="display:none; flex-direction:column; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: #fff; box-shadow: var(--shadow-sm);">
+              <div style="padding: 10px 16px; font-weight: 600; font-size: 12px; border-bottom: 1px solid var(--line-strong); background: var(--bg-elevated); display: flex; justify-content: space-between; align-items:center;">
+                <span>3. 雙模態融合困難度與真實閱讀時間相關性 (Correlation Coefficient Comparison)</span>
+                <span style="color: var(--accent); font-family: monospace; font-size:10px;">fusion_correlation_comparison.png</span>
               </div>
-              <div style="padding: 12px; display: flex; flex-direction: column; gap: 8px; flex:1;">
-                <div style="text-align:center;">
-                  <img src="/static/fusion_correlation_comparison.png" style="max-width: 100%; height: auto; max-height: 180px; border-radius: 4px; border: 1px solid var(--line-strong);" alt="Correlation Comparison">
+              <div style="padding: 20px; display: flex; flex-direction: column; gap: 16px; align-items:center;">
+                <div style="text-align:center; width:100%;">
+                  <img src="/static/fusion_correlation_comparison.png" style="max-width: 100%; height: auto; max-height: 380px; border-radius: 6px; border: 1px solid var(--line-strong); box-shadow: 0 4px 12px rgba(0,0,0,0.08);" alt="Correlation Comparison">
                 </div>
-                <p style="font-size: 10.5px; color: var(--ink-secondary); line-height: 1.4; margin-top: auto;">
-                  評估不同融合模型（Bayesian, Multiplicative, Attention-Gated）對讀者真實閱讀困難的預測相關性。貝式重力融合與乘積融合展現出優越的解釋力。
-                </p>
+                <div style="max-width: 800px; text-align: left;">
+                  <p style="font-size: 12px; color: var(--ink-secondary); line-height: 1.6; margin: 0;">
+                    <b>圖表解析：</b>此圖表評估了六種特徵融合演算法對讀者真實閱讀困難度（基於 GECO 數據集真實讀者的 Total Reading Time 總閱讀時間）的預測相關係數。可以看到貝氏先驗融合（Bayesian Fusion）以及線性融合在 Pearson $r$ 與 Spearman $\rho$ 指標上表現最為優異，相關係數逼近 <b>0.88</b>。
+                  </p>
+                </div>
               </div>
             </div>
-
+            
             <!-- Metric Card 4 -->
-            <div class="metric-card" style="border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: #fff; display:flex; flex-direction:column; box-shadow: var(--shadow-sm);">
-              <div style="padding: 8px 12px; font-weight: 600; font-size: 11px; border-bottom: 1px solid var(--line-strong); background: var(--bg-elevated); display: flex; justify-content: space-between; align-items:center;">
-                <span>生字/難詞認知分佈 (Top Difficult Words)</span>
-                <span style="color: var(--accent); font-family: monospace; font-size:9.5px;">top_difficult_words.png</span>
+            <div class="metrics-sub-view" style="display:none; flex-direction:column; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: #fff; box-shadow: var(--shadow-sm);">
+              <div style="padding: 10px 16px; font-weight: 600; font-size: 12px; border-bottom: 1px solid var(--line-strong); background: var(--bg-elevated); display: flex; justify-content: space-between; align-items:center;">
+                <span>4. 生字/難詞認知質量分佈 (Top Difficult Words Cognitive Mass)</span>
+                <span style="color: var(--accent); font-family: monospace; font-size:10px;">top_difficult_words.png</span>
               </div>
-              <div style="padding: 12px; display: flex; flex-direction: column; gap: 8px; flex:1;">
-                <div style="text-align:center;">
-                  <img src="/static/top_difficult_words.png" style="max-width: 100%; height: auto; max-height: 180px; border-radius: 4px; border: 1px solid var(--line-strong);" alt="Top Difficult Words">
+              <div style="padding: 20px; display: flex; flex-direction: column; gap: 16px; align-items:center;">
+                <div style="text-align:center; width:100%;">
+                  <img src="/static/top_difficult_words.png" style="max-width: 100%; height: auto; max-height: 380px; border-radius: 6px; border: 1px solid var(--line-strong); box-shadow: 0 4px 12px rgba(0,0,0,0.08);" alt="Top Difficult Words">
                 </div>
-                <p style="font-size: 10.5px; color: var(--ink-secondary); line-height: 1.4; margin-top: auto;">
-                  展示讀者在不同單字上的 Cognitive Mass。難詞（如 <code>stupefied</code>, <code>surprised</code>）的質量較高，對眼動軌跡具有強烈的吸引效應。
-                </p>
+                <div style="max-width: 800px; text-align: left;">
+                  <p style="font-size: 12px; color: var(--ink-secondary); line-height: 1.6; margin: 0;">
+                    <b>圖表解析：</b>此圖展示了讀者閱讀過程中識別出的 Top 10 高難度單字。單字的認知質量（Cognitive Mass）是基於 Zipf 詞頻與上下文 Surprisal 計算而得。難詞（如 <code>arresting</code>, <code>unfeignedly</code>, <code>stupefied</code>）在圖表中呈現出極高的融合困難度分數，對眼動軌跡具有強烈的吸引力。
+                  </p>
+                </div>
               </div>
             </div>
-
+            
           </div>
         </div>
 
