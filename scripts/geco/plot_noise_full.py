@@ -34,7 +34,7 @@ def plot_from_csv():
     plt.text(32, 85, 'Washout\nThreshold', color='gray', fontsize=10)
 
     # 4. 存檔到 NeurIPS 資料夾
-    neurips_fig_dir = os.path.join(PROJECT_ROOT, "docs", "NeurIPS", "figures")
+    neurips_fig_dir = os.path.join(PROJECT_ROOT, "output", "NeurIPS", "figures")
     os.makedirs(neurips_fig_dir, exist_ok=True)
     plot_path = os.path.join(neurips_fig_dir, "fig_noise_degradation.pdf")
     

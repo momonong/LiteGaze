@@ -20,7 +20,7 @@ from scripts.geco.core.attention_transition import AttentionGuidedMatrix, print_
 # 1. Configuration & Parameters
 DATA_PATH = "data/geco/geco_pp01_cognitive_mass.csv"
 ATTN_PATH = "data/geco/geco_pp01_cognitive_mass_attention.npy"
-OUTPUT_DIR = "docs/figures"
+OUTPUT_DIR = "output"
 OS_NAME = "linux"
 
 # Noise Model

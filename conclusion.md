@@ -30,15 +30,20 @@ Here is a summary of what we have done until now.
 
 | File Location | Type | Purpose |
 | :--- | :---: | :--- |
-| [fusion_module.py](file:///home/ubuntu/projects/lexigaze/scripts/fusion_module.py) | Python | Joint data fusion algorithms engine |
-| [experiment_fusion.py](file:///home/ubuntu/projects/lexigaze/scripts/experiment_fusion.py) | Python | Validation tests on GECO reading corpus |
-| [inspect_performance_demo.py](file:///home/ubuntu/projects/lexigaze/scripts/inspect_performance_demo.py) | Python | Joint system performance inspection dashboard |
-| [demo_integration_guide.md](file:///home/ubuntu/projects/lexigaze/docs/demo_integration_guide.md) | Markdown | System architecture and demo guide |
-| [generate_web_demo_data.py](file:///home/ubuntu/projects/lexigaze/scripts/generate_web_demo_data.py) | Python | Mock calibration data and models generator |
-| [demo.py](file:///home/ubuntu/projects/lexigaze/web/routes/demo.py) | Python | Flask endpoints to extract faces from video and train models |
-| [setup_remote_collection.py](file:///home/ubuntu/projects/lexigaze/scripts/setup_remote_collection.py) | Python | Cross-platform ngrok downloader and tunnel helper |
-| [run.py](file:///home/ubuntu/projects/lexigaze/run.py) | Python | Application runner entrypoint at root |
-| [gaze_page.html](file:///home/ubuntu/projects/lexigaze/web/templates/gaze_page.html) | HTML | Added video recording controls and offline file inputs |
-| [gaze_page.js](file:///home/ubuntu/projects/lexigaze/web/static/gaze_page.js) | JS | Handled MediaRecorder recording, timeline logging, and downloads |
-| [INSTRUCTION_DATA.md](file:///home/ubuntu/projects/lexigaze/INSTRUCTION_DATA.md) | Markdown | Setup guide for Ubuntu servers & Windows laptop clients |
-| [conclusion.md](file:///home/ubuntu/projects/lexigaze/conclusion.md) | Markdown | Summary of achievements and change registry |
+| [fusion_module.py](file:///D:/projects/lexigaze/scripts/fusion_module.py) | Python | Joint data fusion algorithms engine |
+| [experiment_fusion.py](file:///D:/projects/lexigaze/scripts/experiment_fusion.py) | Python | Validation tests on GECO reading corpus |
+| [inspect_performance_demo.py](file:///D:/projects/lexigaze/scripts/inspect_performance_demo.py) | Python | Joint system performance inspection dashboard |
+| [demo_integration_guide.md](file:///D:/projects/lexigaze/docs/demo_integration_guide.md) | Markdown | System architecture and demo guide |
+| [generate_web_demo_data.py](file:///D:/projects/lexigaze/scripts/generate_web_demo_data.py) | Python | Mock calibration data and models generator |
+| [demo.py](file:///D:/projects/lexigaze/web/routes/demo.py) | Python | Flask endpoints to extract faces from video and train models |
+| [setup_remote_collection.py](file:///D:/projects/lexigaze/scripts/setup_remote_collection.py) | Python | Cross-platform ngrok downloader and tunnel helper |
+| [run.py](file:///D:/projects/lexigaze/run.py) | Python | Application runner entrypoint at root |
+| [gaze_page.html](file:///D:/projects/lexigaze/web/templates/gaze_page.html) | HTML | Added video recording controls and offline file inputs |
+| [gaze_page.js](file:///D:/projects/lexigaze/web/static/gaze_page.js) | JS | Handled MediaRecorder recording, timeline logging, and downloads |
+| [INSTRUCTION_DATA.md](file:///D:/projects/lexigaze/INSTRUCTION_DATA.md) | Markdown | Setup guide for Ubuntu servers & Windows laptop clients |
+| [test_api.py](file:///D:/projects/lexigaze/scripts/test_api.py) | Python | API health and functional verification test script |
+| [test_cuda.py](file:///D:/projects/lexigaze/scripts/test_cuda.py) | Python | GPU/CUDA verification script for local environment |
+| [test_geco_pipeline.py](file:///D:/projects/lexigaze/scripts/test_geco_pipeline.py) | Python | Core cognitive pipeline execution check |
+| [evaluate_pipeline.py](file:///D:/projects/lexigaze/scripts/geco/tasks/evaluate_pipeline.py) | Python | L2 gaze-word decoder accuracy benchmarking |
+| [evaluate_l1_pipeline.py](file:///D:/projects/lexigaze/scripts/geco/tasks/evaluate_l1_pipeline.py) | Python | L1 gaze-word decoder accuracy benchmarking |
+| [conclusion.md](file:///D:/projects/lexigaze/conclusion.md) | Markdown | Summary of achievements and change registry |

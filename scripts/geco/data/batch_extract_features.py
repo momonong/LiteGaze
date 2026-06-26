@@ -1,173 +1,220 @@
 import os
-import pandas as pd
-import torch
-import math
-import numpy as np
-from transformers import AutoTokenizer, AutoModelForMaskedLM
-from tqdm import tqdm
-import warnings
-warnings.filterwarnings("ignore")
-
-import os
+import sys
 import pandas as pd
 import torch
 import math
 import numpy as np
 import json
-from transformers import AutoTokenizer, AutoModelForMaskedLM
+import re
 from tqdm import tqdm
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import multiprocessing
 import warnings
 warnings.filterwarnings("ignore")
 
+# ── Path bootstrap ────────────────────────────────────────────────────────────
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from core.cognition import CognitiveLoadPipeline
+
+# Fix HF_HOME if it's set to a Windows drive path on a non-Windows OS
+if os.name != 'nt' and os.environ.get("HF_HOME"):
+    _hf_home = os.environ["HF_HOME"]
+    if ":" in _hf_home or _hf_home.startswith("D:") or _hf_home.startswith("C:"):
+        del os.environ["HF_HOME"]
+
+def clean_word(w):
+    return re.sub(r'[^a-zA-Z0-9]', '', w.lower())
+
+def align_words(geco_words, pipeline_words):
+    aligned = []
+    p_idx = 0
+    for gw in geco_words:
+        cgw = clean_word(gw)
+        if not cgw:
+            aligned.append(None)
+            continue
+            
+        found = False
+        # Look ahead for exact match first
+        for k in range(p_idx, min(p_idx + 15, len(pipeline_words))):
+            cpw = clean_word(pipeline_words[k]["word"])
+            if cgw == cpw:
+                aligned.append(pipeline_words[k])
+                p_idx = k + 1
+                found = True
+                break
+                
+        if not found:
+            # Look ahead for prefix/prefix match (min length 2)
+            for k in range(p_idx, min(p_idx + 15, len(pipeline_words))):
+                cpw = clean_word(pipeline_words[k]["word"])
+                if len(cpw) >= 2 and (cgw.startswith(cpw) or cpw.startswith(cgw)):
+                    aligned.append(pipeline_words[k])
+                    p_idx = k + 1
+                    found = True
+                    break
+                    
+        if not found:
+            # Search globally in a window around p_idx for exact match
+            for k in range(max(0, p_idx - 10), min(len(pipeline_words), p_idx + 30)):
+                cpw = clean_word(pipeline_words[k]["word"])
+                if cgw == cpw:
+                    aligned.append(pipeline_words[k])
+                    p_idx = k + 1
+                    found = True
+                    break
+                    
+        if not found:
+            # Search globally in a window around p_idx for prefix match (min length 2)
+            for k in range(max(0, p_idx - 10), min(len(pipeline_words), p_idx + 30)):
+                cpw = clean_word(pipeline_words[k]["word"])
+                if len(cpw) >= 2 and (cgw.startswith(cpw) or cpw.startswith(cgw)):
+                    aligned.append(pipeline_words[k])
+                    p_idx = k + 1
+                    found = True
+                    break
+                    
+        if not found:
+            aligned.append(None)
+            
+    return aligned
+
+# Global variable for the worker process pipeline instance
+_worker_pipeline = None
+
+def init_worker(lang_label):
+    global _worker_pipeline
+    pipeline_lang = 'nl' if lang_label == "L1" else 'en'
+    _worker_pipeline = CognitiveLoadPipeline(model_type='bert', lang=pipeline_lang)
+
+def process_trial_worker(task_args):
+    global _worker_pipeline
+    trial_key, sorted_word_indices, trial_layout = task_args
+    
+    sentence_words = [trial_layout[str(i)]['word'].strip() for i in sorted_word_indices]
+    full_sentence = " ".join(sentence_words)
+    
+    # Run the pipeline
+    cog_result = _worker_pipeline.run(full_sentence)
+    word_analysis = cog_result.get("word_analysis", [])
+    
+    # Align words
+    aligned = align_words(sentence_words, word_analysis)
+    
+    num_words = len(sentence_words)
+    word_attn = np.zeros((num_words, num_words)) # Mock/unused attention matrix
+    
+    layout_results = []
+    for i, word_idx in enumerate(sorted_word_indices):
+        match = aligned[i]
+        surprisal = match["surprisal"] if match else 5.0
+        entropy = match["entropy"] if match else 0.5
+        load_score = match["load_score"] if match else 0.5
+        
+        word_info = trial_layout[str(word_idx)]
+            
+        layout_results.append({
+            "WORD_ID_WITHIN_TRIAL": word_idx,
+            "WORD": word_info['word'],
+            "true_x": round(word_info['x'], 1),
+            "true_y": round(word_info['y'], 1),
+            "surprisal_score": round(surprisal, 4),
+            "attention_score": round(entropy, 4),
+            "cognitive_mass": round(load_score, 4)
+        })
+        
+    return trial_key, pd.DataFrame(layout_results), word_attn
+
 def extract_features(input_path, lang_label):
     csv_path = input_path.replace(".xlsx", ".csv")
-    layout_json_path = f"data/geco/meta/{lang_label.lower()}_consensus_layout.json"
+    layout_json_path = os.path.join(PROJECT_ROOT, "data", "geco", "meta", f"{lang_label.lower()}_consensus_layout.json")
     
     if not os.path.exists(layout_json_path):
         print(f"❌ Consensus layout not found: {layout_json_path}")
         return
 
-    with open(layout_json_path, 'r') as f:
+    with open(layout_json_path, 'r', encoding='utf-8') as f:
         consensus_layouts = json.load(f)
 
-    if os.path.exists(csv_path):
-        print(f"⏳ Reading CSV data from {csv_path}...")
+    full_csv_path = os.path.join(PROJECT_ROOT, csv_path)
+    if os.path.exists(full_csv_path):
+        print(f"⏳ Reading CSV data from {full_csv_path}...")
         try:
-            df_all = pd.read_csv(csv_path)
+            df_all = pd.read_csv(full_csv_path)
         except Exception as e:
-            print(f"❌ Failed to read {csv_path}: {e}")
+            print(f"❌ Failed to read {full_csv_path}: {e}")
             return
     else:
-        print(f"❌ {csv_path} not found. Please convert .xlsx to .csv first.")
+        print(f"❌ {full_csv_path} not found. Please convert .xlsx to .csv first.")
         return
             
     subjects = df_all['PP_NR'].unique()
     print(f"👥 Found {len(subjects)} subjects in {lang_label} dataset.")
     
-    # Model Setup
-    MODEL_NAME = "bert-base-multilingual-cased"
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, use_fast=True)
-    model = AutoModelForMaskedLM.from_pretrained(MODEL_NAME, output_attentions=True).to(device)
-    model.eval()
-
-    # Pre-cache surprisals and attention for each trial layout to avoid redundant BERT calls
-    # Since layout is same for all subjects in a trial, we only calculate once per trial
+    # 1. Gather all unique trial layouts
+    unique_trial_keys = set()
+    for sub in subjects:
+        sub_df = df_all[df_all['PP_NR'] == sub]
+        trials = sub_df['TRIAL'].unique()
+        for t in trials:
+            if str(t) in consensus_layouts:
+                unique_trial_keys.add(str(t))
+    unique_trial_keys = sorted(list(unique_trial_keys))
+    
+    worker_tasks = []
+    for trial_key in unique_trial_keys:
+        trial_layout = consensus_layouts[trial_key]
+        sorted_word_indices = sorted([int(k) for k in trial_layout.keys()])
+        worker_tasks.append((trial_key, sorted_word_indices, trial_layout))
+        
+    # 2. Parallel Processing of BERT/Ridge Cognitive Load Pipeline
+    print(f"🔥 Starting parallel extraction of {len(worker_tasks)} unique trials on {lang_label}...")
+    num_workers = min(multiprocessing.cpu_count(), 8)
+    print(f"   Using {num_workers} parallel workers.")
+    
     trial_metadata = {}
-
-    for sub in tqdm(subjects, desc=f"Processing {lang_label} Subjects"):
+    with ProcessPoolExecutor(max_workers=num_workers, initializer=init_worker, initargs=(lang_label,)) as executor:
+        futures = {executor.submit(process_trial_worker, task): task for task in worker_tasks}
+        for future in tqdm(as_completed(futures), total=len(worker_tasks), desc="Extracting features"):
+            try:
+                trial_key, df_layout, word_attn = future.result()
+                trial_metadata[trial_key] = {
+                    "df_layout": df_layout,
+                    "word_attn": word_attn
+                }
+            except Exception as e:
+                print(f"❌ Error extracting features for trial: {e}")
+                
+    # 3. Write CSV Layouts and Fixations sequentially
+    for sub in tqdm(subjects, desc=f"Writing subject files for {lang_label}"):
         sub_df = df_all[df_all['PP_NR'] == sub]
         trials = sub_df['TRIAL'].unique()
         
         for trial_id in trials:
             trial_key = str(trial_id)
-            if trial_key not in consensus_layouts:
-                continue
-                
-            out_dir = f"data/geco/population/{lang_label}/{sub}/trial_{trial_id}"
-            os.makedirs(out_dir, exist_ok=True)
-            out_layout = f"{out_dir}/layout.csv"
-            out_fixations = f"{out_dir}/fixations.csv"
-            out_attn = f"{out_dir}/attention.npy"
-            
-            if os.path.exists(out_layout) and os.path.exists(out_fixations) and os.path.exists(out_attn):
-                continue
-
-            # Get Consensus Layout for this trial
-            trial_layout = consensus_layouts[trial_key]
-            # Sort words by their ID within trial
-            sorted_word_indices = sorted([int(k) for k in trial_layout.keys()])
-            
             if trial_key not in trial_metadata:
-                # Calculate psycholinguistic features once per trial layout
-                sentence_words = [trial_layout[str(i)]['word'].strip() for i in sorted_word_indices]
+                continue
                 
-                inputs = tokenizer(sentence_words, is_split_into_words=True, return_tensors="pt", truncation=True, max_length=512).to(device)
-                input_ids = inputs["input_ids"][0]
-                word_ids = inputs.word_ids(batch_index=0)
-                
-                with torch.no_grad():
-                    outputs = model(**inputs)
-                    attention_matrix = outputs.attentions[-1][0].mean(dim=0) 
-                    
-                    num_words = len(sentence_words)
-                    word_attn = np.zeros((num_words, num_words))
-                    
-                    word_to_first_token = {}
-                    for token_idx, word_idx in enumerate(word_ids):
-                        if word_idx is not None and word_idx not in word_to_first_token:
-                            word_to_first_token[word_idx] = token_idx
-                            
-                    for i in range(num_words):
-                        ti = word_to_first_token.get(i, -1)
-                        for j in range(num_words):
-                            tj = word_to_first_token.get(j, -1)
-                            if ti != -1 and tj != -1:
-                                word_attn[i, j] = attention_matrix[ti, tj].item()
-                    
-                    masked_batch = []
-                    valid_indices = []
-                    for i in range(num_words):
-                        token_index = word_to_first_token.get(i, -1)
-                        if token_index != -1 and 0 < token_index < len(input_ids) - 1:
-                            masked_ids = input_ids.clone()
-                            masked_ids[token_index] = tokenizer.mask_token_id
-                            masked_batch.append(masked_ids)
-                            valid_indices.append((i, token_index))
-                    
-                    surprisals = {i: 10.0 for i in range(num_words)}
-                    if masked_batch:
-                        BATCH_SIZE = 16
-                        for b_start in range(0, len(masked_batch), BATCH_SIZE):
-                            b_end = min(b_start + BATCH_SIZE, len(masked_batch))
-                            batch_input = torch.stack(masked_batch[b_start:b_end]).to(device)
-                            batch_outputs = model(batch_input)
-                            
-                            for idx_in_batch in range(b_end - b_start):
-                                original_idx = b_start + idx_in_batch
-                                word_idx, token_idx = valid_indices[original_idx]
-                                gold_id = input_ids[token_idx].item()
-                                logits = batch_outputs.logits[idx_in_batch, token_idx]
-                                probs = torch.nn.functional.softmax(logits, dim=-1)
-                                word_prob = probs[gold_id].item()
-                                surprisals[word_idx] = -math.log2(word_prob) if word_prob > 0 else 15.0
-
-                    layout_results = []
-                    for i, word_idx in enumerate(sorted_word_indices):
-                        attn_score = word_attn[:, i].sum()
-                        surprisal = surprisals[i]
-                        cm = surprisal * attn_score
-                        word_info = trial_layout[str(word_idx)]
-                            
-                        layout_results.append({
-                            "WORD_ID_WITHIN_TRIAL": word_idx,
-                            "WORD": word_info['word'],
-                            "true_x": round(word_info['x'], 1),
-                            "true_y": round(word_info['y'], 1),
-                            "surprisal_score": round(surprisal, 4),
-                            "attention_score": round(attn_score, 4),
-                            "cognitive_mass": round(cm, 4)
-                        })
-                    
-                    trial_metadata[trial_key] = {
-                        "df_layout": pd.DataFrame(layout_results),
-                        "word_attn": word_attn
-                    }
-
-            # Save layout and attention for this subject (redundant but matches pipeline expectation)
+            out_dir = os.path.join(PROJECT_ROOT, "data", "geco", "population", lang_label, str(sub), f"trial_{trial_id}")
+            os.makedirs(out_dir, exist_ok=True)
+            out_layout = os.path.join(out_dir, "layout.csv")
+            out_fixations = os.path.join(out_dir, "fixations.csv")
+            out_attn = os.path.join(out_dir, "attention.npy")
+            
             trial_data = trial_metadata[trial_key]
             trial_data["df_layout"].to_csv(out_layout, index=False)
             np.save(out_attn, trial_data["word_attn"])
                 
-            # 2. Process Subject's Fixations
+            # Process Fixations
             df_sub_trial = sub_df[sub_df['TRIAL'] == trial_id]
             fixation_results = []
+            sorted_word_indices = sorted([int(k) for k in consensus_layouts[trial_key].keys()])
             
-            # Map valid fixations to the layout indices
-            # We use WORD_ID_WITHIN_TRIAL as the link
             for row in df_sub_trial.itertuples():
                 if pd.notna(row.WORD_FIRST_FIXATION_X) and pd.notna(row.WORD_FIRST_FIXATION_Y):
-                    # Find layout index for this WORD_ID_WITHIN_TRIAL
                     try:
                         layout_idx = sorted_word_indices.index(int(row.WORD_ID_WITHIN_TRIAL))
                         fixation_results.append({
@@ -178,12 +225,12 @@ def extract_features(input_path, lang_label):
                             "reading_time": getattr(row, 'WORD_TOTAL_READING_TIME', 0)
                         })
                     except ValueError:
-                        continue # Word not in consensus layout
-                    
+                        continue
+                        
             pd.DataFrame(fixation_results).to_csv(out_fixations, index=False)
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     extract_features("data/geco/L1ReadingData.xlsx", "L1")
     extract_features("data/geco/L2ReadingData.xlsx", "L2")
-

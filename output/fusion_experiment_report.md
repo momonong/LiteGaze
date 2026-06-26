@@ -12,18 +12,18 @@ Each fusion method was evaluated by computing its Pearson correlation ($r$) and 
 
 | Method | Pearson r | Pearson p-val | Spearman rho | Spearman p-val |
 | --- | --- | --- | --- | --- |
-| Linear | 0.888 | 7.91e-54 | 0.8816 | 4.40e-52 |
-| Multiplicative | 0.6812 | 1.30e-22 | 0.8007 | 4.28e-36 |
-| Gated | 0.5742 | 4.63e-15 | 0.7507 | 1.59e-29 |
-| Sigmoid | 0.849 | 1.65e-44 | 0.8816 | 4.40e-52 |
-| Bayesian | 0.7556 | 4.34e-30 | 0.7993 | 6.95e-36 |
-| Rrf | 0.7742 | 2.13e-32 | 0.7819 | 2.05e-33 |
+| Linear | 0.8827 | 2.32e-52 | 0.8587 | 1.45e-46 |
+| Multiplicative | 0.7325 | 1.67e-27 | 0.7091 | 3.89e-25 |
+| Gated | 0.6735 | 5.77e-22 | 0.759 | 1.69e-30 |
+| Sigmoid | 0.8291 | 1.00e-40 | 0.8587 | 1.45e-46 |
+| Bayesian | 0.7224 | 1.89e-26 | 0.7188 | 4.33e-26 |
+| Rrf | 0.839 | 1.51e-42 | 0.8248 | 5.61e-40 |
 
 ---
 
 ## Key Findings
 
-1. **Best Performing Method**: The **Linear** fusion algorithm achieved the highest Spearman correlation of **0.8816** and Pearson correlation of **0.888**.
+1. **Best Performing Method**: The **Linear** fusion algorithm achieved the highest Spearman correlation of **0.8587** and Pearson correlation of **0.8827**.
 2. **Interactive Effects**: Multiplicative and Bayesian update methods typically outperform simple linear sums. This is because reading difficulty is non-linear: a high-surprisal word that is skipped (short dwell) does not present actual cognitive difficulty to the reader, whereas high surprisal accompanied by long dwell duration indicates true processing bottleneck.
 3. **Rank-based Robustness**: Reciprocal Rank Fusion (RRF) provides a robust, scale-invariant alternative that requires no parameter tuning and remains highly correlated with reading times.
 
@@ -35,16 +35,16 @@ Below are the top 10 words identified as having the highest reading difficulty u
 
 | WORD_ID | WORD | WORD_TOTAL_READING_TIME | surprisal_score | RDS_linear |
 | --- | --- | --- | --- | --- |
-| 3-5-83 | arresting  | 741 | 25.1468 | 1.0 |
-| 4-5-59 | expressed | 989 | 11.8605 | 0.9342364118699477 |
-| 3-5-12 | surprised  | 912 | 12.5973 | 0.8840354933795984 |
-| 4-5-52 | fought | 723 | 17.5894 | 0.841078361644626 |
-| 4-5-32 | unfeignedly | 1051 | 5.0 | 0.835826400386268 |
-| 4-5-46 | mere | 626 | 19.5367 | 0.8074853318988565 |
-| 3-5-91 | Inglethorp.  | 820 | 5.0 | 0.6599403292660373 |
-| 4-5-27 | admiration | 668 | 10.8386 | 0.6587488660812174 |
-| 4-5-11 | stepmother | 586 | 11.8489 | 0.6157195730792647 |
-| 3-5-50 | them...names  | 750 | 5.0 | 0.6058553933332398 |
+| 4-5-32 | unfeignedly | 1051 | 26.234 | 1.0 |
+| 3-5-91 | Inglethorp.  | 820 | 29.425 | 0.9468173476331861 |
+| 4-5-59 | expressed | 989 | 11.142 | 0.8716144920320693 |
+| 3-5-5 | stupefied  | 709 | 19.917 | 0.8047107244851026 |
+| 3-5-12 | surprised  | 912 | 8.405 | 0.7504310797493157 |
+| 3-5-83 | arresting  | 741 | 13.438 | 0.7291186041873005 |
+| 4-5-27 | admiration | 668 | 15.04 | 0.716148831770284 |
+| 4-5-39 | passionately | 672 | 15.917 | 0.6995690591068072 |
+| 4-5-11 | stepmother | 586 | 13.836 | 0.6704766698660942 |
+| 3-5-106 | inquest?  | 701 | 11.361 | 0.6633970998481487 |
 
 ---
 

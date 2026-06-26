@@ -17,7 +17,7 @@ from scripts.geco.core.em_calibration import AutoCalibratingDecoder
 
 # 1. Configuration & Parameters
 DATA_PATH = "data/geco/geco_l1_pp01_cognitive_mass.csv"
-OUTPUT_DIR = "docs/figures"
+OUTPUT_DIR = "output"
 
 # Noise Model (Same as L2 for fair comparison)
 DRIFT_Y = 45.0

@@ -64,4 +64,4 @@ The **Cognitive Ability Inspector** is a fully realized, integrated core module 
    * **Reading Ability Score & Level**: Measures words per minute (WPM), regression rates, and avg fixation duration.
    * **English Proficiency Score & Level**: Evaluates if reader pauses are on rare technical words vs. common basic syntax.
    * **Fatigue Level (Low/Medium/High)**: Compares average fixation times in the second half of reading vs. the first half.
-3. **Reports History & CRUD Panel**: Generates and persists detailed Markdown reports with actionable remedial advice to [`docs/cognitive_reports/`](file:///home/ubuntu/projects/lexigaze/docs/cognitive_reports/). The reading dashboard includes a history manager to reload, delete, or download reports.
+3. **Reports History & CRUD Panel**: Generates and persists detailed Markdown reports with actionable remedial advice to [`docs/cognitive_reports/`](file://D:/projects/lexigaze/docs/cognitive_reports/). The reading dashboard includes a history manager to reload, delete, or download reports.

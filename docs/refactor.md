@@ -20,7 +20,7 @@ Rather than placing packages and layouts directly on the root repository directo
   * **`web/routes/`**: Blueprints for `cognitive`, `demo`, `fusion`, and `gaze` routes.
   * **`web/static/`**: Client-side CSS, JavaScript, and face landmarks detect assets (`mapping.js`, `gaze_integration.js`, `gaze_page.js`, `face_landmarker.task`).
   * **`web/templates/`**: Views (`word_track.html`, `gaze_page.html`).
-* **Root Unified Entrypoint**: Streamlined run script [run.py](file:///home/ubuntu/projects/lexigaze/run.py) at the repository root.
+* **Root Unified Entrypoint**: Streamlined run script [run.py](file://D:/projects/lexigaze/run.py) at the repository root.
 
 ### Directory Layout
 ```

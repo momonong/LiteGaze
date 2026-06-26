@@ -93,7 +93,7 @@ class LanguageModelCalculator:
     MODELS = {
         'gpt2': {'zh': "uer/gpt2-chinese-cluecorpussmall", 'en': "gpt2"},
         'gpt2-medium': {'zh': "uer/gpt2-chinese-cluecorpussmall", 'en': "gpt2-medium"},
-        'bert': {'zh': "bert-base-chinese", 'en': "bert-base-uncased"}
+        'bert': {'zh': "bert-base-chinese", 'en': "bert-base-uncased", 'nl': "bert-base-multilingual-cased"}
     }
 
     def __init__(self, model_type: str = 'bert', lang: str = 'zh', batch_size: int = 32):
@@ -280,6 +280,11 @@ class CognitiveLoadPipeline:
                 self.nlp = spacy.load("en_core_web_sm", disable=["lemmatizer"])
             except:
                 print("[警告] 未找到 en_core_web_sm，改用基本分詞")
+        elif lang == 'nl' and spacy:
+            try:
+                self.nlp = spacy.load("nl_core_news_sm", disable=["lemmatizer"])
+            except:
+                print("[警告] 未找到 nl_core_news_sm，改用基本分詞")
 
         # Kuperman AoA 詞典（英文用；中文忽略）
         self.aoa_dict = self._load_aoa() if lang == 'en' else {}
@@ -397,7 +402,7 @@ class CognitiveLoadPipeline:
         ]
         if len(cw) < 4:
             return "general"
-        avg_zipf = float(np.mean([zipf_frequency(w, 'en') for w in cw]))
+        avg_zipf = float(np.mean([zipf_frequency(w, self.lang) for w in cw]))
         avg_len  = float(np.mean([len(w) for w in cw]))
         if avg_zipf < 4.8 and avg_len > 7.5:
             return "academic"
@@ -601,7 +606,7 @@ class CognitiveLoadPipeline:
         results, words, pos_tags = self._score_chunk(text, cognitive_memory)
 
         active_domain = "general"
-        if self.lang == 'en' and self._ridge:
+        if self.lang in ['en', 'nl'] and self._ridge:
             active_domain = self._resolve_domain(words, pos_tags, domain)
             if active_domain != "academic":
                 self._apply_model(results)
@@ -681,7 +686,7 @@ class CognitiveLoadPipeline:
 
         # 文件級 domain + ridge
         active_domain = "general"
-        if self.lang == 'en' and self._ridge:
+        if self.lang in ['en', 'nl'] and self._ridge:
             active_domain = self._resolve_domain(all_words, all_pos, domain)
             if active_domain != "academic":
                 self._apply_model(all_results)

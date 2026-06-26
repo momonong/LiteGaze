@@ -119,6 +119,11 @@ def main():
             "gaze_decoder": "stock_t_v3_pom",
             "cog_load": "surprisal",
             "fusion": "bayesian"
+        },
+        "7. STOCK-T v3 + CogMass + Bayesian": {
+            "gaze_decoder": "stock_t_v3_pom",
+            "cog_load": "cognitive_mass",
+            "fusion": "bayesian"
         }
     }
     

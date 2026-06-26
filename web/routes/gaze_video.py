@@ -203,7 +203,11 @@ def analyze_reading_video():
                                     cog_item = v
                                     break
                                     
-                        if cog_item and "surprisal" in cog_item:
+                        if cog_item and "load_score" in cog_item:
+                            load = float(cog_item["load_score"])
+                            # Map load_score (0.0 to 1.0) to mass (1.0 to 4.0)
+                            mass = 1.0 + load * 3.0
+                        elif cog_item and "surprisal" in cog_item:
                             surp = float(cog_item["surprisal"])
                             # Map BERT dynamic surprisal (typically 0-15) to mass (1.0 to 4.0)
                             mass = 1.0 + max(0.0, surp) * 0.20
