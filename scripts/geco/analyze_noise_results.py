@@ -13,7 +13,7 @@ def main():
         return
 
     df = pd.read_csv(csv_path)
-    out_dir = os.path.join(project_root, "docs", "NeurIPS", "experiments")
+    out_dir = os.path.join(project_root, "output", "NeurIPS", "experiments")
     os.makedirs(out_dir, exist_ok=True)
 
     today = datetime.now().strftime("%Y-%m-%d")

@@ -101,7 +101,7 @@ function findNearestExtractedWord(gazeX, gazeY) {
 
       // Apply Cognitive Mass attraction (rare/difficult words reduce effective distance)
       const cogData = (typeof window.lookupCognitive === 'function') ? window.lookupCognitive(item.text) : null;
-      const loadScore = cogData ? (cogData.score || 0.0) : 0.0;
+      const loadScore = cogData ? (cogData.score || cogData.load_score || 0.0) : 0.0;
       const cognitiveMass = 1.0 + 1.8 * loadScore; // More difficult = higher mass = larger pull
       const effectiveDistance = distance / cognitiveMass;
 
@@ -203,7 +203,7 @@ function drawGazeWordFusionAttractor(match, gazeX, gazeY) {
 
   // Retrieve cognitive mass pull
   const cogData = (typeof window.lookupCognitive === 'function') ? window.lookupCognitive(item.text) : null;
-  const loadScore = cogData ? (cogData.score || 0.0) : 0.0;
+  const loadScore = cogData ? (cogData.score || cogData.load_score || 0.0) : 0.0;
   const cognitiveMass = 1.0 + 1.8 * loadScore; 
   const pullFactor = 1.0 - (1.0 / cognitiveMass);
 
@@ -344,7 +344,12 @@ window.lookupCognitive = function lookupCognitive(text) {
         }
       }
     }
-    if (found) return found;
+    if (found) {
+      return {
+        ...found,
+        score: found.load_score !== undefined ? found.load_score : (found.score || 0.0)
+      };
+    }
   }
 
   // Fallback: heuristic cognitive mass based on word features

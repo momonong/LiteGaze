@@ -294,7 +294,7 @@ def plot_robustness_curve_wordacc(df_results: pd.DataFrame, drift_levels: list[f
     plt.grid(True, linestyle=":", alpha=0.7)
     plt.legend(loc="best")
 
-    fig_dir = os.path.join(PROJECT_ROOT, "docs", "NeurIPS", "figures")
+    fig_dir = os.path.join(PROJECT_ROOT, "output", "NeurIPS", "figures")
     os.makedirs(fig_dir, exist_ok=True)
     fig_path = os.path.join(fig_dir, "fig_robustness_curve.pdf")
 
@@ -396,7 +396,7 @@ def plot_noise_tolerance(df_results):
     plt.text(32, 85, 'Washout\nThreshold', color='gray', fontsize=10)
 
     # 動態創建 NeurIPS 的 figures 目錄並存檔
-    neurips_fig_dir = os.path.join(PROJECT_ROOT, "docs", "NeurIPS", "figures")
+    neurips_fig_dir = os.path.join(PROJECT_ROOT, "output", "NeurIPS", "figures")
     os.makedirs(neurips_fig_dir, exist_ok=True)
     plot_path = os.path.join(neurips_fig_dir, "fig_noise_degradation.pdf")
     

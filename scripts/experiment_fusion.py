@@ -56,8 +56,8 @@ def main():
     g_fix = trt * 0.85 + np.random.normal(0, 10, len(trt))
     g_fix = np.clip(g_fix, 0, None)
     
-    # Cognitive variable: surprisal score (information density from BERT)
-    c_load = df_merged["surprisal_score"].values
+    # Cognitive variable: full cognitive mass (ensemble combination of all linguistic features)
+    c_load = df_merged["cognitive_mass"].values
     
     # 4. Instantiate fusion class and apply algorithms
     fusion = LexiGazeFusion()

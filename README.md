@@ -51,18 +51,18 @@ To avoid mixed purposes, our documentation is structured as follows:
 
 | Document | Purpose | Key Contents |
 | :--- | :--- | :--- |
-| **[README.md](file:///home/ubuntu/projects/lexigaze/README.md)** | Project Landing Page | High-level overview, key features, folder structure, quick links. |
-| **[ARCHITECTURE.md](file:///home/ubuntu/projects/lexigaze/ARCHITECTURE.md)** | Technical Architecture | Subsystems, detailed perception/cognition data flows, JSON schemas. |
-| **[INSTRUCTION.md](file:///home/ubuntu/projects/lexigaze/INSTRUCTION.md)** | Operations & Walkthrough | Setup, step-by-step testing workflow, performance diagnostic guide. |
-| **[INSTRUCTION_DATA.md](file:///home/ubuntu/projects/lexigaze/INSTRUCTION_DATA.md)** | Distributed Setup | Setup guide for Ubuntu server and Windows laptop client. |
-| **[AGENT.md](file:///home/ubuntu/projects/lexigaze/AGENT.md)** | Developer Rules | Code quality standards, imports, relative API rules. |
-| **[CONTRIBUTING.md](file:///home/ubuntu/projects/lexigaze/CONTRIBUTING.md)** | Git Guidelines | Branch names, commit messages, and collaborative pull requests. |
+| **[README.md](file://D:/projects/lexigaze/README.md)** | Project Landing Page | High-level overview, key features, folder structure, quick links. |
+| **[ARCHITECTURE.md](file://D:/projects/lexigaze/ARCHITECTURE.md)** | Technical Architecture | Subsystems, detailed perception/cognition data flows, JSON schemas. |
+| **[INSTRUCTION.md](file://D:/projects/lexigaze/INSTRUCTION.md)** | Operations & Walkthrough | Setup, step-by-step testing workflow, performance diagnostic guide. |
+| **[INSTRUCTION_DATA.md](file://D:/projects/lexigaze/INSTRUCTION_DATA.md)** | Distributed Setup | Setup guide for Ubuntu server and Windows laptop client. |
+| **[AGENT.md](file://D:/projects/lexigaze/AGENT.md)** | Developer Rules | Code quality standards, imports, relative API rules. |
+| **[CONTRIBUTING.md](file://D:/projects/lexigaze/CONTRIBUTING.md)** | Git Guidelines | Branch names, commit messages, and collaborative pull requests. |
 
 ---
 
 ## ⚡ Quick Start
 
-For detailed requirements and alternative installations (such as Standard `venv` or `conda`), please see **[INSTRUCTION.md](file:///home/ubuntu/projects/lexigaze/INSTRUCTION.md)**.
+For detailed requirements and alternative installations (such as Standard `venv` or `conda`), please see **[INSTRUCTION.md](file://D:/projects/lexigaze/INSTRUCTION.md)**.
 
 ### 1. Fast Setup with uv
 ```bash

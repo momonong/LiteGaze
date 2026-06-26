@@ -367,7 +367,7 @@ def main():
         plt.title("Performance Trade-off: Accuracy vs. Edge Viability")
         plt.grid(True, which="both", linestyle=":", alpha=0.6, zorder=0)
 
-        fig_dir = os.path.join(PROJECT_ROOT, "docs", "NeurIPS", "figures")
+        fig_dir = os.path.join(PROJECT_ROOT, "output", "NeurIPS", "figures")
         os.makedirs(fig_dir, exist_ok=True)
         fig_path = os.path.join(fig_dir, "fig_latency_tradeoff.pdf")
         plt.tight_layout()
