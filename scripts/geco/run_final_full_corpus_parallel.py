@@ -75,21 +75,22 @@ def process_single_trial(args):
         cal = AutoCalibratingDecoder()
         
         # 1. STOCK-T_Edge
-        t_pom = PsycholinguisticTransitionMatrix(sigma_fwd=SIGMA_FWD, sigma_reg=SIGMA_REG, gamma=GAMMA).build_matrix(len(df_layout), cm_real)
-        idx, drift = cal.calibrate_and_decode(gaze_seq, word_boxes, cm_uniform, t_pom, use_ovp=True)
+        is_l2 = (lang == "L2")
+        t_pom = PsycholinguisticTransitionMatrix(sigma_fwd=SIGMA_FWD, sigma_reg=SIGMA_REG, gamma=GAMMA).build_matrix(len(df_layout), cm_real, is_L2=is_l2)
+        idx, drift = cal.calibrate_and_decode(gaze_seq, word_boxes, cm_uniform, t_pom, use_ovp=True, is_L2=is_l2)
         edge_acc, edge_top3, edge_rec, _ = evaluate_word_and_recovery(
             targets, idx, line_by_word, drift[1], DRIFT_Y
         )
 
         # 2. STOCK-T_Surprisal
-        idx, drift = cal.calibrate_and_decode(gaze_seq, word_boxes, cm_real, t_pom, use_ovp=True)
+        idx, drift = cal.calibrate_and_decode(gaze_seq, word_boxes, cm_real, t_pom, use_ovp=True, is_L2=is_l2)
         surp_acc, surp_top3, surp_rec, _ = evaluate_word_and_recovery(
             targets, idx, line_by_word, drift[1], DRIFT_Y
         )
 
         # 3. w/o_POM
         t_rule = ReadingTransitionMatrix().build_matrix(cm_real, is_L2_reader=(lang=="L2"))
-        idx, drift = cal.calibrate_and_decode(gaze_seq, word_boxes, cm_uniform, t_rule, use_ovp=True)
+        idx, drift = cal.calibrate_and_decode(gaze_seq, word_boxes, cm_uniform, t_rule, use_ovp=True, is_L2=is_l2)
         no_pom_acc, no_pom_top3, no_pom_rec, _ = evaluate_word_and_recovery(
             targets, idx, line_by_word, drift[1], DRIFT_Y
         )

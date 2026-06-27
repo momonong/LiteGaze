@@ -11,7 +11,7 @@ class AutoCalibratingDecoder:
         self.window_size = calibration_window_size
         self.hypotheses = hypotheses # Skill 14: Vertical shift hypotheses to fix line-locking
 
-    def calibrate_and_decode(self, raw_gaze_sequence, word_boxes, base_cm, transition_matrix, sigma_gaze=[40, 30], use_ovp=True):
+    def calibrate_and_decode(self, raw_gaze_sequence, word_boxes, base_cm, transition_matrix, sigma_gaze=[40, 30], use_ovp=True, is_L2=False):
         # Step 1: E-Step (Expectation) with Skill 14 Multi-Hypothesis
         window = raw_gaze_sequence[:self.window_size]
         
@@ -26,7 +26,7 @@ class AutoCalibratingDecoder:
             hyp_window = window.copy()
             hyp_window[:, 1] += h
             
-            indices, likelihood = viterbi_gaze_decode(hyp_window, word_boxes, base_cm, transition_matrix, sigma_gaze, use_ovp=use_ovp)
+            indices, likelihood = viterbi_gaze_decode(hyp_window, word_boxes, base_cm, transition_matrix, sigma_gaze, use_ovp=use_ovp, is_L2=is_L2)
             
             if likelihood > best_likelihood:
                 best_likelihood = likelihood
@@ -38,7 +38,7 @@ class AutoCalibratingDecoder:
         # Step 2: M-Step (Maximization / Drift Estimation)
         # Access biologically aligned OVP centers for drift estimation
         if use_ovp:
-            dfield = DynamicCognitiveField(word_boxes, base_cm, use_ovp=True)
+            dfield = DynamicCognitiveField(word_boxes, base_cm, use_ovp=True, is_L2=is_L2)
             word_centers = dfield.word_centers # OVP Centers (35% width)
         else:
             word_centers = np.array([[ (box[0] + box[2]) / 2, (box[1] + box[3]) / 2 ] for box in word_boxes])
@@ -63,6 +63,6 @@ class AutoCalibratingDecoder:
         
         # Step 3: Update & Final Decode
         corrected_gaze = raw_gaze_sequence - np.array([drift_x, drift_y])
-        final_indices, _ = viterbi_gaze_decode(corrected_gaze, word_boxes, base_cm, transition_matrix, sigma_gaze, use_ovp=use_ovp)
+        final_indices, _ = viterbi_gaze_decode(corrected_gaze, word_boxes, base_cm, transition_matrix, sigma_gaze, use_ovp=use_ovp, is_L2=is_L2)
         
         return final_indices, (drift_x, drift_y)

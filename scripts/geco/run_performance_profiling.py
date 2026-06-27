@@ -173,7 +173,7 @@ def profile_one_trial(
     # Shared POM transition (built from cm_real for stability, matching other scripts)
     t_pom = PsycholinguisticTransitionMatrix(
         sigma_fwd=SIGMA_FWD, sigma_reg=SIGMA_REG, gamma=GAMMA
-    ).build_matrix(len(df_layout), cm_real)
+    ).build_matrix(len(df_layout), cm_real, is_L2=(spec.lang == "L2"))
 
     cal = AutoCalibratingDecoder()
 
@@ -193,11 +193,12 @@ def profile_one_trial(
             # Hold globally to simulate resident model memory
             tmp_llm_mem = llm_mem_holder
 
+    is_l2 = (spec.lang == "L2")
     if model == "STOCK-T_Edge":
-        idx, drift = cal.calibrate_and_decode(gaze_seq, word_boxes, cm_uniform, t_pom, use_ovp=True)
+        idx, drift = cal.calibrate_and_decode(gaze_seq, word_boxes, cm_uniform, t_pom, use_ovp=True, is_L2=is_l2)
         _, _, line_rec, _ = evaluate_word_and_recovery(targets, idx, line_by_word, drift[1], DRIFT_Y)
     elif model == "STOCK-T_Surprisal":
-        idx, drift = cal.calibrate_and_decode(gaze_seq, word_boxes, cm_real, t_pom, use_ovp=True)
+        idx, drift = cal.calibrate_and_decode(gaze_seq, word_boxes, cm_real, t_pom, use_ovp=True, is_L2=is_l2)
         _, _, line_rec, _ = evaluate_word_and_recovery(targets, idx, line_by_word, drift[1], DRIFT_Y)
     elif model == "Baseline":
         idx = NearestBoundingBoxDecoder().decode(gaze_seq, word_boxes)

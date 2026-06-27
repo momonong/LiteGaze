@@ -65,11 +65,12 @@ class PsycholinguisticTransitionMatrix:
         self.sigma_reg = sigma_reg
         self.gamma = gamma
 
-    def build_matrix(self, num_words, base_cm_array):
+    def build_matrix(self, num_words, base_cm_array, is_L2=False):
         """
         Builds the N x N transition matrix using POM logic.
         num_words: Number of words in sentence.
         base_cm_array: Array of Cognitive Mass (Surprisal/Difficulty).
+        is_L2: If True, applies full cognitive mass modulation. If False (L1), scales down cognitive influence.
         """
         n = num_words
         t_matrix = np.zeros((n, n))
@@ -83,6 +84,9 @@ class PsycholinguisticTransitionMatrix:
             # Neutral baseline (0.5) if CM is uniform, preventing bias towards/against regressions
             norm_cm = np.full_like(base_cm_array, 0.5)
         
+        # Adaptive scaling based on L1/L2 reader profile
+        effective_gamma = self.gamma if is_L2 else (self.gamma * 0.1) # L1 readers are less restricted by difficulty
+        
         for i in range(n):
             for j in range(n):
                 if j > i:
@@ -91,16 +95,19 @@ class PsycholinguisticTransitionMatrix:
                     p_fwd = np.exp(-((j - (i + 1))**2) / (2 * self.sigma_fwd**2))
                     # 2. Cognitive Modulation (Skipping)
                     # Penalize transition to j if j is cognitively heavy (high CM)
-                    # Skill 10 Fix: Ensure penalty doesn't zero out probabilities
-                    t_matrix[i, j] = p_fwd * max(0.1, 1.0 - self.gamma * norm_cm[j])
+                    t_matrix[i, j] = p_fwd * max(0.1, 1.0 - effective_gamma * norm_cm[j])
                 else:
                     # 3. Cognitive Modulation (Regressions & Stays)
                     # Exponential decay from i-1
                     p_reg = np.exp(-abs(j - (i - 1)) / self.sigma_reg)
                     
-                    # Skill 10 Enhancement: Ensure baseline is robust enough to allow regressions
-                    # even when CM modulation is disabled.
-                    t_matrix[i, j] = p_reg * (norm_cm[i] + 0.1)
+                    if is_L2:
+                        reg_mod = norm_cm[i] + 0.1
+                    else:
+                        # For L1 (native), regressions are mostly oculomotor/random drift-based rather than difficulty-driven
+                        reg_mod = 0.5
+                    
+                    t_matrix[i, j] = p_reg * reg_mod
             
             # Row-wise normalization (sum to 1.0)
             row_sum = t_matrix[i].sum()

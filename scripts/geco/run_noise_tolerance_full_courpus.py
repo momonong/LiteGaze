@@ -337,12 +337,13 @@ def process_single_trial_with_drift(args):
         cal = AutoCalibratingDecoder()
         
         # 1. STOCK-T_Edge (Uniform CM + POM)
-        t_pom = PsycholinguisticTransitionMatrix(sigma_fwd=SIGMA_FWD, sigma_reg=SIGMA_REG, gamma=GAMMA).build_matrix(len(df_layout), cm_real)
-        idx, drift = cal.calibrate_and_decode(gaze_seq, word_boxes, cm_uniform, t_pom, use_ovp=True)
+        is_l2 = (lang == "L2")
+        t_pom = PsycholinguisticTransitionMatrix(sigma_fwd=SIGMA_FWD, sigma_reg=SIGMA_REG, gamma=GAMMA).build_matrix(len(df_layout), cm_real, is_L2=is_l2)
+        idx, drift = cal.calibrate_and_decode(gaze_seq, word_boxes, cm_uniform, t_pom, use_ovp=True, is_L2=is_l2)
         edge_word_acc, _, edge_line_rec, _ = evaluate_word_and_recovery(targets, idx, line_by_word, drift[1], drift_y)
 
         # 2. STOCK-T_Surprisal (Real CM + POM)
-        idx, drift = cal.calibrate_and_decode(gaze_seq, word_boxes, cm_real, t_pom, use_ovp=True)
+        idx, drift = cal.calibrate_and_decode(gaze_seq, word_boxes, cm_real, t_pom, use_ovp=True, is_L2=is_l2)
         surp_word_acc, _, surp_line_rec, _ = evaluate_word_and_recovery(targets, idx, line_by_word, drift[1], drift_y)
 
         # 3a. Baseline (Spatial Only, 2D nearest word) — keep consistent with full-corpus benchmark

@@ -3,7 +3,7 @@ from scipy.stats import multivariate_normal
 from .dynamic_field import DynamicCognitiveField
 from .transition_model import ReadingTransitionMatrix
 
-def viterbi_gaze_decode(gaze_sequence, word_boxes, base_cm, transition_matrix, sigma_gaze=[40, 30], lambda_decay=0.5, use_ovp=True):
+def viterbi_gaze_decode(gaze_sequence, word_boxes, base_cm, transition_matrix, sigma_gaze=[40, 30], lambda_decay=0.5, use_ovp=True, is_L2=False):
     """
     Skill 3 & 7: Spatio-Temporal Viterbi Gaze Decoder with OVP.
     """
@@ -15,7 +15,7 @@ def viterbi_gaze_decode(gaze_sequence, word_boxes, base_cm, transition_matrix, s
     backpointer = np.zeros((num_words, num_steps), dtype=int)
     
     # Initialize Dynamic Cognitive Field (supports OVP)
-    dynamic_field = DynamicCognitiveField(word_boxes, base_cm, lambda_decay=lambda_decay, use_ovp=use_ovp)
+    dynamic_field = DynamicCognitiveField(word_boxes, base_cm, lambda_decay=lambda_decay, use_ovp=use_ovp, is_L2=is_L2)
     word_centers = dynamic_field.word_centers
     sigma_x_words = dynamic_field.sigma_x
     sigma_y_words = dynamic_field.sigma_y
