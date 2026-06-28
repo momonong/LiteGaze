@@ -83,7 +83,6 @@ M1 Perception → M3 Cognitive Load → M4 Spatiotemporal Alignment → M5 Traje
 | M3 | Cognitive load pipeline | Weichi | Completed |
 | M4 | Spatiotemporal alignment | Chenghao | Completed |
 | M5 | Trajectory fusion & RDS | Jhennong | Completed |
-| Web | Flask UI, Inspector | Chenghao, BoWei, Jhennong | Completed |
 
 ---
 
