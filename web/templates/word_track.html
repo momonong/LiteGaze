@@ -3439,7 +3439,12 @@
 
         // Also persist the gaze session with the correct participant-scoped ID
         if (typeof window.exportFusion === 'function') {
-          window.exportFusion(data.analysis || {}, sessionId, true).catch(() => {});
+          const mergedCognitiveResult = {
+            ...(cognitiveResult || {}),
+            inspector_summary: data.analysis?.summary || {},
+            inspector_profile: data.analysis?.user_profile || {}
+          };
+          window.exportFusion(mergedCognitiveResult, sessionId, true).catch(() => {});
         }
 
         // Render Markdown to HTML using marked.js
