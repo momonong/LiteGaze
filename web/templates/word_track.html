@@ -1334,11 +1334,6 @@
               開啟獨立校正視窗，注視跳動黑色圓點進行臉部與個人化眼動基準校正。
             </div>
             <div class="guide-step-content">
-              <!-- Active model row — shown when a model has been confirmed/applied -->
-              <div id="guideActiveModelRow" style="display:none; justify-content:space-between; align-items:center; background:var(--bg-highest); padding:4px 8px; border-radius:4px; font-size:10px; margin-bottom:4px;">
-                <span>套用模型：</span>
-                <strong id="guideActiveModelName" style="font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--success);">—</strong>
-              </div>
               <button class="btn btn-secondary open-gaze-page-btn" style="width:100%; font-size:11px; min-height:28px;">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>前往校正與訓練頁面 ↗
               </button>
@@ -2287,6 +2282,10 @@
           ftCard.style.display = "flex";
           const ftBtn = document.getElementById("ftToggleBtn");
           if (ftBtn) ftBtn.disabled = false;
+        }
+
+        if (typeof setupInlineTextControlButtons === 'function') {
+          setupInlineTextControlButtons();
         }
 
         // Auto-save session to backend to get a session ID for analysis/quiz purposes
@@ -3692,9 +3691,6 @@
       const step2 = document.getElementById('guideStep2');
       const step2Badge = document.getElementById('guideStep2Badge');
       const step2ConfirmRow = document.getElementById('guideStep2ConfirmRow');
-      const step2ModelName  = document.getElementById('guideStep2ModelName');
-      const step2ActiveRow  = document.getElementById('guideActiveModelRow');
-      const step2ActiveName = document.getElementById('guideActiveModelName');
       const hasModel    = guideModelSelect && guideModelSelect.value !== 'before';
       const modelSelected = hasModel && window.lexiModelSelectedThisSession;
       
@@ -3704,9 +3700,12 @@
           step2Badge.className = 'guide-step-badge completed';
           step2.classList.remove('active');
           step2.classList.add('completed');
-          if (step2ConfirmRow) step2ConfirmRow.style.display = 'none';
-          if (step2ActiveRow) step2ActiveRow.style.display = 'flex';
-          if (step2ActiveName) step2ActiveName.textContent = guideModelSelect.value;
+          
+          const doneBtn = document.getElementById('guideStep2DoneBtn');
+          if (doneBtn) {
+            doneBtn.className = 'btn btn-secondary';
+            doneBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><polyline points="20 6 9 17 4 12"/></svg>已確認套用 (可切換)';
+          }
         } else {
           step2Badge.textContent = '待執行';
           step2Badge.className = 'guide-step-badge';
@@ -3716,11 +3715,16 @@
           } else {
             step2.classList.remove('active');
           }
-          if (step2ActiveRow) step2ActiveRow.style.display = 'none';
-          // Show confirm row if a model is available but not yet confirmed
-          if (step2ConfirmRow) {
-            step2ConfirmRow.style.display = hasModel ? 'flex' : 'none';
+          
+          const doneBtn = document.getElementById('guideStep2DoneBtn');
+          if (doneBtn) {
+            doneBtn.className = 'btn btn-success';
+            doneBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><polyline points="20 6 9 17 4 12"/></svg>確認 — 套用此模型';
           }
+        }
+        // Always show the confirm row (which contains the select dropdown and action button) when models are available
+        if (step2ConfirmRow) {
+          step2ConfirmRow.style.display = hasModel ? 'flex' : 'none';
         }
       }
 
@@ -6416,6 +6420,10 @@
           ftToggleBtn.querySelector('span').textContent = '開始閱讀與追蹤';
         }
       }
+
+      if (typeof window.updateInlineButtonsState === 'function') {
+        window.updateInlineButtonsState();
+      }
     }
 
     window.startVideoRecording = async function() {
@@ -6613,6 +6621,116 @@
         if (typeof updateGuideUI === 'function') updateGuideUI();
       }
     };
+
+    function setupInlineTextControlButtons() {
+      // Remove any existing inline containers first
+      document.querySelectorAll('.read-start-container, .read-end-container').forEach(el => el.remove());
+
+      // Create start reading button container
+      const startContainer = document.createElement('div');
+      startContainer.className = 'read-start-container';
+      startContainer.style.cssText = 'text-align: center; margin: 20px auto; max-width: 800px; padding: 10px; z-index: 100; position: relative;';
+      startContainer.innerHTML = `
+        <button class="btn btn-primary inline-read-btn start" id="btnTextStartRead" style="padding: 10px 24px; font-size: 1.05rem; font-weight: 600; border-radius: 30px; box-shadow: var(--shadow-md); transition: all 0.2s ease;">
+          🎯 開始閱讀追蹤 (Start Reading & Track)
+        </button>
+      `;
+
+      // Create end reading button container
+      const endContainer = document.createElement('div');
+      endContainer.className = 'read-end-container';
+      endContainer.style.cssText = 'text-align: center; margin: 30px auto 50px auto; max-width: 800px; padding: 10px; z-index: 100; position: relative;';
+      endContainer.innerHTML = `
+        <button class="btn btn-secondary inline-read-btn end" id="btnTextEndRead" style="padding: 10px 24px; font-size: 1.05rem; font-weight: 600; border-radius: 30px; box-shadow: var(--shadow-md); transition: all 0.2s ease;" disabled>
+          🛑 結束閱讀並分析 (Finish & Save)
+        </button>
+      `;
+
+      // Insert start button at the very beginning of previewArea (above all page blocks)
+      const firstChild = previewArea.firstChild;
+      if (firstChild) {
+        previewArea.insertBefore(startContainer, firstChild);
+      } else {
+        previewArea.appendChild(startContainer);
+      }
+
+      // Append end button at the very end of previewArea (below all page blocks)
+      previewArea.appendChild(endContainer);
+
+      // Wire up event listeners
+      const btnStart = document.getElementById('btnTextStartRead');
+      const btnEnd = document.getElementById('btnTextEndRead');
+
+      if (btnStart) {
+        btnStart.addEventListener('click', () => {
+          const mode = window.lexiPerfMode || "video";
+          if (mode === "realtime") {
+            if (!window.lexiGazeEnabled) {
+              const ftBtn = document.getElementById('ftToggleBtn');
+              if (ftBtn) ftBtn.click();
+            }
+          } else {
+            if (!window.lexiVmIsRecording) {
+              const ftBtn = document.getElementById('ftToggleBtn');
+              if (ftBtn) ftBtn.click();
+            }
+          }
+        });
+      }
+
+      if (btnEnd) {
+        btnEnd.addEventListener('click', () => {
+          const mode = window.lexiPerfMode || "video";
+          if (mode === "realtime") {
+            if (window.lexiGazeEnabled) {
+              const ftBtn = document.getElementById('ftToggleBtn');
+              if (ftBtn) ftBtn.click();
+            }
+          } else {
+            if (window.lexiVmIsRecording) {
+              const ftBtn = document.getElementById('ftToggleBtn');
+              if (ftBtn) ftBtn.click();
+            }
+          }
+        });
+      }
+
+      // Sync initial state
+      updateInlineButtonsState();
+    }
+
+    function updateInlineButtonsState() {
+      const btnTextStart = document.getElementById('btnTextStartRead');
+      const btnTextEnd   = document.getElementById('btnTextEndRead');
+      const mode = window.lexiPerfMode || "video";
+      const active = (mode === "realtime") ? (window.lexiGazeEnabled || false) : (window.lexiVmIsRecording || false);
+
+      if (active) {
+        if (btnTextStart) {
+          btnTextStart.disabled = true;
+          btnTextStart.className = 'btn btn-secondary inline-read-btn start';
+          btnTextStart.innerHTML = '● 正在閱讀追蹤中...';
+        }
+        if (btnTextEnd) {
+          btnTextEnd.disabled = false;
+          btnTextEnd.className = 'btn btn-danger inline-read-btn end';
+          btnTextEnd.innerHTML = '🛑 結束閱讀並分析';
+        }
+      } else {
+        if (btnTextStart) {
+          btnTextStart.disabled = false;
+          btnTextStart.className = 'btn btn-primary inline-read-btn start';
+          btnTextStart.innerHTML = '🎯 開始閱讀追蹤 (Start Reading & Track)';
+        }
+        if (btnTextEnd) {
+          btnTextEnd.disabled = true;
+          btnTextEnd.className = 'btn btn-secondary inline-read-btn end';
+          btnTextEnd.innerHTML = '🛑 結束閱讀並分析';
+        }
+      }
+    }
+    window.setupInlineTextControlButtons = setupInlineTextControlButtons;
+    window.updateInlineButtonsState = updateInlineButtonsState;
 
     // ── Word Timeline Tracker (scroll-based) ──────────────────────────────
     // Samples visible words every 800ms during recording

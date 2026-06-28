@@ -408,6 +408,7 @@
 
   async function setEnabled(enabled) {
     state.enabled = enabled;
+    window.lexiGazeEnabled = enabled;
     els.toggle.classList.toggle("active", enabled);
     els.toggleLabel.textContent = enabled ? "啟用眼動推論（開啟）" : "啟用眼動推論（關閉）";
 
@@ -477,7 +478,12 @@
       uploadCursorGazePairs();
     }
 
-    async function uploadCursorGazePairs() {
+    if (typeof window.updateInlineButtonsState === 'function') {
+      window.updateInlineButtonsState();
+    }
+  }
+
+  async function uploadCursorGazePairs() {
       if (cursorGazePairs.length === 0) {
         setStatus("已停止眼動推論");
         return;
