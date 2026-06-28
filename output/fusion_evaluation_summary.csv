@@ -1,7 +1,12 @@
 Method,Pearson r,Pearson p-val,Spearman rho,Spearman p-val
-Linear,0.8827,2.32e-52,0.8587,1.45e-46
-Multiplicative,0.7325,1.67e-27,0.7091,3.89e-25
-Gated,0.6735,5.77e-22,0.759,1.69e-30
-Sigmoid,0.8291,1.00e-40,0.8587,1.45e-46
-Bayesian,0.7224,1.89e-26,0.7188,4.33e-26
-Rrf,0.839,1.51e-42,0.8248,5.61e-40
+Linear,0.7341,1.11e-27,0.614,1.55e-17
+Multiplicative,0.6383,3.17e-19,0.3716,1.79e-06
+Gated,0.5495,1.10e-13,0.6228,3.95e-18
+Sigmoid,0.7503,1.78e-29,0.614,1.55e-17
+Bayesian,0.6445,1.10e-19,0.3909,4.53e-07
+Rrf,0.7203,3.02e-26,0.6569,1.26e-20
+Spillover_bayesian,0.6192,6.89e-18,0.5403,3.36e-13
+Parafoveal,0.6582,9.90e-21,0.4344,1.47e-08
+Spillover_rrf,0.656,1.49e-20,0.5704,7.61e-15
+Parafoveal_rrf,0.7161,7.95e-26,0.6537,2.22e-20
+Spillover_parafoveal_rrf,0.6547,1.87e-20,0.5744,4.49e-15
