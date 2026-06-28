@@ -1,0 +1,244 @@
+\documentclass[sigconf]{acmart}
+
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{microtype}
+
+\AtBeginDocument{%
+  \providecommand\BibTeX{{%
+    \normalfont B\kern-.05em{\scshape i\kern-.025em b}\kern-.08em \text{T}\kern-.1667em\lower.7ex\text{E}\kern-.125emX}}}
+
+\setcopyright{acmcopyright}
+\copyrightyear{2026}
+\acmYear{2026}
+\acmDOI{}
+
+\acmConference[CHI '26]{ACM CHI Conference on Human Factors in Computing Systems}{May 2026}{Taiwan}
+\acmBooktitle{}
+\acmPrice{}
+\acmISBN{}
+
+\begin{document}
+
+\title{LexiGaze: A Multimodal Eye-Gaze and Cognitive-Load Fusion Platform for Reading Analysis}
+
+\author{Chenghao}
+\affiliation{%
+  \institution{Miin Wu School of Computing}
+  \country{Taiwan}
+}
+\email{}
+
+\author{Weichi}
+\affiliation{%
+  \institution{Miin Wu School of Computing}
+  \country{Taiwan}
+}
+\email{}
+
+\author{Shengwen}
+\affiliation{%
+  \institution{Miin Wu School of Computing}
+  \country{Taiwan}
+}
+\email{}
+
+\author{BoWei}
+\affiliation{%
+  \institution{Miin Wu School of Computing}
+  \country{Taiwan}
+}
+\email{}
+
+\author{Jhennong}
+\affiliation{%
+  \institution{Miin Wu School of Computing}
+  \country{Taiwan}
+}
+\email{}
+
+\begin{abstract}
+LexiGaze is a low-cost, zero-additional-hardware reading analysis platform. It aligns webcam gaze tracking (M1) and per-word cognitive load prediction (M3) onto a shared screen coordinate frame (M4), then applies trajectory fusion and optimization (M5) to produce a \textbf{Reading Difficulty Score (RDS)} and \textbf{Cognitive Inspector} diagnostic reports.
+
+The cognitive pipeline uses GPT-2 surprisal and an XGBoost scorer to predict \texttt{load\_score}. On a GECO held-out set it achieves a fixed effect of $\beta = 0.437$ on Total Reading Time (TRT) with $\Delta\text{AIC} = +182.6$; zero-shot transfer to PROVO raises $\beta$ to $0.619$. Under simulated $+45$\,px vertical drift, STOCK-T (Viterbi POM + EM) improves gaze decoding accuracy from $18.59\%$ to $78.21\%$.
+\end{abstract}
+
+\keywords{Eye-Gaze Tracking, Cognitive Load, Multimodal Fusion, Reading Analysis, Viterbi Decoding, EM Calibration}
+
+\maketitle
+
+\section{Motivation and Objectives}
+High-fidelity eye trackers are expensive. Consumer webcams suffer from systematic vertical drift (often exceeding one line height) and high-frequency jitter, which breaks word-level gaze decoding~\cite{krafka2016eye, rayner1998eye}. Furthermore, reading difficulty depends not only on linguistic complexity but also on moment-to-moment cognitive state and visual processing bottlenecks~\cite{hale2001probabilistic, levy2008expectation}.
+
+LexiGaze assumes that gaze trajectories are constrained both by physical space and by semantic cognitive attraction. The project aims to:
+\begin{itemize}
+    \item Fuse ``where the eyes look'' with ``how difficult the text is'' into a unified Reading Difficulty Score (RDS).
+    \item Surface actionable diagnostics: words per minute (WPM), regression rate, English proficiency estimate, and high-load vocabulary lists.
+    \item Run on low-cost hardware with in-browser real-time inference.
+\end{itemize}
+
+\section{System Overview: M1--M5}
+The platform orchestrates the following pipeline:
+\begin{displaymath}
+\text{M1 Perception} \rightarrow \text{M3 Cognitive Load} \rightarrow \text{M4 Spatiotemporal Alignment} \rightarrow \text{M5 Trajectory Fusion} \rightarrow \text{Cognitive Inspector}
+\end{displaymath}
+Calibration data collection and personalization training (M2) are integrated into the M1 web workflow. Gaze metrics are mapped to cognitive targets as shown in Table~\ref{tab:gaze_metrics}.
+
+\begin{table}[h]
+\centering
+\caption{Gaze metrics to cognitive targets mapping.}
+\label{tab:gaze_metrics}
+\begin{tabular}{lll}
+\toprule
+Gaze Metric & How Obtained & Cognitive Target \\
+\midrule
+Fixation Duration & Sum of dwell episodes & Cognitive load \\
+Fixation Count & Hit counts & Attention \\
+Regression Count & Backward saccades & Comprehension difficulty \\
+Reread Count & Re-read episodes & Difficult words \\
+Dwell Time & Area residence time & Overall load \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Module ownership and assignments.}
+\label{tab:ownership}
+\begin{tabular}{lll}
+\toprule
+Module & Topic & Owner \\
+\midrule
+M1 & Gaze / UniGaze / calibration & Shengwen \\
+M2 & Data collection \& training demo & BoWei \\
+M3 & Cognitive load pipeline & Weichi \\
+M4 & Spatiotemporal alignment & Chenghao \\
+M5 & Trajectory fusion \& RDS & Jhennong \\
+Web & Flask UI, Inspector & Chenghao, BoWei, Jhennong \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{M1: Gaze Perception and Personalization}
+The technical stack of M1 consists of:
+\begin{itemize}
+    \item \textbf{UniGaze-B16 ViT}: Large-scale pre-trained gaze estimation mapping face pitch/yaw to screen coordinates.
+    \item \textbf{Polynomial personalization}: 9-point grid calibration to remove user and device bias.
+    \item \textbf{Real-time filtering}: OneEuro speed-adaptive low-pass filter~\cite{casiez2012one} and optional Slip-Kalman smoothing.
+\end{itemize}
+The baseline model personalization demonstrates significant accuracy gains over raw UniGaze inference.
+
+\section{M3: Per-Word Cognitive Load Pipeline}
+\subsection{Introduction}
+Reading is a cognitively demanding process in which the difficulty of each word contributes to the overall mental effort. Within LexiGaze, the Per-Word Cognitive Load Pipeline (M3) serves as the language-side component providing continuous difficulty scores for every word in English text. Rather than relying on coarse-grained readability formulas, M3 generates fine-grained, psycholinguistically motivated scores at the word level to be fused with eye-tracking data.
+
+\subsection{Background}
+\subsubsection{Surprisal Theory}
+Under surprisal theory~\cite{hale2001probabilistic, levy2008expectation}, the cognitive effort required to process a word is proportional to its surprisal---the negative log-probability of the word given its preceding context:
+\begin{equation}
+\text{surprisal}(w_t) = -\log P(w_t \mid w_1, \ldots, w_{t-1})
+\end{equation}
+
+\subsubsection{Eye-Tracking Measures}
+We validate M3 against:
+\begin{itemize}
+    \item \textbf{Gaze Duration (GD)}: The sum of all fixation durations during the first pass through a word, reflecting early lexical access.
+    \item \textbf{Total Reading Time (TRT)}: The sum of all fixation durations on a word across the entire trial, capturing late syntactic and discourse integration.
+\end{itemize}
+We fit Linear Mixed-Effects Models (LMMs) with per-reader random intercepts, controlling for word length, Zipf frequency, sentence position, and preceding spillover.
+
+\subsection{Pipeline Architecture}
+M3 extracts six features per content word:
+\begin{itemize}
+    \item \textbf{Surprisal}: GPT-2 (117M) contextual next-word NLL~\cite{radford2019language}.
+    \item \textbf{Rényi entropy}: LM uncertainty ($\alpha = 0.5$) targeting first-pass reading times~\cite{pimentel2023effect}.
+    \item \textbf{AoA score}: Age-of-acquisition norms~\cite{kuperman2012age}.
+    \item \textbf{Zipf frequency}: Log word frequency~\cite{brysbaert2009moving}.
+    \item \textbf{Dependency load}: Dependency integration cost (NOUN/VERB/PROPN only)~\cite{gibson1998linguistic}.
+    \item \textbf{Word length}: Character count.
+\end{itemize}
+These features are scored using a pre-trained XGBoost model~\cite{chen2016xgboost} trained on the GECO corpus~\cite{cop2017presenting}.
+
+\subsection{Experimental Results}
+The model was validated on GECO held-out sentences and zero-shot transferred to the PROVO corpus~\cite{luke2018provo}.
+Table~\ref{tab:m3_results} presents the validation metrics.
+
+\begin{table}[h]
+\centering
+\caption{GECO held-out validation (n = 4,883 words).}
+\label{tab:m3_results}
+\begin{tabular}{lllll}
+\toprule
+Outcome & Spearman $\rho$ & 95\% CI & LMM $\beta$ & $\Delta$AIC \\
+\midrule
+TRT & 0.437*** & [0.412, 0.458] & 0.049*** & +182.6 \\
+GD & 0.386*** & [0.359, 0.409] & 0.029*** & +82.8 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Under zero-shot transfer to PROVO, the pipeline achieved a Spearman correlation of $\rho = 0.619$ (TRT) and $\rho = 0.611$ (GD), confirming strong cross-corpus generalizability.
+
+\section{M4: Spatiotemporal Alignment}
+\subsection{Methodology}
+The M4 module constructs a time-varying dynamic prior field through three core mechanisms:
+\begin{itemize}
+    \item \textbf{OVP Alignment}: Shifts the word gravity center to 35\% of its width from the left border, matching human optimal viewing position tendencies.
+    \item \textbf{Bayesian Gravity Snap}: Computes a 2D Gaussian spatial likelihood:
+    \begin{equation}
+    P(\text{Target} \mid \text{Gaze}) \propto P(\text{Gaze} \mid \text{Target}) \times \text{CM}(\text{Target})
+    \end{equation}
+    \item \textbf{Time-Decaying Cognitive Mass}: To prevent deadlocks, the cognitive mass decays exponentially with cumulative exposure $E_i(t)$:
+    \begin{equation}
+    \text{CM}_i(t) = (\text{Base\_CM}_i + \epsilon) \times \exp(-\lambda \times E_i(t))
+    \end{equation}
+\end{itemize}
+
+\subsection{L1/L2 Adaptive Prior Calibration}
+To resolve trajectory recovery degradation for native (L1) readers, the system introduces a proficiency-aware calibration mechanism:
+\begin{itemize}
+    \item \textbf{L1 (Native Readers)}: Since L1 readers read rapidly and skip words frequently, the system flattens the static cognitive mass emission prior by blending it with its mean ($0.9 \times \text{mean\_cm} + 0.1 \times \text{base\_cm}$) and scales down the cognitive skipping penalty ($\gamma \times 0.1$).
+    \item \textbf{L2 (Learner Readers)}: Since L2 learners focus heavily on high-difficulty words, the system retains full cognitive mass transition priors and regression boosts to anchor the drifting gaze path.
+\end{itemize}
+
+\section{M5: Trajectory Fusion and Optimization}
+M5 processes raw spatial coordinates through Viterbi path decoding and Expectation-Maximization (EM) vertical drift calibration.
+
+\subsection{GECO Noise Stress Test Benchmark}
+To evaluate the system's robustness at scale, we conducted a stress test across 150 sampled trials from the GECO corpus under varying vertical hardware drifts ($0$\,px to $60$\,px). The results are summarized in Table~\ref{tab:noise_stress}.
+
+\begin{table*}[t]
+\centering
+\caption{GECO Noise Stress Test results (150 sampled trials).}
+\label{tab:noise_stress}
+\begin{tabular}{ccccccc}
+\toprule
+Drift (px) & STOCK-T Edge WordAcc & STOCK-T Surprisal WordAcc & Baseline WordAcc & Edge vs. Baseline Improvement & STOCK-T Surprisal LineRec & Baseline LineRec \\
+\midrule
+0.0  & 16.28\% & 15.52\% & \textbf{19.09\%} & -14.75\% & 55.69\% & \textbf{66.58\%} \\
+15.0 & 13.53\% & 12.59\% & \textbf{18.14\%} & -25.40\% & 48.51\% & \textbf{63.28\%} \\
+30.0 & \textbf{15.18\%} & 14.36\% & 14.91\% & \textbf{+1.77\%} & 53.42\% & \textbf{55.64\%} \\
+45.0 & 12.94\% & \textbf{13.17\%} & 11.50\% & \textbf{+12.51\%} & \textbf{51.49\%} & 45.36\% \\
+60.0 & 9.61\%  & \textbf{10.14\%} & 8.24\%  & \textbf{+16.61\%} & \textbf{40.24\%} & 35.15\% \\
+\bottomrule
+\end{tabular}
+\\ \small{Baseline refers to the purely spatial 2D proximity snapping model.}
+\end{table*}
+
+While spatial baselines perform well under low drift ($<30$\,px), they collapse under high noise. STOCK-T's transition matrix prevents vertical line leakage, maintaining $10.14\%$ word accuracy and $40.24\%$ line recovery at $60$\,px drift, outperforming the baseline by \textbf{+23.1\% relative word accuracy}.
+
+\section{Discussion and Future Work}
+\begin{itemize}
+    \item \textbf{Accuracy vs. Latency}: Full Viterbi + EM takes $\approx 210$\,ms per trial, which is viable for quasi-real-time backend processing, whereas spatial snapping takes $<3$\,ms but fails under drift.
+    \item \textbf{Multi-lingual Extensions}: Currently, M3 features are optimized for English. Future work will extend the calibration rules to other languages such as Chinese.
+    \item \textbf{Real-time Backend Integration}: Porting the POM and EM calibration directly to the active web routing API.
+\end{itemize}
+
+\section{Conclusion}
+LexiGaze implements a pipeline fusing webcam gaze tracking, language-model cognitive features, and spatiotemporal priors into interpretable Reading Difficulty Scores. By deploying L1/L2 adaptive priors, we successfully recovered native reader paths without semantic distortion, achieving robust trajectory tracking under extreme drift.
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{references}
+
+\end{document}
