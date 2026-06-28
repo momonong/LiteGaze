@@ -412,25 +412,6 @@
     els.toggle.classList.toggle("active", enabled);
     els.toggleLabel.textContent = enabled ? "啟用眼動推論（開啟）" : "啟用眼動推論（關閉）";
 
-    // Sync floating tracker widget (Real-time Mode)
-    const ftStatusDot = document.getElementById('ftStatusDot');
-    const ftStatusTxt = document.getElementById('ftStatusTxt');
-    const ftToggleBtn = document.getElementById('ftToggleBtn');
-    if (enabled) {
-      if (ftStatusDot) ftStatusDot.classList.add('active');
-      if (ftStatusTxt) ftStatusTxt.textContent = '追蹤中 (Realtime)';
-      if (ftToggleBtn) {
-        ftToggleBtn.className = 'btn btn-danger btn-ft-toggle';
-        ftToggleBtn.querySelector('span').textContent = '結束閱讀並分析';
-      }
-    } else {
-      if (ftStatusDot) ftStatusDot.classList.remove('active');
-      if (ftToggleBtn) {
-        ftToggleBtn.className = 'btn btn-primary btn-ft-toggle';
-        ftToggleBtn.querySelector('span').textContent = '開始閱讀與追蹤';
-      }
-    }
-
     const guideBtn = document.getElementById("guideRtToggleBtn");
     if (guideBtn) {
       guideBtn.textContent = enabled ? "關閉相機" : "開啟相機";
@@ -478,8 +459,8 @@
       uploadCursorGazePairs();
     }
 
-    if (typeof window.updateInlineButtonsState === 'function') {
-      window.updateInlineButtonsState();
+    if (typeof window.updateGuideUI === 'function') {
+      window.updateGuideUI();
     }
   }
 
@@ -569,43 +550,7 @@
     window.lexiModelSelectedThisSession = true;
   }
 
-  // ── Floating Gaze Tracker Controller Actions ──
-  function updateFloatingTrackerMode() {
-    const ftModeBadge = document.getElementById('ftModeBadge');
-    if (ftModeBadge) {
-      const mode = window.lexiPerfMode || "video";
-      ftModeBadge.textContent = mode === "realtime" ? "即時模式" : "錄影模式";
-      ftModeBadge.className = `ft-mode-badge ${mode}`;
-    }
-  }
-
-  const ftToggleBtn = document.getElementById("ftToggleBtn");
-  if (ftToggleBtn) {
-    ftToggleBtn.addEventListener("click", () => {
-      updateFloatingTrackerMode();
-      const mode = window.lexiPerfMode || "video";
-      if (mode === "realtime") {
-        setEnabled(!state.enabled);
-      } else {
-        const isRecording = window.lexiVmIsRecording || false;
-        if (!isRecording) {
-          if (typeof window.startVideoRecording === "function") {
-            window.startVideoRecording();
-          }
-        } else {
-          if (typeof window.stopVideoRecording === "function") {
-            window.stopVideoRecording();
-          }
-        }
-      }
-    });
-  }
-
-  // Run periodic sync every 1 second to update the mode badge and check if document is active
-  setInterval(updateFloatingTrackerMode, 1000);
-
   refreshModels().then(() => {
-    updateFloatingTrackerMode();
     if (typeof window.updateGuideUI === "function") window.updateGuideUI();
   });
 })();

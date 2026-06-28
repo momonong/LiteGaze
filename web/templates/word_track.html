@@ -2277,16 +2277,7 @@
         
         log(`完成！共擷取 ${extractedData.length} 個項目`, 'ok');
 
-        const ftCard = document.getElementById("floatingGazeTracker");
-        if (ftCard) {
-          ftCard.style.display = "flex";
-          const ftBtn = document.getElementById("ftToggleBtn");
-          if (ftBtn) ftBtn.disabled = false;
-        }
 
-        if (typeof setupInlineTextControlButtons === 'function') {
-          setupInlineTextControlButtons();
-        }
 
         // Auto-save session to backend to get a session ID for analysis/quiz purposes
         try {
@@ -6352,8 +6343,6 @@
       }
     });
 
-    // ── Video Recording Logic ──────────────────────────────────────────────
-    // Syncs both the panel banner UI and the Guide Step 4 card simultaneously
     function _setRecordingUI({ recording, done, error, processReady }) {
       const dot        = document.getElementById('vmRecDot');
       const status     = document.getElementById('vmStatus');
@@ -6366,10 +6355,6 @@
       const gStopBtn    = document.getElementById('guideVmStopBtn');
       const gProcessBtn = document.getElementById('guideVmProcessBtn');
 
-      const ftStatusDot = document.getElementById('ftStatusDot');
-      const ftStatusTxt = document.getElementById('ftStatusTxt');
-      const ftToggleBtn = document.getElementById('ftToggleBtn');
-
       if (recording) {
         if (dot)        dot.classList.add('recording');
         if (status)     status.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="vertical-align:-1px;margin-right:4px"><circle cx="12" cy="12" r="10"/></svg>錄影中... 請開始閱讀文件';
@@ -6380,13 +6365,6 @@
         if (gStartBtn)  gStartBtn.disabled   = true;
         if (gStopBtn)   gStopBtn.disabled    = false;
         if (gProcessBtn) gProcessBtn.disabled = true;
-
-        if (ftStatusDot) ftStatusDot.classList.add('active');
-        if (ftStatusTxt) ftStatusTxt.textContent = '錄製中 (Recording)';
-        if (ftToggleBtn) {
-          ftToggleBtn.className = 'btn btn-danger btn-ft-toggle';
-          ftToggleBtn.querySelector('span').textContent = '結束閱讀並分析';
-        }
       } else if (done) {
         if (dot)        dot.classList.remove('recording');
         if (status)     status.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px"><polyline points="20 6 9 17 4 12"/></svg>${done}`;
@@ -6397,13 +6375,6 @@
         if (gStartBtn)  gStartBtn.disabled   = false;
         if (gStopBtn)   gStopBtn.disabled    = true;
         if (gProcessBtn) gProcessBtn.disabled = !processReady;
-
-        if (ftStatusDot) ftStatusDot.classList.remove('active');
-        if (ftStatusTxt) ftStatusTxt.textContent = '錄製完成';
-        if (ftToggleBtn) {
-          ftToggleBtn.className = 'btn btn-primary btn-ft-toggle';
-          ftToggleBtn.querySelector('span').textContent = '開始閱讀與追蹤';
-        }
       } else if (error) {
         if (dot)        dot.classList.remove('recording');
         if (status)     status.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>${error}`;
@@ -6412,17 +6383,10 @@
         if (stopBtn)    stopBtn.disabled     = true;
         if (gStartBtn)  gStartBtn.disabled   = false;
         if (gStopBtn)   gStopBtn.disabled    = true;
-
-        if (ftStatusDot) ftStatusDot.classList.remove('active');
-        if (ftStatusTxt) ftStatusTxt.textContent = '錯誤';
-        if (ftToggleBtn) {
-          ftToggleBtn.className = 'btn btn-primary btn-ft-toggle';
-          ftToggleBtn.querySelector('span').textContent = '開始閱讀與追蹤';
-        }
       }
 
-      if (typeof window.updateInlineButtonsState === 'function') {
-        window.updateInlineButtonsState();
+      if (typeof updateGuideUI === 'function') {
+        updateGuideUI();
       }
     }
 
@@ -6622,115 +6586,7 @@
       }
     };
 
-    function setupInlineTextControlButtons() {
-      // Remove any existing inline containers first
-      document.querySelectorAll('.read-start-container, .read-end-container').forEach(el => el.remove());
 
-      // Create start reading button container
-      const startContainer = document.createElement('div');
-      startContainer.className = 'read-start-container';
-      startContainer.style.cssText = 'text-align: center; margin: 20px auto; max-width: 800px; padding: 10px; z-index: 100; position: relative;';
-      startContainer.innerHTML = `
-        <button class="btn btn-primary inline-read-btn start" id="btnTextStartRead" style="padding: 10px 24px; font-size: 1.05rem; font-weight: 600; border-radius: 30px; box-shadow: var(--shadow-md); transition: all 0.2s ease;">
-          🎯 開始閱讀追蹤 (Start Reading & Track)
-        </button>
-      `;
-
-      // Create end reading button container
-      const endContainer = document.createElement('div');
-      endContainer.className = 'read-end-container';
-      endContainer.style.cssText = 'text-align: center; margin: 30px auto 50px auto; max-width: 800px; padding: 10px; z-index: 100; position: relative;';
-      endContainer.innerHTML = `
-        <button class="btn btn-secondary inline-read-btn end" id="btnTextEndRead" style="padding: 10px 24px; font-size: 1.05rem; font-weight: 600; border-radius: 30px; box-shadow: var(--shadow-md); transition: all 0.2s ease;" disabled>
-          🛑 結束閱讀並分析 (Finish & Save)
-        </button>
-      `;
-
-      // Insert start button at the very beginning of previewArea (above all page blocks)
-      const firstChild = previewArea.firstChild;
-      if (firstChild) {
-        previewArea.insertBefore(startContainer, firstChild);
-      } else {
-        previewArea.appendChild(startContainer);
-      }
-
-      // Append end button at the very end of previewArea (below all page blocks)
-      previewArea.appendChild(endContainer);
-
-      // Wire up event listeners
-      const btnStart = document.getElementById('btnTextStartRead');
-      const btnEnd = document.getElementById('btnTextEndRead');
-
-      if (btnStart) {
-        btnStart.addEventListener('click', () => {
-          const mode = window.lexiPerfMode || "video";
-          if (mode === "realtime") {
-            if (!window.lexiGazeEnabled) {
-              const ftBtn = document.getElementById('ftToggleBtn');
-              if (ftBtn) ftBtn.click();
-            }
-          } else {
-            if (!window.lexiVmIsRecording) {
-              const ftBtn = document.getElementById('ftToggleBtn');
-              if (ftBtn) ftBtn.click();
-            }
-          }
-        });
-      }
-
-      if (btnEnd) {
-        btnEnd.addEventListener('click', () => {
-          const mode = window.lexiPerfMode || "video";
-          if (mode === "realtime") {
-            if (window.lexiGazeEnabled) {
-              const ftBtn = document.getElementById('ftToggleBtn');
-              if (ftBtn) ftBtn.click();
-            }
-          } else {
-            if (window.lexiVmIsRecording) {
-              const ftBtn = document.getElementById('ftToggleBtn');
-              if (ftBtn) ftBtn.click();
-            }
-          }
-        });
-      }
-
-      // Sync initial state
-      updateInlineButtonsState();
-    }
-
-    function updateInlineButtonsState() {
-      const btnTextStart = document.getElementById('btnTextStartRead');
-      const btnTextEnd   = document.getElementById('btnTextEndRead');
-      const mode = window.lexiPerfMode || "video";
-      const active = (mode === "realtime") ? (window.lexiGazeEnabled || false) : (window.lexiVmIsRecording || false);
-
-      if (active) {
-        if (btnTextStart) {
-          btnTextStart.disabled = true;
-          btnTextStart.className = 'btn btn-secondary inline-read-btn start';
-          btnTextStart.innerHTML = '● 正在閱讀追蹤中...';
-        }
-        if (btnTextEnd) {
-          btnTextEnd.disabled = false;
-          btnTextEnd.className = 'btn btn-danger inline-read-btn end';
-          btnTextEnd.innerHTML = '🛑 結束閱讀並分析';
-        }
-      } else {
-        if (btnTextStart) {
-          btnTextStart.disabled = false;
-          btnTextStart.className = 'btn btn-primary inline-read-btn start';
-          btnTextStart.innerHTML = '🎯 開始閱讀追蹤 (Start Reading & Track)';
-        }
-        if (btnTextEnd) {
-          btnTextEnd.disabled = true;
-          btnTextEnd.className = 'btn btn-secondary inline-read-btn end';
-          btnTextEnd.innerHTML = '🛑 結束閱讀並分析';
-        }
-      }
-    }
-    window.setupInlineTextControlButtons = setupInlineTextControlButtons;
-    window.updateInlineButtonsState = updateInlineButtonsState;
 
     // ── Word Timeline Tracker (scroll-based) ──────────────────────────────
     // Samples visible words every 800ms during recording
@@ -6847,29 +6703,7 @@
   })();
   </script>
 
-  <!-- ══ FLOATING GAZE TRACKER CONTROL ══ -->
-  <div id="floatingGazeTracker" class="floating-tracker-card">
-    <div class="ft-header">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5">
-        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-        <circle cx="12" cy="12" r="3"/>
-      </svg>
-      <span>閱讀注視追蹤控制器</span>
-    </div>
-    <div class="ft-meta">
-      <span class="ft-mode-badge" id="ftModeBadge">載入中...</span>
-      <span class="ft-status-wrap">
-        <span class="ft-status-dot" id="ftStatusDot"></span>
-        <span id="ftStatusTxt">未啟用</span>
-      </span>
-    </div>
-    <button class="btn btn-primary btn-ft-toggle" id="ftToggleBtn" disabled>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:2px;">
-        <polygon points="5 3 19 12 5 21 5 3"/>
-      </svg>
-      <span>開始閱讀追蹤</span>
-    </button>
-  </div>
+
 
   <!-- External Gaze & Mapping Scripts -->
   <script src="/static/mapping.js"></script>
