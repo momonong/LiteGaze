@@ -41,6 +41,8 @@ REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from scripts.fusion_module import LexiGazeFusion
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 1. 眼動感知端 — 讀取 gaze_log.jsonl
@@ -193,51 +195,96 @@ def aggregate_gaze_events(events: list[dict]) -> dict[str, dict]:
 def compute_rds(
     gaze_events: list[dict],
     cognitive_result: dict,
+    method: str = "linear",
 ) -> list[dict]:
     """
     主要融合函式。
 
     步驟：
       1. 彙整眼動事件 → { word: { dwell_ms, fixation_count } }
-      2. 建立認知分析 lookup
-      3. Min-Max 正規化 dwell_ms 和 fixation_count（session 層級）
-      4. 計算 RDS = W_DWELL × dwell_norm + W_FIXATION × fix_norm + W_LOAD × load_score
-      5. 合併所有細粒度語言學特徵
+      2. 依文字順序建立對齊的眼動 sequence
+      3. 套用選取的雙模態融合演算法 (例如 Linear, Bayesian, RRF, Spillover_rrf 等)
+      4. 合併細粒度語言學特徵
     """
     word_analysis = cognitive_result.get("word_analysis", [])
     merged_lookup = build_cognitive_lookup(word_analysis)
     aggregated    = aggregate_gaze_events(gaze_events)
 
-    if not aggregated:
-        print("[Orchestrator] ⚠  沒有有效的眼動事件可融合")
+    if not word_analysis:
+        print("[Orchestrator] ⚠ 沒有有效的認知分析單字序列")
         return []
 
-    # Min-Max Scaling（session 層級）
-    all_dwell   = [v["dwell_ms"]       for v in aggregated.values()]
-    all_fix     = [v["fixation_count"] for v in aggregated.values()]
-    max_dwell   = max(all_dwell)  if max(all_dwell)  > 0 else 1
-    max_fix     = max(all_fix)    if max(all_fix)    > 0 else 1
-    min_dwell   = min(all_dwell)
-    min_fix     = min(all_fix)
+    # 提取序列資料
+    words_seq = [item.get("word", "") for item in word_analysis]
+    load_seq  = [float(item.get("load_score", 0.0)) for item in word_analysis]
+
+    # 對齊眼動資料
+    dwell_seq = []
+    fix_seq   = []
+    for w in words_seq:
+        key = w.lower()
+        if key in aggregated:
+            dwell_seq.append(float(aggregated[key]["dwell_ms"]))
+            fix_seq.append(float(aggregated[key]["fixation_count"]))
+        else:
+            dwell_seq.append(0.0)
+            fix_seq.append(0.0)
+
+    # 執行融合
+    fusion = LexiGazeFusion()
+    method_lower = method.lower()
+
+    if method_lower == "linear":
+        rds_seq = fusion.fuse_linear(dwell_seq, fix_seq, load_seq)
+    elif method_lower == "multiplicative":
+        rds_seq = fusion.fuse_multiplicative(dwell_seq, fix_seq, load_seq)
+    elif method_lower == "gated":
+        rds_seq = fusion.fuse_gated(dwell_seq, fix_seq, load_seq)
+    elif method_lower == "sigmoid":
+        rds_seq = fusion.fuse_sigmoid(dwell_seq, fix_seq, load_seq)
+    elif method_lower == "bayesian":
+        rds_seq = fusion.fuse_bayesian(dwell_seq, load_seq)
+    elif method_lower == "rrf":
+        rds_seq = fusion.fuse_rrf(dwell_seq, load_seq)
+    elif method_lower == "spillover_bayesian":
+        rds_seq = fusion.fuse_spillover_bayesian(dwell_seq, load_seq)
+    elif method_lower == "parafoveal":
+        rds_seq = fusion.fuse_parafoveal(dwell_seq, load_seq)
+    elif method_lower == "spillover_rrf":
+        rds_seq = fusion.fuse_spillover_rrf(dwell_seq, load_seq)
+    elif method_lower == "parafoveal_rrf":
+        rds_seq = fusion.fuse_parafoveal_rrf(dwell_seq, load_seq)
+    elif method_lower == "spillover_parafoveal_rrf":
+        rds_seq = fusion.fuse_spillover_parafoveal_rrf(dwell_seq, load_seq)
+    else:
+        rds_seq = fusion.fuse_linear(dwell_seq, fix_seq, load_seq)
+
+    # 用於正規化顯示的邊界計算
+    max_dwell   = max(dwell_seq) if max(dwell_seq) > 0 else 1
+    max_fix     = max(fix_seq) if max(fix_seq) > 0 else 1
+    min_dwell   = min(dwell_seq)
+    min_fix     = min(fix_seq)
     range_dwell = max_dwell - min_dwell or 1
     range_fix   = max_fix   - min_fix   or 1
 
     results: list[dict] = []
-    for key, agg in aggregated.items():
-        cog_entry  = lookup_word(key, merged_lookup) or {}
-        load_score = float(cog_entry.get("load_score", 0.0))
+    for i, item in enumerate(word_analysis):
+        w = item.get("word", "")
+        key = w.lower()
+        agg = aggregated.get(key, {
+            "dwell_ms": 0,
+            "fixation_count": 0,
+            "hit_count": 0,
+            "confidence_counts": {"high": 0, "medium": 0, "low": 0}
+        })
 
+        rds = round(float(rds_seq[i]), 4)
         dwell_norm = (agg["dwell_ms"]       - min_dwell) / range_dwell
         fix_norm   = (agg["fixation_count"] - min_fix)   / range_fix
 
-        rds = round(
-            W_DWELL * dwell_norm + W_FIXATION * fix_norm + W_LOAD * load_score,
-            4,
-        )
-
         results.append({
             # ── 融合核心輸出 ──
-            "word":            agg["word"],
+            "word":            w,
             "rds":             rds,
             "rds_level":       _classify_rds(rds),
 
@@ -249,18 +296,18 @@ def compute_rds(
             "hit_count":       agg["hit_count"],
             "confidence_counts": agg["confidence_counts"],
 
-            # ── 語言認知端（細粒度）──
-            "load_score":      load_score,
-            "load_level":      cog_entry.get("load_level", ""),
-            "pos":             cog_entry.get("pos", ""),
-            "surprisal":       cog_entry.get("surprisal", None),
-            "entropy":         cog_entry.get("entropy", None),
-            "renyi_entropy":   cog_entry.get("renyi_entropy", None),
-            "dependency_load": cog_entry.get("dependency_load", None),
-            "zipf_score":      cog_entry.get("zipf_score", None),
-            "word_length":     cog_entry.get("word_length", None),
-            "aoa_score":       cog_entry.get("aoa_score", None),
-            "pos_score":       cog_entry.get("pos_score", None),
+            # ── 語言認知端 ──
+            "load_score":      float(item.get("load_score", 0.0)),
+            "load_level":      item.get("load_level", ""),
+            "pos":             item.get("pos", ""),
+            "surprisal":       item.get("surprisal", None),
+            "entropy":         item.get("entropy", None),
+            "renyi_entropy":   item.get("renyi_entropy", None),
+            "dependency_load": item.get("dependency_load", None),
+            "zipf_score":      item.get("zipf_score", None),
+            "word_length":     item.get("word_length", None),
+            "aoa_score":       item.get("aoa_score", None),
+            "pos_score":       item.get("pos_score", None),
         })
 
     # 依 RDS 由高到低排序
@@ -359,6 +406,13 @@ def parse_args() -> argparse.Namespace:
         "--save-cognitive", metavar="PATH",
         help="（選用）將認知分析結果另存到指定路徑",
     )
+    parser.add_argument(
+        "--method", default="linear",
+        choices=["linear", "multiplicative", "gated", "sigmoid", "bayesian", "rrf",
+                 "spillover_bayesian", "parafoveal", "spillover_rrf", "parafoveal_rrf",
+                 "spillover_parafoveal_rrf"],
+        help="雙模態融合演算法類型（預設 'linear'）",
+    )
     return parser.parse_args()
 
 
@@ -397,7 +451,7 @@ def main() -> None:
 
     # 3. 融合計算
     print("[Orchestrator] 開始 RDS 融合計算…")
-    rds_results = compute_rds(gaze_events, cognitive_result)
+    rds_results = compute_rds(gaze_events, cognitive_result, method=args.method)
 
     # 4. 輸出報告
     elapsed_ms = int((time.time() - t0) * 1000)

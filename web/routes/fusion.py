@@ -93,6 +93,7 @@ def fuse():
     persist          = bool(body.get("persist", False))
     cognitive_result = body.get("cognitive_result") or {}
     gaze_events      = body.get("gaze_events") or []
+    method           = body.get("method", "linear")
 
     if not isinstance(gaze_events, list):
         return jsonify({"ok": False, "error": "'gaze_events' 必須是陣列"}), 400
@@ -100,7 +101,7 @@ def fuse():
         return jsonify({"ok": False, "error": "'cognitive_result' 必須是物件"}), 400
 
     # Run fusion
-    rds_results = compute_rds(gaze_events, cognitive_result)
+    rds_results = compute_rds(gaze_events, cognitive_result, method=method)
 
     elapsed_ms = int((time.time() - t0) * 1000)
 
