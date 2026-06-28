@@ -1343,13 +1343,15 @@
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>前往校正與訓練頁面 ↗
               </button>
               <!-- Model confirm row — shown after returning from /gaze with a model -->
-              <div id="guideStep2ConfirmRow" style="display:none; margin-top:6px; display:none; flex-direction:column; gap:4px;">
-                <div style="font-size:9px; color:var(--ink-muted); display:flex; align-items:center; justify-content:space-between;">
-                  <span>已訓練模型：</span>
-                  <span id="guideStep2ModelName" style="font-weight:600; color:var(--ink-primary); font-family:'JetBrains Mono',monospace; font-size:9px;">—</span>
+              <div id="guideStep2ConfirmRow" style="display:none; margin-top:6px; flex-direction:column; gap:4px;">
+                <div style="font-size:10px; color:var(--ink-secondary); display:flex; flex-direction:column; gap:4px; margin-bottom:4px;">
+                  <label style="font-weight:500;">選擇要套用的訓練模型：</label>
+                  <select id="guideStep2ModelSelect" class="gaze-model-select" style="font-size:11px; min-height:28px; padding:3px 6px; border-radius:var(--radius-sm); border:1px solid var(--line-strong); background:#fff; width:100%;">
+                    <option value="before">原始模型 / before</option>
+                  </select>
                 </div>
                 <button class="btn btn-success" id="guideStep2DoneBtn" onclick="confirmStep2Done()" style="width:100%; font-size:11px; min-height:28px;">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><polyline points="20 6 9 17 4 12"/></svg>完成 — 套用此模型
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><polyline points="20 6 9 17 4 12"/></svg>確認 — 套用此模型
                 </button>
               </div>
             </div>
@@ -3694,7 +3696,7 @@
       const step2ActiveRow  = document.getElementById('guideActiveModelRow');
       const step2ActiveName = document.getElementById('guideActiveModelName');
       const hasModel    = guideModelSelect && guideModelSelect.value !== 'before';
-      const modelSelected = hasModel;
+      const modelSelected = hasModel && window.lexiModelSelectedThisSession;
       
       if (step2 && step2Badge) {
         if (modelSelected) {
@@ -3718,9 +3720,6 @@
           // Show confirm row if a model is available but not yet confirmed
           if (step2ConfirmRow) {
             step2ConfirmRow.style.display = hasModel ? 'flex' : 'none';
-          }
-          if (step2ModelName && hasModel) {
-            step2ModelName.textContent = guideModelSelect.value;
           }
         }
       }
