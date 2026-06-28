@@ -78,12 +78,13 @@ flowchart TB
 
 ## 2. Module Ownership
 
-| Directory | Owner | Role |
+| Directory / Module | Owner | Role |
 |---|---|---|
-| `chenghao/` | Chenghao | Integration hub: Flask server, gaze API routes, cognitive API routes, frontend pages |
-| `shengwen/` | Shengwen | UniGaze-B16 face preprocessing, gaze model wrapper |
-| `weichi/` | Weichi | Cognitive load pipeline (BERT/GPT-2 surprisal + Ridge Regression) |
-| `BoWei/` | BoWei | Supplementary mapping visualisation (`mapping.html`, `mapping.js`) |
+| `chenghao/` | Chenghao Peng | Integration hub: Flask server, gaze API routes, cognitive API routes, frontend pages |
+| `shengwen/` | Shengwen Chang | UniGaze-B16 face preprocessing, gaze model wrapper |
+| `weichi/` | Weichi Lin | Cognitive load pipeline (BERT/GPT-2 surprisal + Ridge Regression) |
+| `BoWei/` | Bowei Huang | Supplementary mapping visualisation (`mapping.html`, `mapping.js`) |
+| `scripts/fusion/` | Jhennong Chen | Trajectory fusion, offline optimization, and RDS algorithm development |
 
 ---
 
