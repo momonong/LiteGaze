@@ -517,7 +517,6 @@
     if (typeof window.updateGuideUI === "function") {
       window.updateGuideUI();
     }
-  }
 
   function updateIntervalLabel() {
     if (els.intervalSlider && els.intervalValue) {
