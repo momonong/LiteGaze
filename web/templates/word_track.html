@@ -1120,6 +1120,82 @@
         width: 100%;
       }
     }
+
+    /* ── Floating Gaze Tracker Control Widget ── */
+    .floating-tracker-card {
+      position: fixed;
+      top: 76px;
+      right: 24px;
+      z-index: 10000;
+      width: 250px;
+      background: rgba(255, 255, 255, 0.82);
+      backdrop-filter: blur(16px) saturate(180%);
+      -webkit-backdrop-filter: blur(16px) saturate(180%);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: 8px;
+      padding: 0.85rem 1rem;
+      box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.05);
+      display: none; /* Show only when document is parsed/loaded */
+      flex-direction: column;
+      gap: 0.6rem;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .floating-tracker-card:hover {
+      background: rgba(255, 255, 255, 0.9);
+      border-color: rgba(0, 0, 0, 0.12);
+      box-shadow: 0 16px 36px -12px rgba(0, 0, 0, 0.2), 0 2px 6px rgba(0, 0, 0, 0.05);
+    }
+    .ft-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--ink-primary);
+    }
+    .ft-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.72rem;
+    }
+    .ft-mode-badge {
+      background: var(--bg-highest);
+      color: var(--ink-secondary);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 0.65rem;
+      border: 1px solid var(--line);
+    }
+    .ft-status-wrap {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .ft-status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--ink-muted);
+    }
+    .ft-status-dot.active {
+      background: var(--danger);
+      box-shadow: 0 0 8px var(--danger);
+      animation: pulse-recording 1.2s infinite;
+    }
+    @keyframes pulse-recording {
+      0% { opacity: 0.4; }
+      50% { opacity: 1; }
+      100% { opacity: 0.4; }
+    }
+    .btn-ft-toggle {
+      width: 100%;
+      font-size: 0.78rem !important;
+      font-weight: 600 !important;
+      padding: 6px 12px !important;
+      min-height: 32px !important;
+    }
   </style>
 </head>
 <body>
@@ -2203,6 +2279,13 @@
         // Panels always accessible via icon bar
         
         log(`完成！共擷取 ${extractedData.length} 個項目`, 'ok');
+
+        const ftCard = document.getElementById("floatingGazeTracker");
+        if (ftCard) {
+          ftCard.style.display = "flex";
+          const ftBtn = document.getElementById("ftToggleBtn");
+          if (ftBtn) ftBtn.disabled = false;
+        }
 
         // Auto-save session to backend to get a session ID for analysis/quiz purposes
         try {
@@ -6280,6 +6363,10 @@
       const gStopBtn    = document.getElementById('guideVmStopBtn');
       const gProcessBtn = document.getElementById('guideVmProcessBtn');
 
+      const ftStatusDot = document.getElementById('ftStatusDot');
+      const ftStatusTxt = document.getElementById('ftStatusTxt');
+      const ftToggleBtn = document.getElementById('ftToggleBtn');
+
       if (recording) {
         if (dot)        dot.classList.add('recording');
         if (status)     status.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="vertical-align:-1px;margin-right:4px"><circle cx="12" cy="12" r="10"/></svg>錄影中... 請開始閱讀文件';
@@ -6290,6 +6377,13 @@
         if (gStartBtn)  gStartBtn.disabled   = true;
         if (gStopBtn)   gStopBtn.disabled    = false;
         if (gProcessBtn) gProcessBtn.disabled = true;
+
+        if (ftStatusDot) ftStatusDot.classList.add('active');
+        if (ftStatusTxt) ftStatusTxt.textContent = '錄製中 (Recording)';
+        if (ftToggleBtn) {
+          ftToggleBtn.className = 'btn btn-danger btn-ft-toggle';
+          ftToggleBtn.querySelector('span').textContent = '結束閱讀並分析';
+        }
       } else if (done) {
         if (dot)        dot.classList.remove('recording');
         if (status)     status.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px"><polyline points="20 6 9 17 4 12"/></svg>${done}`;
@@ -6300,6 +6394,13 @@
         if (gStartBtn)  gStartBtn.disabled   = false;
         if (gStopBtn)   gStopBtn.disabled    = true;
         if (gProcessBtn) gProcessBtn.disabled = !processReady;
+
+        if (ftStatusDot) ftStatusDot.classList.remove('active');
+        if (ftStatusTxt) ftStatusTxt.textContent = '錄製完成';
+        if (ftToggleBtn) {
+          ftToggleBtn.className = 'btn btn-primary btn-ft-toggle';
+          ftToggleBtn.querySelector('span').textContent = '開始閱讀與追蹤';
+        }
       } else if (error) {
         if (dot)        dot.classList.remove('recording');
         if (status)     status.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>${error}`;
@@ -6308,6 +6409,13 @@
         if (stopBtn)    stopBtn.disabled     = true;
         if (gStartBtn)  gStartBtn.disabled   = false;
         if (gStopBtn)   gStopBtn.disabled    = true;
+
+        if (ftStatusDot) ftStatusDot.classList.remove('active');
+        if (ftStatusTxt) ftStatusTxt.textContent = '錯誤';
+        if (ftToggleBtn) {
+          ftToggleBtn.className = 'btn btn-primary btn-ft-toggle';
+          ftToggleBtn.querySelector('span').textContent = '開始閱讀與追蹤';
+        }
       }
     }
 
@@ -6621,6 +6729,30 @@
     window.lexiRunBenchmark      = runHardwareBenchmark;
   })();
   </script>
+
+  <!-- ══ FLOATING GAZE TRACKER CONTROL ══ -->
+  <div id="floatingGazeTracker" class="floating-tracker-card">
+    <div class="ft-header">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5">
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+        <circle cx="12" cy="12" r="3"/>
+      </svg>
+      <span>閱讀注視追蹤控制器</span>
+    </div>
+    <div class="ft-meta">
+      <span class="ft-mode-badge" id="ftModeBadge">載入中...</span>
+      <span class="ft-status-wrap">
+        <span class="ft-status-dot" id="ftStatusDot"></span>
+        <span id="ftStatusTxt">未啟用</span>
+      </span>
+    </div>
+    <button class="btn btn-primary btn-ft-toggle" id="ftToggleBtn" disabled>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:2px;">
+        <polygon points="5 3 19 12 5 21 5 3"/>
+      </svg>
+      <span>開始閱讀追蹤</span>
+    </button>
+  </div>
 
   <!-- External Gaze & Mapping Scripts -->
   <script src="/static/mapping.js"></script>
