@@ -121,9 +121,9 @@ Follow this walkthrough to run a complete, end-to-end workflow on the platform:
 ### Phase 4.1: Perform Gaze Calibration & Model Personalization
 1. Navigate to the calibration page at `http://localhost:8080/gaze`.
 2. Expand the **收集設定 (Collection Settings)** panel at the bottom right.
-3. Assign a custom **受試者 ID (Participant ID)** (e.g. `subject_test_01`).
+3. Assign a custom **受試者 ID (Participant ID)** (e.g. `subject001`).
 4. Click **開始 (Start)** and keep your eyes focused on the red dot as it traverses the 9-point grid.
-5. Once complete, the browser uploads calibration coordinates to the server. The server automatically fits a polynomial regression model and stores it in `examples/models/subject_test_01_model.json`.
+5. Once complete, the browser uploads calibration coordinates to the server. The server automatically fits a polynomial regression model and stores it in `examples/models/subject001_model.json`.
 
 ### Phase 4.2: Upload Document & Extract Layout Coordinates
 1. Open the main portal at `http://localhost:8080/`.
@@ -136,7 +136,7 @@ Follow this walkthrough to run a complete, end-to-end workflow on the platform:
 3. Toggle the **Heatmap** view to display the difficulty overlay over the parsed words.
 
 ### Phase 4.4: Read with Active Personalization
-1. In the sidebar dropdown, select your trained personalization model (e.g. `subject_test_01_model`).
+1. In the sidebar dropdown, select your trained personalization model (e.g. `subject001_model`).
 2. Toggle the **Live Gaze Tracking** connection on.
 3. Read the document naturally. Your webcam feed is preprocessed, mapped to the screen, and matched to the word boxes on the screen in real-time.
 

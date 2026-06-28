@@ -77,7 +77,7 @@ Now you can sit in front of the Windows Laptop and complete the data collection 
 
 ### Step 3.2: Complete the Calibration & Video Recording
 1. Open **收集設定** (Collection Settings) by clicking the gear icon at the bottom right.
-2. Set a **受試者 ID** (Participant ID, e.g., `user_laptop_01`).
+2. Set a **受試者 ID** (Participant ID, e.g., `subject001`).
 3. Make sure the checkbox **同時錄製影片** (Record Video) is checked.
 4. Click **開始** (Start).
 5. Look at the red dot as it moves across the screen. 
@@ -91,6 +91,6 @@ Now you can sit in front of the Windows Laptop and complete the data collection 
 ## 📊 4. Verify & Run Multi-Modal Fusion
 
 1. On your Windows laptop, open `https://xxxx.ngrok-free.app/` (the main reading portal).
-2. Upload a text or PDF file and select the trained personalization model (e.g., `user_laptop_01_video_model`) from the dropdown.
+2. Upload a text or PDF file and select the trained personalization model (e.g., `subject001_video_model`) from the dropdown.
 3. Toggle the **Live Gaze Tracking** connection and read the document naturally.
 4. When finished, click **Analyze & Fuse**. The server will calculate the Reading Difficulty Score (RDS) and display the high-difficulty highlights on your laptop screen.
