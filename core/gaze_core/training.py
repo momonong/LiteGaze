@@ -12,6 +12,85 @@ from .model_registry import clean_model_name, model_path
 from .sample_store import ensure_sessions_dir
 
 
+def fit_best_stage(inputs: np.ndarray, Y: np.ndarray, viewport_list: list[list[float]], unique_targets: int, is_stage_1: bool = True) -> tuple[np.ndarray, int, float]:
+    """
+    Fits the best Ridge regression model using LOOCV (Leave-One-Out Cross Validation)
+    to select the optimal polynomial degree (1 or 2) and regularization parameter alpha.
+    """
+    N = len(inputs)
+    if is_stage_1:
+        # Stage 1: inputs is [pitch, yaw], we want yaw first, pitch second
+        val1 = inputs[:, 1]  # yaw
+        val2 = inputs[:, 0]  # pitch
+    else:
+        # Stage 2+: inputs is [x, y], we want x first, y second
+        val1 = inputs[:, 0]  # x
+        val2 = inputs[:, 1]  # y
+
+    candidate_degrees = [1]
+    if unique_targets > 5 and N >= 6:
+        candidate_degrees.append(2)
+
+    candidate_alphas = [1e-4, 1e-3, 1e-2, 0.1]
+
+    best_degree = 1
+    best_alpha = 1e-3
+    best_cv_error = float('inf')
+
+    for degree in candidate_degrees:
+        if degree == 1:
+            X = np.column_stack([val1, val2, np.ones(N)])
+        else:
+            X = np.column_stack([val1, val2, val1 * val1, val2 * val2, val1 * val2, np.ones(N)])
+
+        for alpha in candidate_alphas:
+            errors = []
+            for i in range(N):
+                X_train = np.delete(X, i, axis=0)
+                Y_train = np.delete(Y, i, axis=0)
+                X_test = X[i, :].reshape(1, -1)
+                Y_test = Y[i, :].reshape(1, -1)
+
+                w_w, h_h = viewport_list[i]
+
+                try:
+                    XT_X = X_train.T @ X_train
+                    I = np.eye(X_train.shape[1])
+                    I[-1, -1] = 0.0  # Do not regularize bias
+                    W = np.linalg.solve(XT_X + alpha * I, X_train.T @ Y_train)
+                    pred = X_test @ W
+
+                    pred_x_px = (pred[0, 0] + 1.0) * 0.5 * w_w
+                    pred_y_px = (pred[0, 1] + 1.0) * 0.5 * h_h
+                    target_x_px = (Y_test[0, 0] + 1.0) * 0.5 * w_w
+                    target_y_px = (Y_test[0, 1] + 1.0) * 0.5 * h_h
+
+                    err = np.sqrt((pred_x_px - target_x_px)**2 + (pred_y_px - target_y_px)**2)
+                    errors.append(err)
+                except np.linalg.LinAlgError:
+                    continue
+
+            if errors:
+                mean_cv = np.mean(errors)
+                if mean_cv < best_cv_error:
+                    best_cv_error = mean_cv
+                    best_degree = degree
+                    best_alpha = alpha
+
+    # Train final model on all data
+    if best_degree == 1:
+        X_all = np.column_stack([val1, val2, np.ones(N)])
+    else:
+        X_all = np.column_stack([val1, val2, val1 * val1, val2 * val2, val1 * val2, np.ones(N)])
+
+    XT_X = X_all.T @ X_all
+    I = np.eye(X_all.shape[1])
+    I[-1, -1] = 0.0
+    W_final = np.linalg.solve(XT_X + best_alpha * I, X_all.T @ Y)
+
+    return W_final, best_degree, best_alpha
+
+
 def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
     dataset_id = payload.get("data_session_id", "")
     base_model_name = payload.get("base_model_name", "0")
@@ -93,34 +172,18 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
         unique_targets = len(set(tuple(t) for t in target_list))
 
         if len(stages) == 0:
-            # Stage 1: Fit fresh Stage 1 model
-            if unique_targets <= 5:
-                poly_degree = 1
-            else:
-                poly_degree = 2 if N >= 6 else 1
-                
+            # Stage 1: Fit fresh Stage 1 model using self-tuning LOOCV
             X_raw = np.array(gaze_list)
-            pitch = X_raw[:, 0]
-            yaw = X_raw[:, 1]
+            Y = np.array(target_list)
+            W, poly_degree, best_alpha = fit_best_stage(X_raw, Y, viewport_list, unique_targets, is_stage_1=True)
 
+            # Recompute predictions on train set for metrics
+            yaw = X_raw[:, 1]
+            pitch = X_raw[:, 0]
             if poly_degree == 1:
                 X = np.column_stack([yaw, pitch, np.ones(N)])
             else:
-                X = np.column_stack([
-                    yaw,
-                    pitch,
-                    yaw * yaw,
-                    pitch * pitch,
-                    yaw * pitch,
-                    np.ones(N)
-                ])
-
-            Y = np.array(target_list)
-            alpha = 1e-4
-            XT_X = X.T @ X
-            I = np.eye(X.shape[1])
-            I[-1, -1] = 0.0
-            W = np.linalg.solve(XT_X + alpha * I, X.T @ Y)
+                X = np.column_stack([yaw, pitch, yaw * yaw, pitch * pitch, yaw * pitch, np.ones(N)])
 
             pred_Y = X @ W
             
@@ -128,10 +191,11 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                 "stage": 1,
                 "W": W.tolist(),
                 "poly_degree": poly_degree,
+                "alpha": best_alpha,
                 "mean_px_error": 0.0
             }]
         else:
-            # Stage 2+: Secondary Calibration
+            # Stage 2+: Secondary Calibration using self-tuning LOOCV
             current_inputs = gaze_list
             for stage_idx, stage_meta in enumerate(stages):
                 W_stage = np.array(stage_meta["W"])
@@ -154,39 +218,24 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                 current_inputs = next_inputs
 
             s1_arr = np.array(current_inputs)
+            Y = np.array(target_list)
+            W2, poly_degree, best_alpha = fit_best_stage(s1_arr, Y, viewport_list, unique_targets, is_stage_1=False)
+
+            # Recompute predictions on train set for metrics
             s1_x = s1_arr[:, 0]
             s1_y = s1_arr[:, 1]
-            
-            if unique_targets <= 5:
-                poly_degree = 1
-            else:
-                poly_degree = 2 if N >= 6 else 1
-
             if poly_degree == 1:
                 X = np.column_stack([s1_x, s1_y, np.ones(N)])
             else:
-                X = np.column_stack([
-                    s1_x,
-                    s1_y,
-                    s1_x * s1_x,
-                    s1_y * s1_y,
-                    s1_x * s1_y,
-                    np.ones(N)
-                ])
-                
-            Y = np.array(target_list)
-            alpha = 1e-4
-            XT_X = X.T @ X
-            I = np.eye(X.shape[1])
-            I[-1, -1] = 0.0
-            W2 = np.linalg.solve(XT_X + alpha * I, X.T @ Y)
-            
+                X = np.column_stack([s1_x, s1_y, s1_x * s1_x, s1_y * s1_y, s1_x * s1_y, np.ones(N)])
+
             pred_Y = X @ W2
             
             stages = list(stages) + [{
                 "stage": len(stages) + 1,
                 "W": W2.tolist(),
                 "poly_degree": poly_degree,
+                "alpha": best_alpha,
                 "mean_px_error": 0.0
             }]
 
