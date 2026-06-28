@@ -49,11 +49,14 @@ def main():
     # Ground truth: actual human reading time
     trt = df_merged["WORD_TOTAL_READING_TIME"].values
     
-    # Gaze variables
-    g_dwell = trt  # Dwell time proxy
-    # Simulate fixation count: proportional to dwell time with slight noise
+    # Simulate realistic webcam gaze tracking with skips and noise
+    # (30% word skip rate, plus Gaussian measurement jitter)
     np.random.seed(42)
-    g_fix = trt * 0.85 + np.random.normal(0, 10, len(trt))
+    mask = np.random.choice([0, 1], size=len(trt), p=[0.3, 0.7])
+    g_dwell = trt * mask + np.random.normal(0, 40, len(trt)) * mask
+    g_dwell = np.clip(g_dwell, 0, None)
+    
+    g_fix = (trt * 0.85 + np.random.normal(0, 10, len(trt))) * mask
     g_fix = np.clip(g_fix, 0, None)
     
     # Cognitive variable: full cognitive mass (ensemble combination of all linguistic features)
@@ -68,11 +71,19 @@ def main():
     df_merged["RDS_sigmoid"] = fusion.fuse_sigmoid(g_dwell, g_fix, c_load)
     df_merged["RDS_bayesian"] = fusion.fuse_bayesian(g_dwell, c_load)
     df_merged["RDS_rrf"] = fusion.fuse_rrf(g_dwell, c_load)
+    df_merged["RDS_spillover_bayesian"] = fusion.fuse_spillover_bayesian(g_dwell, c_load)
+    df_merged["RDS_parafoveal"] = fusion.fuse_parafoveal(g_dwell, c_load)
+    df_merged["RDS_spillover_rrf"] = fusion.fuse_spillover_rrf(g_dwell, c_load)
+    df_merged["RDS_parafoveal_rrf"] = fusion.fuse_parafoveal_rrf(g_dwell, c_load)
+    df_merged["RDS_spillover_parafoveal_rrf"] = fusion.fuse_spillover_parafoveal_rrf(g_dwell, c_load)
     
     # 5. Evaluate correlation with actual reading time (TRT)
     methods = [
         "RDS_linear", "RDS_multiplicative", "RDS_gated", 
-        "RDS_sigmoid", "RDS_bayesian", "RDS_rrf"
+        "RDS_sigmoid", "RDS_bayesian", "RDS_rrf",
+        "RDS_spillover_bayesian", "RDS_parafoveal",
+        "RDS_spillover_rrf", "RDS_parafoveal_rrf",
+        "RDS_spillover_parafoveal_rrf"
     ]
     
     eval_results = []

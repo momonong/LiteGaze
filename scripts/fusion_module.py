@@ -108,3 +108,159 @@ class LexiGazeFusion:
         
         rrf_score = 1.0 / (rank_g + k) + 1.0 / (rank_l + k)
         return normalize(rrf_score)
+
+    def fuse_spillover_bayesian(self, gaze_dwell, load_score):
+        """
+        7. Spillover-Aware Bayesian Fusion
+        Applies a Gaussian smoothing filter over sequential gaze dwell times
+        to simulate oculomotor spillover, and then applies Bayesian fusion.
+        """
+        g_dwell = np.array(gaze_dwell, dtype=float)
+        # Apply Gaussian filter for spillover (rolling window of size 3)
+        smoothed = np.copy(g_dwell)
+        n = len(g_dwell)
+        for i in range(n):
+            left = g_dwell[i-1] if i > 0 else g_dwell[i]
+            right = g_dwell[i+1] if i < n-1 else g_dwell[i]
+            smoothed[i] = 0.25 * left + 0.5 * g_dwell[i] + 0.25 * right
+            
+        g_norm = normalize(smoothed)
+        l_score = normalize(load_score)
+        
+        numerator = l_score * g_norm
+        denominator = numerator + (1.0 - l_score) * (1.0 - g_norm) + self.epsilon
+        rds = numerator / denominator
+        return normalize(rds)
+
+    def fuse_parafoveal(self, gaze_dwell, load_score, threshold=0.5, alpha=0.3):
+        """
+        8. Parafoveal Skip-Corrected Fusion
+        If a word has high cognitive load but zero gaze dwell (skipped),
+        interpolates a small fraction of the neighboring words' dwell times
+        to account for parafoveal processing or visual misalignment.
+        """
+        g_dwell = np.array(gaze_dwell, dtype=float)
+        l_score = normalize(load_score)
+        n = len(g_dwell)
+        
+        corrected_gaze = np.copy(g_dwell)
+        for i in range(n):
+            if g_dwell[i] == 0 and l_score[i] >= threshold:
+                # Interpolate from neighbors
+                neighbors = []
+                if i > 0 and g_dwell[i-1] > 0:
+                    neighbors.append(g_dwell[i-1])
+                if i < n-1 and g_dwell[i+1] > 0:
+                    neighbors.append(g_dwell[i+1])
+                if neighbors:
+                    corrected_gaze[i] = alpha * np.mean(neighbors)
+                    
+        g_norm = normalize(corrected_gaze)
+        
+        numerator = l_score * g_norm
+        denominator = numerator + (1.0 - l_score) * (1.0 - g_norm) + self.epsilon
+        rds = numerator / denominator
+        return normalize(rds)
+
+    def fuse_spillover_rrf(self, gaze_dwell, load_score, k=60):
+        """
+        9. Spillover-Corrected Reciprocal Rank Fusion (Spillover-RRF)
+        Smooths sequential gaze dwell times using a rolling Gaussian kernel
+        before computing rank and fusing.
+        """
+        g_dwell = np.array(gaze_dwell, dtype=float)
+        # Apply Gaussian filter for spillover (rolling window of size 3)
+        smoothed = np.copy(g_dwell)
+        n = len(g_dwell)
+        for i in range(n):
+            left = g_dwell[i-1] if i > 0 else g_dwell[i]
+            right = g_dwell[i+1] if i < n-1 else g_dwell[i]
+            smoothed[i] = 0.25 * left + 0.5 * g_dwell[i] + 0.25 * right
+            
+        df = pd.DataFrame({
+            'dwell': smoothed,
+            'load': load_score
+        })
+        
+        # Calculate descending ranks (1-based)
+        rank_g = df['dwell'].rank(ascending=False, method='min')
+        rank_l = df['load'].rank(ascending=False, method='min')
+        
+        rrf_score = 1.0 / (rank_g + k) + 1.0 / (rank_l + k)
+        return normalize(rrf_score)
+
+    def fuse_parafoveal_rrf(self, gaze_dwell, load_score, threshold=0.5, alpha=0.3, k=60):
+        """
+        10. Parafoveal-Corrected Reciprocal Rank Fusion
+        Interpolates skipped gaze dwell times for difficult words before ranking and fusing.
+        """
+        g_dwell = np.array(gaze_dwell, dtype=float)
+        l_score = normalize(load_score)
+        n = len(g_dwell)
+        
+        corrected_gaze = np.copy(g_dwell)
+        for i in range(n):
+            if g_dwell[i] == 0 and l_score[i] >= threshold:
+                # Interpolate from neighbors
+                neighbors = []
+                if i > 0 and g_dwell[i-1] > 0:
+                    neighbors.append(g_dwell[i-1])
+                if i < n-1 and g_dwell[i+1] > 0:
+                    neighbors.append(g_dwell[i+1])
+                if neighbors:
+                    corrected_gaze[i] = alpha * np.mean(neighbors)
+                    
+        df = pd.DataFrame({
+            'dwell': corrected_gaze,
+            'load': load_score
+        })
+        
+        # Calculate descending ranks (1-based)
+        rank_g = df['dwell'].rank(ascending=False, method='min')
+        rank_l = df['load'].rank(ascending=False, method='min')
+        
+        rrf_score = 1.0 / (rank_g + k) + 1.0 / (rank_l + k)
+        return normalize(rrf_score)
+
+    def fuse_spillover_parafoveal_rrf(self, gaze_dwell, load_score, threshold=0.5, alpha=0.3, k=60):
+        """
+        11. Spillover-Parafoveal Reciprocal Rank Fusion (SP-RRF)
+        Combines parafoveal skip interpolation and spillover smoothing
+        before applying Reciprocal Rank Fusion.
+        """
+        g_dwell = np.array(gaze_dwell, dtype=float)
+        l_score = normalize(load_score)
+        n = len(g_dwell)
+        
+        # Phase 1: Parafoveal skip correction
+        corrected = np.copy(g_dwell)
+        for i in range(n):
+            if g_dwell[i] == 0 and l_score[i] >= threshold:
+                neighbors = []
+                if i > 0 and g_dwell[i-1] > 0:
+                    neighbors.append(g_dwell[i-1])
+                if i < n-1 and g_dwell[i+1] > 0:
+                    neighbors.append(g_dwell[i+1])
+                if neighbors:
+                    corrected[i] = alpha * np.mean(neighbors)
+                    
+        # Phase 2: Spillover smoothing
+        smoothed = np.copy(corrected)
+        for i in range(n):
+            left = corrected[i-1] if i > 0 else corrected[i]
+            right = corrected[i+1] if i < n-1 else corrected[i]
+            smoothed[i] = 0.25 * left + 0.5 * corrected[i] + 0.25 * right
+            
+        df = pd.DataFrame({
+            'dwell': smoothed,
+            'load': load_score
+        })
+        
+        rank_g = df['dwell'].rank(ascending=False, method='min')
+        rank_l = df['load'].rank(ascending=False, method='min')
+        
+        rrf_score = 1.0 / (rank_g + k) + 1.0 / (rank_l + k)
+        return normalize(rrf_score)
+
+
+
