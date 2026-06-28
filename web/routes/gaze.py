@@ -189,3 +189,31 @@ def api_predict():
     body = request.get_json(force=True) or {}
     response, status = predict(ROOT, body)
     return jsonify(response), status
+
+
+@gaze_bp.post("/save_pairs")
+def save_pairs():
+    import json
+    import time
+    body = request.get_json(force=True) or {}
+    session_id = body.get("session_id", "")
+    pairs = body.get("pairs", [])
+    if not session_id or not pairs:
+        return jsonify({"ok": False, "error": "session_id and pairs are required"}), 400
+
+    gt_dir = ROOT / "data" / "ground_truth"
+    gt_dir.mkdir(parents=True, exist_ok=True)
+
+    file_path = gt_dir / f"{session_id}.json"
+    try:
+        with file_path.open("w", encoding="utf-8") as f:
+            json.dump({
+                "session_id": session_id,
+                "timestamp_created": time.time(),
+                "viewport_width": body.get("viewport_width", 1920),
+                "viewport_height": body.get("viewport_height", 1080),
+                "pairs": pairs
+            }, f, indent=2, ensure_ascii=False)
+        return jsonify({"ok": True, "saved_to": str(file_path.relative_to(ROOT))})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500

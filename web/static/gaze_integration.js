@@ -36,6 +36,15 @@
   const gazeHistory = [];  // Chronological trace: [ { word, index, confidence, timestamp_ms } ]
   let _lastGazeWord = null;  // tracks previous word to detect new fixations
 
+  // ── Mouse Cursor Ground Truth Tracking ──────────────────────────────
+  const cursorGazePairs = [];
+  let lastMouseX = 0;
+  let lastMouseY = 0;
+  window.addEventListener("mousemove", (e) => {
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+  });
+
   function recordGazeHit(word, confidence, index) {
     const key = word.toLowerCase();
     if (!gazeBuffer[key]) {
@@ -336,6 +345,14 @@
             els.gazeCursor.style.left = `${point.x}px`;
             els.gazeCursor.style.top = `${point.y}px`;
           }
+          // Log paired cursor and predicted gaze coordinates
+          cursorGazePairs.push({
+            timestamp_ms: Date.now(),
+            cursor_x: lastMouseX,
+            cursor_y: lastMouseY,
+            gaze_x: Math.round(point.x),
+            gaze_y: Math.round(point.y)
+          });
           if (typeof window.processGazeOnExtractedData === "function") {
             window.processGazeOnExtractedData(point.x, point.y);
             setStatus(`啟用中：${Math.round(point.x)}, ${Math.round(point.y)} (${els.modelSelect.value})`);
@@ -438,7 +455,38 @@
       if (els.gazeCursor) {
         els.gazeCursor.style.display = "none";
       }
-      setStatus("已停止眼動推論");
+      uploadCursorGazePairs();
+    }
+
+    async function uploadCursorGazePairs() {
+      if (cursorGazePairs.length === 0) {
+        setStatus("已停止眼動推論");
+        return;
+      }
+      const numPairs = cursorGazePairs.length;
+      const sessId = `gt_${Date.now()}`;
+      setStatus(`正在儲存 ${numPairs} 筆鼠標-眼動配對數據...`);
+      try {
+        const res = await fetch("/api/gaze/save_pairs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: sessId,
+            viewport_width: window.innerWidth,
+            viewport_height: window.innerHeight,
+            pairs: [...cursorGazePairs]
+          })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          setStatus(`已停止眼動推論。已成功儲存 ${numPairs} 筆配對數據！`);
+          cursorGazePairs.length = 0;
+        } else {
+          setStatus(`儲存配對數據失敗：${data.error}`);
+        }
+      } catch (err) {
+        setStatus(`儲存配對數據錯誤：${err.message}`);
+      }
     }
 
     if (typeof window.updateGuideUI === "function") {
