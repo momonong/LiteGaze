@@ -80,11 +80,11 @@ flowchart TB
 
 | Directory / Module | Owner | Role |
 |---|---|---|
-| `chenghao/` | Chenghao Peng | Integration hub: Flask server, gaze API routes, cognitive API routes, frontend pages |
-| `shengwen/` | Shengwen Chang | UniGaze-B16 face preprocessing, gaze model wrapper |
-| `weichi/` | Weichi Lin | Cognitive load pipeline (BERT/GPT-2 surprisal + Ridge Regression) |
-| `BoWei/` | Bowei Huang | Supplementary mapping visualisation (`mapping.html`, `mapping.js`) |
-| `scripts/fusion/` | Jhennong Chen | Trajectory fusion, offline optimization, and RDS algorithm development |
+| `chenghao/` | Cheng-hao Peng | Integration hub: Flask server, gaze API routes, cognitive API routes, frontend pages |
+| `shengwen/` | Sheng-wen Chang | UniGaze-B16 face preprocessing, gaze model wrapper |
+| `weichi/` | Wei-chi Lin | Cognitive load pipeline (BERT/GPT-2 surprisal + Ridge Regression) |
+| `BoWei/` | Bo-wei Juang | Supplementary mapping visualisation (`mapping.html`, `mapping.js`) |
+| `scripts/fusion/` | Morris Jhennong Chen | Trajectory fusion, offline optimization, and RDS algorithm development |
 
 ---
 

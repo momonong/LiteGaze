@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Team** | Chenghao Peng, Weichi Lin, Shengwen Chang, Bowei Huang, Jhennong Chen |
+| **Team** | Cheng-hao Peng, Wei-chi Lin, Sheng-wen Chang, Bo-wei Juang, Morris Jhennong Chen |
 | **Institution** | Miin Wu School of Computing |
 | **Status** | Draft for course final report |
 
@@ -78,11 +78,11 @@ M1 Perception → M3 Cognitive Load → M4 Spatiotemporal Alignment → M5 Traje
 
 | Module | Topic | Owner | Status |
 |--------|-------|-------|--------|
-| M1 | Gaze / UniGaze / calibration | Shengwen Chang | Completed |
-| M2 | Data collection & training demo | Bowei Huang | Completed |
-| M3 | Cognitive load pipeline | Weichi Lin | Completed |
-| M4 | Spatiotemporal alignment | Chenghao Peng | Completed |
-| M5 | Trajectory fusion & RDS | Jhennong Chen | Completed |
+| M1 | Gaze / UniGaze / calibration | Sheng-wen Chang | Completed |
+| M2 | Data collection & training demo | Bo-wei Juang | Completed |
+| M3 | Cognitive load pipeline | Wei-chi Lin | Completed |
+| M4 | Spatiotemporal alignment | Cheng-hao Peng | Completed |
+| M5 | Trajectory fusion & RDS | Morris Jhennong Chen | Completed |
 
 ---
 
