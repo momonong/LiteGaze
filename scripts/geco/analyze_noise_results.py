@@ -51,7 +51,7 @@ def main():
         has_y = "BaselineY_Rec" in df.columns
         y_col = "BaselineY_Rec"
     if has_y:
-        agg_cols.append("BaselineY_Rec")
+        agg_cols.append(y_col)
 
     df_agg = df.groupby("Drift_Y", as_index=False)[agg_cols].mean()
 
@@ -84,12 +84,18 @@ def main():
         header += "\tBaseline_Y_only"
     lines.append(header)
     for _, row in df_lang.iterrows():
-        line = (
-            f"{row['Drift_Y']:.0f}\t{row['Lang']}\t{row['STOCK-T_Edge_Rec']:.2f}\t"
-            f"{row['STOCK-T_Surprisal_Rec']:.2f}\t{row['Baseline_Rec']:.2f}"
-        )
+        if "STOCK-T_Edge_LineRec" in df.columns:
+            line = (
+                f"{row['Drift_Y']:.0f}\t{row['Lang']}\t{row['STOCK-T_Edge_LineRec']:.2f}\t"
+                f"{row['STOCK-T_Surprisal_LineRec']:.2f}\t{row['Baseline_LineRec']:.2f}"
+            )
+        else:
+            line = (
+                f"{row['Drift_Y']:.0f}\t{row['Lang']}\t{row['STOCK-T_Edge_Rec']:.2f}\t"
+                f"{row['STOCK-T_Surprisal_Rec']:.2f}\t{row['Baseline_Rec']:.2f}"
+            )
         if has_y:
-            line += f"\t{row['BaselineY_Rec']:.2f}"
+            line += f"\t{row[y_col]:.2f}"
         lines.append(line)
     lines.append("")
 
