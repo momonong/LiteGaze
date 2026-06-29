@@ -201,8 +201,54 @@ To resolve trajectory recovery degradation for native (L1) readers, the system i
     \item \textbf{L2 (Learner Readers)}: Since L2 learners focus heavily on high-difficulty words, the system retains full cognitive mass transition priors and regression boosts to anchor the drifting gaze path.
 \end{itemize}
 
+\subsection{Proficiency-Adaptive OVP Anchor Tuning (PAOAT)}
+Psycholinguistic studies show that under high cognitive load (specifically L2 learners), the biological Optimal Viewing Position (OVP) anchor targeting washes out, and readers default to geometric word centers. We model this washout effect by dynamically shifting the target anchor center $\beta$ based on computed reader proficiency:
+\begin{equation}
+\beta = 0.35 + 0.15 \times \alpha_{\text{cm}}
+\end{equation}
+where $\alpha_{\text{cm}}$ represents the cognitive difficulty priority ($1.0 - \text{proficiency}$). This shifts the snapping foveal anchor from $35\%$ (highly fluent L1 reader) towards $50\%$ (struggling reader).
+
 \section{M5: Trajectory Fusion and Optimization}
 M5 processes raw spatial coordinates through Viterbi path decoding and Expectation-Maximization (EM) vertical drift calibration.
+
+\subsection{Oculomotor Spatio-Temporal Monotonicity Constraints (OSTMC)}
+To enforce left-to-right and top-to-bottom directional priors, we apply layout boundary penalties to the psycholinguistic transition matrix. Let $y_i$ and $y_j$ represent the vertical coordinates of word boxes $i$ and $j$. We define a line compatibility modifier $M(i, j)$:
+\begin{equation}
+M(i, j) = 
+\begin{cases}
+10^{-4}, & \text{if } y_j < y_i - 15\,\text{px} \text{ (Upward reading violation)} \\
+10^{-4}, & \text{if } y_j > y_i + 45\,\text{px} \text{ (Line-skipping violation)} \\
+1.0, & \text{otherwise}
+\end{cases}
+\end{equation}
+The transition probability is updated as $T_{\text{constrained}}(i, j) = T(i, j) \times M(i, j)$ and re-normalized row-wise, preventing vertical jitter from jumping between lines.
+
+\subsection{Dynamic Sliding-Window EM Calibration}
+To account for user posture shifts and dynamic webcam drift during reading, we extend the static EM calibrator with a sliding-window rolling median estimator. The local drift vector $\mathbf{d}_t$ at frame $t$ is calculated over a rolling window $W = 30$:
+\begin{equation}
+\mathbf{d}_t = \text{median}(\mathbf{e}_{t-W/2:t+W/2})
+\end{equation}
+where $\mathbf{e}_k$ is the spatial offset vector at frame $k$. Fast readers (WPM $> 50$) utilize this dynamic sliding-window calibration to track rapid saccadic adjustments, while slow readers (WPM $\le 50$) use static EM calibration for line lock.
+
+\subsection{Empirical Snapping Accuracy Evaluation}
+We evaluated foveal snap mapping accuracy across 5 subjects (`subject001`-`subject005`) under real webcam conditions, comparing baseline Euclidean distance snapping against our proposed Static and Dynamic Sliding Viterbi models. The results are summarized in Table~\ref{tab:empirical_results}.
+
+\begin{table}[h]
+\centering
+\caption{Empirical Foveal Region snapping accuracy.}
+\label{tab:empirical_results}
+\begin{tabular}{ccccc}
+\toprule
+Subject ID & WPM & Baseline Acc & Static Viterbi Acc & Dynamic Sliding Acc \\
+\midrule
+subject001 & 73.7 & 15.79\% & 17.54\% & \textbf{24.56\%} \\
+subject002 & 43.5 & 3.23\%  & \textbf{6.45\%}  & 4.84\% \\
+subject003 & 33.3 & 7.69\%  & \textbf{10.26\%} & 7.69\% \\
+subject004 & 29.0 & \textbf{18.52\%} & 14.81\% & 5.56\% \\
+subject005 & 31.6 & 10.71\% & \textbf{19.64\%} & 14.29\% \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{GECO Noise Stress Test Benchmark}
 To evaluate the system's robustness at scale, we conducted a stress test across 150 sampled trials from the GECO corpus under varying vertical hardware drifts ($0$\,px to $60$\,px). The results are summarized in Table~\ref{tab:noise_stress}.
@@ -224,8 +270,6 @@ Drift (px) & STOCK-T Edge WordAcc & STOCK-T Surprisal WordAcc & Baseline WordAcc
 \end{tabular}
 \\ \small{Baseline refers to the purely spatial 2D proximity snapping model.}
 \end{table*}
-
-While spatial baselines perform well under low drift ($<30$\,px), they collapse under high noise. STOCK-T's transition matrix prevents vertical line leakage, maintaining $10.14\%$ word accuracy and $40.24\%$ line recovery at $60$\,px drift, outperforming the baseline by \textbf{+23.1\% relative word accuracy}.
 
 \section{Discussion and Future Work}
 \begin{itemize}
