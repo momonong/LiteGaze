@@ -589,20 +589,30 @@ flowchart LR
 
 ### 7.3 Stage 1 — Gaze-to-Word Anchoring
 
-**Current implementation:** `chenghao/mapping.js → findNearestExtractedWord(x, y)`
+**Implementation Overview:**
+While baseline client-side proximity mapping (`mapping.js`) is used for real-time visualization, the final high-fidelity reading analysis utilizes the backend **STOCK-T Sequence Decoder (Viterbi + EM Auto-Calibration)** pipeline to reconstruct the sequence of read words from noisy, drifting gaze coordinates.
 
-Each gaze point `(x_px, y_px)` is mapped to a word using confidence-ranked nearest-neighbour lookup against the word bounding boxes stored in `pageOverlayMap`.
+This advanced stage operates via the following key components:
 
-| Priority | Condition | Label |
-|---|---|---|
-| 1 | Point inside bounding box | `high` |
-| 2 | Within 35 px, same text line (ΔY ≤ 90 px) | `medium` |
-| 3 | Within 35–90 px, same line | `low` |
-| — | Nothing in range | `null` (ignored) |
+1. **Psycholinguistic-Oculomotor Transition Matrix (POM)**:
+   Models forward saccade momentum (Gaussian centered at $i+1$), cognitive skipping (penalizing forward jumps to difficult words), and regression boosts (higher back-saccade probability if the current word has high cognitive mass).
 
-**Output:** `{ word, confidence, bbox }` — the word being fixated and how certain the mapping is.
+2. **Oculomotor Spatio-Temporal Monotonicity Constraints (OSTMC)**:
+   Restricts the search space of the Viterbi path by penalizing layout violations:
+   - Upward reading transitions ($y_j < y_i - 15\,\text{px}$) are scaled by $10^{-4}$.
+   - Multiline skipping transitions ($y_j > y_i + 45\,\text{px}$) are scaled by $10^{-4}$.
+   This prevents coordinates with high vertical jitter from jumping to incorrect lines.
 
-**Data source for bboxes:** Word coordinates are extracted from the PDF by the browser's PDF.js renderer and stored in a reading session via `POST /api/sessions`. This means word layout is document-specific and must be computed once per document upload.
+3. **Proficiency-Adaptive OVP Anchor Tuning (PAOAT)**:
+   Dynamically adjusts the target coordinate anchor $\beta$ from the Optimal Viewing Position ($35\%$ from left) towards the geometric center ($50\%$) for low-proficiency or struggling readers where the biological OVP preference is washed out:
+   $$\beta = 0.35 + 0.15 \times \alpha_{\text{cm}}$$
+
+4. **Dynamic Sliding-Window EM Calibration**:
+   Estimates time-varying systematic drift $\mathbf{d}_t$ over a 30-frame rolling window to correct postural changes and webcam calibration decay:
+   $$\mathbf{d}_t = \text{median}(\mathbf{e}_{t-15:t+15})$$
+   - **WPM-Adaptive Selection**: Fluent, rapid readers (WPM $> 50$) utilize Dynamic Sliding-Window calibration to track fast saccadic shifts. Slower readers (WPM $\le 50$) default to Static EM calibration for stable line-locking.
+
+**Output:** `{ target_word_index, corrected_gaze_coords }` — the optimal Viterbi decoded path mapping each gaze sample to the most likely word in the layout.
 
 ---
 
