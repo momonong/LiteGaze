@@ -39,9 +39,10 @@ Analyzes text linguistic complexity to determine reading difficulty:
 * **Surprisal & Entropy Engine**: Passes the text through local language models (GPT-2 for English, BERT for Chinese) to compute lexical surprisal and contextual entropy.
 * **XGBoost Classifier**: Merges surprisal, Age-of-Acquisition (AoA) norms, Zipf word frequency, and dependency load to output a single cognitive load score per word.
 
-### 3. Fusion Engine (`scripts/` / `scripts/fusion_module.py`)
+### 3. Fusion Engine (`scripts/` / `scripts/fusion_module.py` & `scripts/geco/core/`)
 Fuses tracking inputs with cognitive models offline or at the end of a session:
-* **Alignment**: Maps spatial gaze points to pixel bounding boxes.
+* **STOCK-T Sequence Decoding**: Implements the Spatio-Temporal Sequence Decoder (`viterbi_decoder.py`) and Auto-Calibrating EM (`em_calibration.py`) to resolve systematic drift and vertical line-locking.
+* **OSTMC & PAOAT Constraints**: Employs **Oculomotor Spatio-Temporal Monotonicity Constraints** to enforce directional reading layouts (penalizing backward/multi-line skips) and **Proficiency-Adaptive OVP Anchor Tuning** to scale foveal target anchors dynamically.
 * **Math Fusion**: Implements six combination metrics (Linear, Multiplicative, Gated, Sigmoid, Bayesian, and Reciprocal Rank Fusion) to generate a unified Reading Difficulty Score (RDS).
 
 ### 4. Web Portal (`web/`)
@@ -84,9 +85,9 @@ The web presentation framework (built on Flask) providing interactive reading da
 
 ### 3. Joint Multimodal Fusion Flow
 ```
-[Gaze Dwell Logs] (Times/Fixations) ──┐
-                                     ├──► [LexiGaze Fusion Engine] ──► [Word RDS]
-[Cognitive Load Scores] (Surprisal) ──┘
+[Raw Coordinates (x, y)] ──► [Dynamic Sliding EM Calibration] ──► [Corrected Gaze] ──┐
+                                                                                   ├──► [Viterbi Sequencer (POM + OSTMC + PAOAT)] ──► [Snapped Word Indices] ──► [Word RDS]
+[Linguistic Features] ────► [XGBoost Cognitive load_score] ────────────────────────┘
 ```
 
 ---
