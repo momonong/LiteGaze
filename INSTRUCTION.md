@@ -178,7 +178,8 @@ This generates evaluation summaries and plots under `output/`:
 ### 📈 Directions for Future Improvement
 1. **Gaze Correction Accuracy**: Raw webcam tracking suffers from vertical drift (~45px). Implementing **Auto-Calibrating EM Decoders** (`AutoCalibratingDecoder`) or **Psycholinguistic Transition Matrices** (`PsycholinguisticTransitionMatrix`) corrects this, increasing coordinate mapping accuracy from 18.5% to 78.2%.
 2. **Computational Latency**: Running Viterbi and EM decoding sequentially adds ~200ms processing delay per page. Next-step optimizations should focus on compiling the transition matrix operations using **Cython/Numba** or vectorizing loops via **NumPy**.
-3. **Cognitive Weight Calibration**: Currently, Bayesian and Multiplicative fusion yield higher correlation values ($\rho > 0.80$) on human reading times than simple Linear summation by modeling interaction effects (skipped words vs high surprisal). Tuning the prior boundaries in `scripts/fusion_module.py` will further improve prediction fidelity.
+3. **Adaptive Snapping & Layout Constraints**: Using **Proficiency-Adaptive OVP Anchor Tuning (PAOAT)** and **Oculomotor Spatio-Temporal Monotonicity Constraints (OSTMC)** dynamically corrects coordinates to match human reading layouts, boosting subject tracking accuracy and preventing vertical line-skipping.
+4. **Cognitive Weight Calibration**: Currently, Bayesian and Multiplicative fusion yield higher correlation values ($\rho > 0.80$) on human reading times than simple Linear summation by modeling interaction effects (skipped words vs high surprisal). Tuning the prior boundaries in `scripts/fusion_module.py` will further improve prediction fidelity.
 
 ---
 
