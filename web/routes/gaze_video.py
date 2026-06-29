@@ -32,6 +32,45 @@ def _frame_to_base64_jpeg(frame: np.ndarray, quality: int = 70) -> str:
     return f"data:image/jpeg;base64,{b64}"
 
 
+def get_participant_profile(participant_id: str) -> tuple[float, float]:
+    """
+    Search docs/cognitive_reports/ for the most recent report of the participant
+    to retrieve their recorded WPM and regression count.
+    Returns (wpm, regression_rate). Defaults to (40.0, 0.15) if not found.
+    """
+    if not participant_id or participant_id == "anonymous":
+        return 40.0, 0.15
+    try:
+        import glob
+        import re
+        reports_dir = ROOT / "docs" / "cognitive_reports"
+        files = glob.glob(str(reports_dir / f"{participant_id}_*.md"))
+        if not files:
+            return 40.0, 0.15
+        # Get the most recent report by sorting
+        latest_file = sorted(files)[-1]
+        with open(latest_file, "r", encoding="utf-8") as f:
+            content = f.read()
+        
+        # Extract WPM
+        wpm = 40.0
+        m_wpm = re.search(r'閱讀速度 \(WPM\)\*\* \| `(.*?)`', content)
+        if m_wpm:
+            val = m_wpm.group(1).replace('words/min', '').replace('字/分', '').strip()
+            wpm = float(val)
+            
+        # Extract Regressions
+        reg_rate = 0.15
+        m_reg = re.search(r'回看次數 \(Regression Count\)\*\* \| `(.*?)`', content)
+        if m_reg:
+            val = m_reg.group(1).replace('次', '').strip()
+            reg_rate = int(val) / 20.0
+            
+        return wpm, reg_rate
+    except Exception:
+        return 40.0, 0.15
+
+
 @gaze_video_bp.post("/analyze_reading_video")
 def analyze_reading_video():
     """
@@ -71,6 +110,18 @@ def analyze_reading_video():
     participant_id  = request.form.get("participant_id", "anonymous")
     viewport_width  = float(request.form.get("viewport_width", 1920))
     viewport_height = float(request.form.get("viewport_height", 1080))
+
+    # Calculate adaptive foveal snapping boundaries based on past user proficiency metrics
+    wpm, reg_rate = get_participant_profile(participant_id)
+    wpm_factor = min(1.0, max(0.0, (wpm - 80.0) / (200.0 - 80.0)))
+    reg_factor = min(1.0, max(0.0, (reg_rate - 0.05) / (0.25 - 0.05)))
+    proficiency = 0.7 * wpm_factor + 0.3 * (1.0 - reg_factor)
+    
+    # Fluent readers (proficiency -> 1): tighten snapping window to prevent false captures (e.g. 35px)
+    # Struggling readers (proficiency -> 0): relax snapping window to capture backtracking and regressions (e.g. 55px)
+    snap_threshold = 35.0 + (1.0 - proficiency) * 20.0
+    outer_threshold = 120.0 + (1.0 - proficiency) * 100.0
+    print(f"[gaze_video] Adaptive Snapping: participant={participant_id}, wpm={wpm:.1f}, reg={reg_rate:.2f}, proficiency={proficiency:.2f} -> thresholds: snap<{snap_threshold:.1f}px, outer<{outer_threshold:.1f}px")
 
     # ── Initialize Cognitive Load Pipeline for Attraction Snapping Prior ──
     cog_lookup = {}
@@ -126,6 +177,11 @@ def analyze_reading_video():
         timeline_idx = 0
         frame_idx = 0
 
+        # Collect raw predicted coordinates and matched frames metadata
+        raw_gaze_list = []
+        valid_indices = []
+        predictions = []
+
         while timeline_idx < len(reading_timeline) and cap.isOpened():
             event = reading_timeline[timeline_idx]
             ts_ms      = float(event.get("timestamp_ms", 0))
@@ -179,40 +235,122 @@ def analyze_reading_video():
             }
             result, status_code = gaze_predict(ROOT, body)
 
-            if not result.get("ok") or status_code != 200:
-                # Face not detected
-                confidence = "low"
-            else:
-                # Map gaze position to confidence based on distance from expected word position with cognitive mass attraction
-                gaze_xy = result.get("screen_xy_px")
-                if gaze_xy:
+            gaze_xy = result.get("screen_xy_px") if (result.get("ok") and status_code == 200) else None
+            predictions.append({
+                "gaze_xy": gaze_xy,
+                "matched_ts_ms": matched_ts_ms,
+                "event": event,
+                "confidence_hint": confidence_hint
+            })
+            if gaze_xy:
+                raw_gaze_list.append(gaze_xy)
+                valid_indices.append(timeline_idx)
+
+            timeline_idx += 1
+
+        cap.release()
+
+        # ── Port of GECO POM + EMdrift Auto-Calibration Decoding ──
+        decoded_via_viterbi = False
+        if len(raw_gaze_list) >= 5:
+            try:
+                raw_gaze_sequence = np.array(raw_gaze_list, dtype=float)
+                
+                # Construct synthetic word boxes and base cognitive mass from the timeline
+                word_boxes = []
+                base_cm = []
+                for event in reading_timeline:
+                    vx = float(event.get("viewport_x", 0.0))
+                    vy = float(event.get("viewport_y", 0.0))
+                    # 90x30px standard bounding box size
+                    word_boxes.append([vx - 45.0, vy - 15.0, vx + 45.0, vy + 15.0])
+                    
+                    word = str(event.get("word", ""))
+                    clean_w = word.strip(".,;:?!'\"()").lower()
+                    cog_item = cog_lookup.get(clean_w) if cog_lookup else None
+                    load = float(cog_item["load_score"]) if (cog_item and "load_score" in cog_item) else 0.5
+                    base_cm.append(load)
+                    
+                word_boxes = np.array(word_boxes, dtype=float)
+                base_cm = np.array(base_cm, dtype=float)
+                
+                from scripts.geco.core.transition_model import PsycholinguisticTransitionMatrix
+                from scripts.geco.core.em_calibration import AutoCalibratingDecoder
+                
+                # Build psycholinguistic transition priors
+                t_pom = PsycholinguisticTransitionMatrix(sigma_fwd=0.8, sigma_reg=1.5, gamma=0.3)
+                transition_matrix = t_pom.build_matrix(len(reading_timeline), base_cm)
+                
+                # Run dynamic auto-calibration with adaptive proficiency weighting
+                alpha_cm_val = float(1.0 - proficiency)
+                calibrator = AutoCalibratingDecoder(calibration_window_size=min(30, len(raw_gaze_sequence)))
+                final_indices, drift = calibrator.calibrate_and_decode(
+                    raw_gaze_sequence, word_boxes, base_cm, transition_matrix,
+                    sigma_gaze=[snap_threshold, snap_threshold * 0.75], use_ovp=True, is_L2=True, alpha_cm=alpha_cm_val
+                )
+                
+                print(f"[gaze_video] Viterbi AutoCalibratingDecoder successfully corrected systematic drift: x={drift[0]:.1f}px, y={drift[1]:.1f}px")
+                
+                # Populate gaze_buffer and gaze_history using corrected Viterbi path target indices
+                for i, t_idx in enumerate(valid_indices):
+                    corrected_word_idx = final_indices[i]
+                    if 0 <= corrected_word_idx < len(reading_timeline):
+                        target_event = reading_timeline[corrected_word_idx]
+                        word_name = target_event.get("word", "")
+                        ts_ms = int(reading_timeline[t_idx].get("timestamp_ms", 0))
+                        
+                        gaze_history.append({
+                            "word":         word_name,
+                            "index":        corrected_word_idx,
+                            "confidence":   "high",
+                            "timestamp_ms": ts_ms,
+                        })
+                        
+                        key = word_name.lower()
+                        if key:
+                            if key not in gaze_buffer:
+                                gaze_buffer[key] = {
+                                    "word":           word_name,
+                                    "dwell_count":    0,
+                                    "fixation_count": 0,
+                                    "confidence":     "high",
+                                }
+                            gaze_buffer[key]["dwell_count"] += 1
+                            if prev_word_key != key:
+                                gaze_buffer[key]["fixation_count"] += 1
+                                prev_word_key = key
+                decoded_via_viterbi = True
+            except Exception as e:
+                print(f"[gaze_video] Warning: Viterbi drift-correction failed: {e}. Falling back to default heuristics.")
+
+        if not decoded_via_viterbi:
+            # Fall back to original distance-based snap matching
+            for pred in predictions:
+                gaze_xy = pred["gaze_xy"]
+                matched_ts_ms = pred["matched_ts_ms"]
+                event = pred["event"]
+                confidence_hint = pred["confidence_hint"]
+                word = str(event.get("word", ""))
+                word_index = int(event.get("index", -1))
+                
+                if not gaze_xy:
+                    confidence = "low"
+                else:
                     gx, gy = gaze_xy
                     exp_x = float(event.get("viewport_x", viewport_width / 2))
                     exp_y = float(event.get("viewport_y", viewport_height / 2))
                     dist  = ((gx - exp_x) ** 2 + (gy - exp_y) ** 2) ** 0.5
                     
-                    # Apply cognitive mass pull based on BERT dynamic surprisal and Zipf fallback weights
                     try:
                         clean_w = word.strip(".,;:?!'\"()").lower()
                         cog_item = cog_lookup.get(clean_w) if cog_lookup else None
-                        
-                        # Hyphenated / compound fallback
-                        if not cog_item and cog_lookup:
-                            for k, v in cog_lookup.items():
-                                if "-" in k and clean_w in k.split("-"):
-                                    cog_item = v
-                                    break
-                                    
                         if cog_item and "load_score" in cog_item:
                             load = float(cog_item["load_score"])
-                            # Map load_score (0.0 to 1.0) to mass (1.0 to 4.0)
                             mass = 1.0 + load * 3.0
                         elif cog_item and "surprisal" in cog_item:
                             surp = float(cog_item["surprisal"])
-                            # Map BERT dynamic surprisal (typically 0-15) to mass (1.0 to 4.0)
                             mass = 1.0 + max(0.0, surp) * 0.20
                         else:
-                            # Zipf fallback weight (ranges 0-8). Lower zipf = rarer word = higher cognitive mass attraction
                             from wordfreq import zipf_frequency
                             zipf = zipf_frequency(clean_w, lang) if clean_w else 5.0
                             mass = 1.0 + max(0.0, (5.0 - zipf)) * 0.35 if zipf > 0 else 1.0
@@ -220,46 +358,36 @@ def analyze_reading_video():
                         mass = 1.0
                         
                     effective_dist = dist / mass
-                    if effective_dist < 80:
+                    if effective_dist < snap_threshold:
                         confidence = "high"
-                    elif effective_dist < 200:
+                    elif effective_dist < outer_threshold:
                         confidence = "medium"
                     else:
                         confidence = "low"
-                else:
-                    confidence = confidence_hint
-
-            # Filter: only record hits with high/medium confidence
-            if confidence in ("high", "medium"):
-                # Chronological trace
-                gaze_history.append({
-                    "word":         word,
-                    "index":        word_index,
-                    "confidence":   confidence,
-                    "timestamp_ms": int(matched_ts_ms),
-                })
-
-                # Aggregated buffer (same structure as gazeBuffer in JS)
-                key = word.lower()
-                if key:
-                    if key not in gaze_buffer:
-                        gaze_buffer[key] = {
-                            "word":           word,
-                            "dwell_count":    0,
-                            "fixation_count": 0,
-                            "confidence":     confidence,
-                        }
-                    gaze_buffer[key]["dwell_count"] += 1
-                    if prev_word_key != key:
-                        gaze_buffer[key]["fixation_count"] += 1
-                        prev_word_key = key
-                    rank = {"high": 2, "medium": 1, "low": 0}
-                    if rank.get(confidence, 0) > rank.get(gaze_buffer[key]["confidence"], 0):
-                        gaze_buffer[key]["confidence"] = confidence
-
-            timeline_idx += 1
-
-        cap.release()
+                        
+                if confidence in ("high", "medium"):
+                    gaze_history.append({
+                        "word":         word,
+                        "index":        word_index,
+                        "confidence":   confidence,
+                        "timestamp_ms": int(matched_ts_ms),
+                    })
+                    key = word.lower()
+                    if key:
+                        if key not in gaze_buffer:
+                            gaze_buffer[key] = {
+                                "word":           word,
+                                "dwell_count":    0,
+                                "fixation_count": 0,
+                                "confidence":     confidence,
+                            }
+                        gaze_buffer[key]["dwell_count"] += 1
+                        if prev_word_key != key:
+                            gaze_buffer[key]["fixation_count"] += 1
+                            prev_word_key = key
+                        rank = {"high": 2, "medium": 1, "low": 0}
+                        if rank.get(confidence, 0) > rank.get(gaze_buffer[key]["confidence"], 0):
+                            gaze_buffer[key]["confidence"] = confidence
 
         # Format output identical to flushGazeBuffer() in JS
         gaze_events = [

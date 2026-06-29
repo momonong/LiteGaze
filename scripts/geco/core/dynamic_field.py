@@ -6,7 +6,7 @@ class DynamicCognitiveField:
     Skill 1: Dynamic Cognitive Field Generator.
     Implements a time-decaying cognitive mass model based on cumulative exposure.
     """
-    def __init__(self, word_boxes, base_cm, lambda_decay=0.5, sigma=30.0, use_ovp=True, is_L2=False):
+    def __init__(self, word_boxes, base_cm, lambda_decay=0.5, sigma=30.0, use_ovp=True, is_L2=False, alpha_cm=None):
         """
         word_boxes: List of [x_min, y_min, x_max, y_max].
         base_cm: NumPy array of pre-computed static cognitive mass.
@@ -14,12 +14,17 @@ class DynamicCognitiveField:
         sigma: Default standard deviation for the spatial Gaussian.
         use_ovp: If True, uses Optimal Viewing Position (35% of width).
         is_L2: If True, applies full cognitive mass modulation. If False (L1), flattens cognitive prior.
+        alpha_cm: If provided, dynamically interpolates between flat prior (alpha_cm=0) and full base_cm (alpha_cm=1).
         """
         self.word_boxes = np.array(word_boxes)
         base_cm_arr = np.array(base_cm)
-        if not is_L2:
+        mean_cm = np.mean(base_cm_arr)
+        
+        if alpha_cm is not None:
+            # Dynamically weight the cognitive mass priority based on reading proficiency
+            self.base_cm = (1.0 - alpha_cm) * mean_cm + alpha_cm * base_cm_arr
+        elif not is_L2:
             # Flatten cognitive mass for native readers to reduce false semantic bias
-            mean_cm = np.mean(base_cm_arr)
             self.base_cm = 0.9 * mean_cm + 0.1 * base_cm_arr
         else:
             self.base_cm = base_cm_arr
