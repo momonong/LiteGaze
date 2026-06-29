@@ -65,12 +65,13 @@ class PsycholinguisticTransitionMatrix:
         self.sigma_reg = sigma_reg
         self.gamma = gamma
 
-    def build_matrix(self, num_words, base_cm_array, is_L2=False):
+    def build_matrix(self, num_words, base_cm_array, is_L2=False, word_boxes=None):
         """
         Builds the N x N transition matrix using POM logic.
         num_words: Number of words in sentence.
         base_cm_array: Array of Cognitive Mass (Surprisal/Difficulty).
         is_L2: If True, applies full cognitive mass modulation. If False (L1), scales down cognitive influence.
+        word_boxes: Optional word bounding boxes [x_min, y_min, x_max, y_max] to enforce layout constraints.
         """
         n = num_words
         t_matrix = np.zeros((n, n))
@@ -109,6 +110,18 @@ class PsycholinguisticTransitionMatrix:
                     
                     t_matrix[i, j] = p_reg * reg_mod
             
+            # Enforce Oculomotor Spatio-Temporal Monotonicity Constraints (OSTMC)
+            # People read text left-to-right, top-to-bottom. We heavily penalize:
+            # - Transitions to previous lines (y_j < y_i - 15px)
+            # - Transitions skipping a line downwards (y_j > y_i + 45px)
+            if word_boxes is not None and len(word_boxes) == n:
+                word_y = np.array([(box[1] + box[3]) / 2.0 for box in word_boxes])
+                for j in range(n):
+                    if word_y[j] < word_y[i] - 15.0:  # Upward reading violation
+                        t_matrix[i, j] *= 1e-4
+                    elif word_y[j] > word_y[i] + 45.0: # Downward line-skipping violation
+                        t_matrix[i, j] *= 1e-4
+
             # Row-wise normalization (sum to 1.0)
             row_sum = t_matrix[i].sum()
             if row_sum > 0:

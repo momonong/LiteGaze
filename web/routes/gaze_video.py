@@ -279,7 +279,7 @@ def analyze_reading_video():
                 
                 # Build psycholinguistic transition priors
                 t_pom = PsycholinguisticTransitionMatrix(sigma_fwd=0.8, sigma_reg=1.5, gamma=0.3)
-                transition_matrix = t_pom.build_matrix(len(reading_timeline), base_cm)
+                transition_matrix = t_pom.build_matrix(len(reading_timeline), base_cm, word_boxes=word_boxes)
                 
                 # Run dynamic auto-calibration with adaptive proficiency weighting
                 alpha_cm_val = float(1.0 - proficiency)

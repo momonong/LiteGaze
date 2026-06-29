@@ -168,7 +168,7 @@ def main():
 
         try:
             t_pom = PsycholinguisticTransitionMatrix(sigma_fwd=0.8, sigma_reg=1.5, gamma=0.3)
-            transition_matrix = t_pom.build_matrix(num_targets, base_cm)
+            transition_matrix = t_pom.build_matrix(num_targets, base_cm, word_boxes=word_boxes)
 
             calibrator = AutoCalibratingDecoder(calibration_window_size=min(30, len(gaze_seq)))
             final_indices, drift = calibrator.calibrate_and_decode(
