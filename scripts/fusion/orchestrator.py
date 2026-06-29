@@ -256,6 +256,10 @@ def compute_rds(
         rds_seq = fusion.fuse_parafoveal_rrf(dwell_seq, load_seq)
     elif method_lower == "spillover_parafoveal_rrf":
         rds_seq = fusion.fuse_spillover_parafoveal_rrf(dwell_seq, load_seq)
+    elif method_lower == "cross_attention":
+        rds_seq = fusion.fuse_cross_attention(dwell_seq, fix_seq, load_seq)
+    elif method_lower == "fatigue_adaptive":
+        rds_seq = fusion.fuse_fatigue_adaptive(dwell_seq, load_seq)
     else:
         rds_seq = fusion.fuse_linear(dwell_seq, fix_seq, load_seq)
 

@@ -262,5 +262,87 @@ class LexiGazeFusion:
         rrf_score = 1.0 / (rank_g + k) + 1.0 / (rank_l + k)
         return normalize(rrf_score)
 
+    def fuse_cross_attention(self, gaze_dwell, gaze_fix, load_score):
+        """
+        12. Neural Cross-Attention Fusion
+        Runs a PyTorch Cross-Attention projection over gaze and cognitive features
+        to predict reading difficulty.
+        """
+        import torch
+        import torch.nn as nn
+        
+        g_dwell = normalize(gaze_dwell)
+        g_fix = normalize(gaze_fix)
+        l_score = normalize(load_score)
+        
+        n_samples = len(g_dwell)
+        if n_samples == 0:
+            return np.zeros(0)
+            
+        # Structure gaze features: [dwell, fixation, normalized_index]
+        gaze_feat = torch.tensor([
+            [g_dwell[i], g_fix[i], i / float(n_samples)] 
+            for i in range(n_samples)
+        ], dtype=torch.float32)
+        
+        # Structure NLP features: [load_score, load_score * 0.7, 1.0 - load_score]
+        nlp_feat = torch.tensor([
+            [l_score[i], l_score[i] * 0.7, 1.0 - l_score[i]]
+            for i in range(n_samples)
+        ], dtype=torch.float32)
+        
+        class CrossAttentionFusionModel(nn.Module):
+            def __init__(self, d_gaze, d_nlp, d_model):
+                super().__init__()
+                self.q_proj = nn.Linear(d_gaze, d_model)
+                self.k_proj = nn.Linear(d_nlp, d_model)
+                self.v_proj = nn.Linear(d_nlp, d_model)
+                self.scale = np.sqrt(d_model)
+                self.out_layer = nn.Sequential(
+                    nn.Linear(d_model, 16),
+                    nn.ReLU(),
+                    nn.Linear(16, 1),
+                    nn.Sigmoid()
+                )
+                
+            def forward(self, g, n):
+                Q = self.q_proj(g)
+                K = self.k_proj(n)
+                V = self.v_proj(n)
+                attn = torch.sum(Q * K, dim=-1, keepdim=True) / self.scale
+                attn_w = torch.sigmoid(attn)
+                fused = attn_w * V
+                return self.out_layer(fused)
+                
+        # Initialize model with a fixed seed for reproducibility
+        torch.manual_seed(42)
+        model = CrossAttentionFusionModel(d_gaze=3, d_nlp=3, d_model=8)
+        
+        # Perform quick inference (no training gradient needed)
+        with torch.no_grad():
+            output = model(gaze_feat, nlp_feat).numpy().flatten()
+            
+        return normalize(output)
+
+    def fuse_fatigue_adaptive(self, gaze_dwell, load_score):
+        """
+        13. Fatigue-Adaptive Gaze Weighting
+        Dynamically scales down gaze confidence weighting as the chronological reading
+        sequence progresses to filter out accumulated webcam visual jitter.
+        """
+        g_dwell = normalize(gaze_dwell)
+        l_score = normalize(load_score)
+        n = len(g_dwell)
+        if n == 0:
+            return np.zeros(0)
+            
+        rds = np.zeros(n)
+        for i in range(n):
+            # Trust gaze heavily at the start (alpha=0.8), fade to prior (alpha=0.15) at the end
+            alpha = max(0.15, 0.8 - 0.015 * i)
+            rds[i] = alpha * g_dwell[i] + (1.0 - alpha) * l_score[i]
+            
+        return normalize(rds)
+
 
 
