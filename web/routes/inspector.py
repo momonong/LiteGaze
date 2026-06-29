@@ -767,12 +767,52 @@ Return the response in structured JSON format matching this exact schema:
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
         headers = {"Content-Type": "application/json"}
+        
+        # Strict responseSchema to guarantee correct JSON structure
+        response_schema = {
+            "type": "OBJECT",
+            "properties": {
+                "text": { "type": "STRING" },
+                "difficulty": { "type": "STRING" },
+                "font_size": { "type": "INTEGER" },
+                "line_width": { "type": "INTEGER" },
+                "line_height": { "type": "NUMBER" },
+                "quiz": {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "question": { "type": "STRING" },
+                            "options": {
+                                "type": "OBJECT",
+                                "properties": {
+                                    "A": { "type": "STRING" },
+                                    "B": { "type": "STRING" },
+                                    "C": { "type": "STRING" },
+                                    "D": { "type": "STRING" }
+                                },
+                                "required": ["A", "B", "C", "D"]
+                            },
+                            "answer": { "type": "STRING" },
+                            "explanation": { "type": "STRING" }
+                        },
+                        "required": ["question", "options", "answer", "explanation"]
+                    }
+                }
+            },
+            "required": ["text", "difficulty", "font_size", "line_width", "line_height", "quiz"]
+        }
+        
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"responseMimeType": "application/json"}
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "responseSchema": response_schema
+            }
         }
 
         try:
+            import requests
             res = requests.post(url, headers=headers, json=payload, timeout=60)
             if res.status_code != 200:
                 fallback_model = "gemini-1.5-flash"
@@ -787,19 +827,39 @@ Return the response in structured JSON format matching this exact schema:
                 text_response = non_thought_parts[0] if non_thought_parts else parts[-1]["text"]
                 
                 res_data = json.loads(_clean_json_response(text_response))
-                if "text" in res_data and "quiz" in res_data:
-                    return jsonify({
-                        "ok": True,
-                        "round": next_round,
-                        "text": res_data["text"],
-                        "difficulty": res_data.get("difficulty", target_difficulty),
-                        "font_size": int(res_data.get("font_size", fallback_data["font_size"])),
-                        "line_width": int(res_data.get("line_width", fallback_data["line_width"])),
-                        "line_height": float(res_data.get("line_height", fallback_data["line_height"])),
-                        "quiz": res_data["quiz"]
-                    })
+                
+                # Perform Pydantic runtime schema validation
+                from pydantic import BaseModel
+                from typing import List, Dict
+                
+                class QuizItem(BaseModel):
+                    question: str
+                    options: Dict[str, str]
+                    answer: str
+                    explanation: str
+                    
+                class AdaptiveResponse(BaseModel):
+                    text: str
+                    difficulty: str
+                    font_size: int
+                    line_width: int
+                    line_height: float
+                    quiz: List[QuizItem]
+                    
+                validated = AdaptiveResponse(**res_data)
+                
+                return jsonify({
+                    "ok": True,
+                    "round": next_round,
+                    "text": validated.text,
+                    "difficulty": validated.difficulty,
+                    "font_size": int(validated.font_size),
+                    "line_width": int(validated.line_width),
+                    "line_height": float(validated.line_height),
+                    "quiz": [q.dict() for q in validated.quiz]
+                })
         except Exception as e:
-            print(f"[AdaptiveNext] Exception occurred: {e}")
+            print(f"[AdaptiveNext] Exception / Validation error occurred: {e}")
 
     return jsonify({
         "ok": True,

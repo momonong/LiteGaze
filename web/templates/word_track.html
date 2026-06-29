@@ -5355,12 +5355,175 @@
             <div style="text-align:center; border-right:1px solid var(--line);"><span style="color:var(--ink-muted); display:block; font-size:11px; margin-bottom:4px;">最佳行寬建議</span><strong style="font-size:18px; color:var(--accent);">${summary.optimal_line_width} px</strong></div>
             <div style="text-align:center;"><span style="color:var(--ink-muted); display:block; font-size:11px; margin-bottom:4px;">建議行高設定</span><strong style="font-size:18px; color:var(--accent);">${summary.optimal_line_height}</strong></div>
           </div>
+
+          <!-- Saccade Vector Profiling / Scanpath Canvas -->
+          <div style="background:#fff; border:1px solid var(--line-strong); border-radius:6px; padding:16px; margin-bottom:1rem; box-shadow:var(--shadow-sm);">
+            <div style="font-weight:700; margin-bottom:8px; font-size:12px; color:var(--ink-primary); display:flex; justify-content:space-between; align-items:center;">
+              <span>👁️ 眼動軌跡與認知回視重建 (Scanpath Visualizer)</span>
+              <select id="scanpathRoundSelect" style="font-size:10px; padding:2px 6px; border-radius:4px; border:1px solid var(--line-strong);" onchange="drawScanpath()">
+                <option value="0">第一輪 (Round 1)</option>
+                <option value="1">第二輪 (Round 2)</option>
+                <option value="2">第三輪 (Round 3)</option>
+              </select>
+            </div>
+            <div style="position:relative; width:100%; height:190px; background:#fafafa; border:1px solid var(--line-strong); border-radius:4px; overflow:hidden;">
+              <canvas id="scanpathCanvas" style="width:100%; height:100%; display:block;"></canvas>
+            </div>
+          </div>
           
-          <div class="markdown-body" style="background:#fff; border:1px solid var(--line); border-radius:6px; padding:24px; max-height:520px; overflow-y:auto; box-shadow:inset var(--shadow-sm); color:#374151; font-size:13.5px; line-height:1.6;">
+          <div class="markdown-body" style="background:#fff; border:1px solid var(--line); border-radius:6px; padding:24px; max-height:360px; overflow-y:auto; box-shadow:inset var(--shadow-sm); color:#374151; font-size:13.5px; line-height:1.6;">
             ${reportHtml}
           </div>
         </div>
       `;
+      
+      // Inject scanpath drawing method
+      window.drawScanpath = function() {
+        const canvas = document.getElementById('scanpathCanvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        const roundIdx = parseInt(document.getElementById('scanpathRoundSelect')?.value || '0', 10);
+        const roundData = adaptiveHistory[roundIdx];
+        if (!roundData || !roundData.gaze_history || roundData.gaze_history.length === 0) {
+          ctx.font = '12px Inter, sans-serif';
+          ctx.fillStyle = '#a1a1aa';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('此輪無效的注視點紀錄', canvas.width / 2, canvas.height / 2);
+          return;
+        }
+        
+        const history = roundData.gaze_history;
+        const points = [];
+        history.forEach(h => {
+          if (h.gaze_xy && h.gaze_xy.length === 2) {
+            points.push({ x: h.gaze_xy[0], y: h.gaze_xy[1], confidence: h.confidence_hint || h.confidence || 'low', word: h.word || '' });
+          } else if (typeof h.viewport_x === 'number' && typeof h.viewport_y === 'number') {
+            points.push({ x: h.viewport_x, y: h.viewport_y, confidence: h.confidence || 'low', word: h.word || '' });
+          }
+        });
+        
+        if (points.length === 0) {
+          ctx.font = '12px Inter, sans-serif';
+          ctx.fillStyle = '#a1a1aa';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('無可繪製的注視點座標 (No gaze coordinates found)', canvas.width / 2, canvas.height / 2);
+          return;
+        }
+        
+        const minX = Math.min(...points.map(p => p.x)) - 60;
+        const maxX = Math.max(...points.map(p => p.x)) + 60;
+        const minY = Math.min(...points.map(p => p.y)) - 40;
+        const maxY = Math.max(...points.map(p => p.y)) + 40;
+        
+        const dx = maxX - minX || 1;
+        const dy = maxY - minY || 1;
+        
+        const scaleX = (canvas.width - 40) / dx;
+        const scaleY = (canvas.height - 60) / dy;
+        const scale = Math.min(scaleX, scaleY);
+        
+        const padX = (canvas.width - dx * scale) / 2;
+        const padY = (canvas.height - 30 - dy * scale) / 2;
+        
+        const transform = (p) => ({
+          x: padX + (p.x - minX) * scale,
+          y: padY + (p.y - minY) * scale
+        });
+        
+        // Draw saccades (lines)
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = 'rgba(37, 99, 235, 0.4)';
+        ctx.beginPath();
+        for (let i = 0; i < points.length; i++) {
+          const pt = transform(points[i]);
+          if (i === 0) ctx.moveTo(pt.x, pt.y);
+          else ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.stroke();
+        
+        // Draw fixations
+        for (let i = 0; i < points.length; i++) {
+          const pt = transform(points[i]);
+          let isRegression = false;
+          let isLineJump = false;
+          
+          if (i > 0) {
+            const prev = points[i-1];
+            if (points[i].y < prev.y - 15) {
+              isLineJump = true;
+            } else if (Math.abs(points[i].y - prev.y) <= 15 && points[i].x < prev.x - 45) {
+              isRegression = true;
+            }
+          }
+          
+          let radius = 6;
+          let color = 'rgba(37, 99, 235, 0.75)';
+          if (isRegression) {
+            color = 'rgba(239, 68, 68, 0.85)';
+            radius = 8;
+          } else if (isLineJump) {
+            color = 'rgba(245, 158, 11, 0.85)';
+            radius = 9;
+          }
+          
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, radius, 0, 2 * Math.PI);
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          
+          if (isRegression || isLineJump) {
+            ctx.font = '8px Inter, sans-serif';
+            ctx.fillStyle = '#fff';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(i + 1, pt.x, pt.y);
+          }
+          
+          if (i % 3 === 0 || isRegression || isLineJump) {
+            ctx.font = '7.5px monospace';
+            ctx.fillStyle = '#52525b';
+            ctx.textAlign = 'left';
+            ctx.fillText(points[i].word, pt.x + radius + 3, pt.y);
+          }
+        }
+        
+        // Draw Legends
+        ctx.font = '9.5px Inter, sans-serif';
+        ctx.fillStyle = '#52525b';
+        ctx.textAlign = 'left';
+        
+        ctx.beginPath();
+        ctx.arc(20, canvas.height - 18, 4, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(37, 99, 235, 0.8)';
+        ctx.fill();
+        ctx.fillText('一般注視 (Fixation)', 30, canvas.height - 15);
+        
+        ctx.beginPath();
+        ctx.arc(140, canvas.height - 18, 5, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.9)';
+        ctx.fill();
+        ctx.fillText('回視 (Regression)', 152, canvas.height - 15);
+        
+        ctx.beginPath();
+        ctx.arc(250, canvas.height - 18, 5, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(245, 158, 11, 0.9)';
+        ctx.fill();
+        ctx.fillText('跨行游移 (Line Jump)', 262, canvas.height - 15);
+      };
+      
+      setTimeout(() => {
+        if (typeof window.drawScanpath === 'function') window.drawScanpath();
+      }, 100);
       
       window.lastAdaptiveReportMd = reportMd;
       footer.innerHTML = `
