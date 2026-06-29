@@ -31,11 +31,17 @@ class DynamicCognitiveField:
         self.lambda_decay = lambda_decay
         self.use_ovp = use_ovp
         
-        # Calculate centers or OVP
+        # Calculate foveal snap centers based on OVP or Geometric Centers
         if use_ovp:
-            # Skill 7: OVP is at ~35-40% of the word width from left
+            # Optimal Viewing Position (OVP) is at 35% of word width for fluent L1 readers.
+            # Struggling / L2 readers shift target center to 50% (geometric center) due to washout.
+            if alpha_cm is not None:
+                beta = 0.35 + 0.15 * alpha_cm
+            else:
+                beta = 0.50 if is_L2 else 0.35
+            
             widths = self.word_boxes[:, 2] - self.word_boxes[:, 0]
-            ovp_x = self.word_boxes[:, 0] + widths * 0.35
+            ovp_x = self.word_boxes[:, 0] + widths * beta
             center_y = (self.word_boxes[:, 1] + self.word_boxes[:, 3]) / 2
             self.word_centers = np.stack([ovp_x, center_y], axis=1)
             
