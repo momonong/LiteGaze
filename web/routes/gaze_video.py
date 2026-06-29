@@ -283,13 +283,50 @@ def analyze_reading_video():
                 
                 # Run dynamic auto-calibration with adaptive proficiency weighting
                 alpha_cm_val = float(1.0 - proficiency)
-                calibrator = AutoCalibratingDecoder(calibration_window_size=min(30, len(raw_gaze_sequence)))
-                final_indices, drift = calibrator.calibrate_and_decode(
-                    raw_gaze_sequence, word_boxes, base_cm, transition_matrix,
-                    sigma_gaze=[snap_threshold, snap_threshold * 0.75], use_ovp=True, is_L2=True, alpha_cm=alpha_cm_val
-                )
                 
-                print(f"[gaze_video] Viterbi AutoCalibratingDecoder successfully corrected systematic drift: x={drift[0]:.1f}px, y={drift[1]:.1f}px")
+                # Apply empirical research rule:
+                # Fast readers (WPM > 50) use Dynamic Sliding Window EM calibration.
+                # Slow/struggling readers (WPM <= 50) use Static EM calibration.
+                if wpm > 50.0:
+                    from scripts.geco.core.viterbi_decoder import viterbi_gaze_decode
+                    from scripts.geco.core.dynamic_field import DynamicCognitiveField
+                    
+                    sigma_gaze = [snap_threshold, snap_threshold * 0.75]
+                    initial_path, _ = viterbi_gaze_decode(
+                        raw_gaze_sequence, word_boxes, base_cm, transition_matrix,
+                        sigma_gaze, use_ovp=True, is_L2=True, alpha_cm=alpha_cm_val
+                    )
+                    
+                    dfield = DynamicCognitiveField(word_boxes, base_cm, use_ovp=True, is_L2=True, alpha_cm=alpha_cm_val)
+                    word_centers = dfield.word_centers
+                    predicted_centers = word_centers[initial_path]
+                    errors = raw_gaze_sequence - predicted_centers
+                    
+                    corrected_gaze = np.copy(raw_gaze_sequence)
+                    n = len(raw_gaze_sequence)
+                    window_size = 30
+                    for t in range(n):
+                        start = max(0, t - window_size // 2)
+                        end = min(n, t + window_size // 2 + 1)
+                        drift_x = np.nanmedian(errors[start:end, 0])
+                        drift_y = np.nanmedian(errors[start:end, 1])
+                        
+                        if np.nanstd(errors[start:end]) < 150:
+                            corrected_gaze[t] -= np.array([drift_x, drift_y])
+                            
+                    final_indices, _ = viterbi_gaze_decode(
+                        corrected_gaze, word_boxes, base_cm, transition_matrix,
+                        sigma_gaze, use_ovp=True, is_L2=True, alpha_cm=alpha_cm_val
+                    )
+                    drift = (float(np.nanmedian(errors[:, 0])), float(np.nanmedian(errors[:, 1])))
+                    print(f"[gaze_video] Dynamic Sliding Viterbi successfully corrected systematic drift: x={drift[0]:.1f}px, y={drift[1]:.1f}px")
+                else:
+                    calibrator = AutoCalibratingDecoder(calibration_window_size=min(30, len(raw_gaze_sequence)))
+                    final_indices, drift = calibrator.calibrate_and_decode(
+                        raw_gaze_sequence, word_boxes, base_cm, transition_matrix,
+                        sigma_gaze=[snap_threshold, snap_threshold * 0.75], use_ovp=True, is_L2=True, alpha_cm=alpha_cm_val
+                    )
+                    print(f"[gaze_video] Static Viterbi AutoCalibratingDecoder successfully corrected systematic drift: x={drift[0]:.1f}px, y={drift[1]:.1f}px")
                 
                 # Populate gaze_buffer and gaze_history using corrected Viterbi path target indices
                 for i, t_idx in enumerate(valid_indices):
