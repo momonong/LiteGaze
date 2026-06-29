@@ -100,6 +100,23 @@ def fuse():
     if not isinstance(cognitive_result, dict):
         return jsonify({"ok": False, "error": "'cognitive_result' 必須是物件"}), 400
 
+    # Fallback: if cognitive_result is missing or empty, dynamically reconstruct text from gaze events and run pipeline
+    if not cognitive_result or "word_analysis" not in cognitive_result:
+        words_seq = [str(e.get("word", "")) for e in gaze_events if e.get("word")]
+        if words_seq:
+            try:
+                import re
+                from core.cognition import CognitiveLoadPipeline
+                is_zh = any(re.search(r'[\u4e00-\u9fff]', w) for w in words_seq)
+                lang = "zh" if is_zh else "en"
+                text_str = " ".join(words_seq) if lang == "en" else "".join(words_seq)
+                
+                pipeline = CognitiveLoadPipeline(model_type='bert', lang=lang)
+                cognitive_result = pipeline.run(text_str)
+                print(f"[fusion] Fallback CognitiveLoadPipeline ran successfully. Formed {len(cognitive_result.get('word_analysis', []))} words.")
+            except Exception as exc:
+                print(f"[fusion] Warning: Failed to run fallback CognitiveLoadPipeline: {exc}")
+
     # Run fusion
     rds_results = compute_rds(gaze_events, cognitive_result, method=method)
 
