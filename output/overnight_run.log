@@ -1,0 +1,39 @@
+[2026-07-26 16:11:33] ======================================================================
+[2026-07-26 16:11:43] ======================================================================
+[2026-07-26 16:11:43] [SUITE] LEXIGAZE MASTER OVERNIGHT BENCHMARK SUITE
+[2026-07-26 16:11:43] ======================================================================
+[2026-07-26 16:11:43] Working Directory: D:\projects\lexigaze
+[2026-07-26 16:11:43] Python Executable: D:\projects\lexigaze\.venv\Scripts\python.exe
+[2026-07-26 16:11:43] 
+--- [ Task 1/5 ] ---
+[2026-07-26 16:11:43] [STARTING STEP] 1. Full Corpus GECO Sequence Decoder Benchmark (Parallel 16 Cores)
+[2026-07-26 16:11:43]    Command: D:\projects\lexigaze\.venv\Scripts\python.exe -X utf8 scripts/geco/run_final_full_corpus_parallel.py
+[2026-07-26 16:23:33] [COMPLETED STEP] 1. Full Corpus GECO Sequence Decoder Benchmark (Parallel 16 Cores) in 710.09 seconds (11.83 mins)
+[2026-07-26 16:23:33] 
+--- [ Task 2/5 ] ---
+[2026-07-26 16:23:33] [STARTING STEP] 2. Noise Tolerance & Drift Sensitivity Sweep Across Full Corpus (0-90px Drift)
+[2026-07-26 16:23:33]    Command: D:\projects\lexigaze\.venv\Scripts\python.exe -X utf8 scripts/geco/run_noise_tolerance_full_courpus.py --drifts 0,15,30,45,60,75,90 --plot-wordacc-curve
+[2026-07-26 17:07:43] [COMPLETED STEP] 2. Noise Tolerance & Drift Sensitivity Sweep Across Full Corpus (0-90px Drift) in 2649.20 seconds (44.15 mins)
+[2026-07-26 17:07:43] 
+--- [ Task 3/5 ] ---
+[2026-07-26 17:07:43] [STARTING STEP] 3. Full Multimodal Fusion Evaluation on GECO Corpus
+[2026-07-26 17:07:43]    Command: D:\projects\lexigaze\.venv\Scripts\python.exe -X utf8 scripts/experiment_fusion.py
+[2026-07-26 17:07:47] [COMPLETED STEP] 3. Full Multimodal Fusion Evaluation on GECO Corpus in 4.54 seconds (0.08 mins)
+[2026-07-26 17:07:47] 
+--- [ Task 4/5 ] ---
+[2026-07-26 17:07:47] [STARTING STEP] 4. Comparative Module Performance Inspector Sandbox
+[2026-07-26 17:07:47]    Command: D:\projects\lexigaze\.venv\Scripts\python.exe -X utf8 scripts/inspect_performance_demo.py
+[2026-07-26 17:07:53] [COMPLETED STEP] 4. Comparative Module Performance Inspector Sandbox in 5.37 seconds (0.09 mins)
+[2026-07-26 17:07:53] 
+--- [ Task 5/5 ] ---
+[2026-07-26 17:07:53] [STARTING STEP] 5. Viterbi Hyperparameter Grid Search Optimization
+[2026-07-26 17:07:53]    Command: D:\projects\lexigaze\.venv\Scripts\python.exe -X utf8 scripts/optimize_viterbi_parameters.py
+[2026-07-26 17:07:59] [COMPLETED STEP] 5. Viterbi Hyperparameter Grid Search Optimization in 6.69 seconds (0.11 mins)
+[2026-07-26 17:07:59] 
+======================================================================
+[2026-07-26 17:07:59] [FINISHED] OVERNIGHT BENCHMARK SUITE FINISHED
+[2026-07-26 17:07:59]    Total Duration: 3375.89 seconds (0.94 hours)
+[2026-07-26 17:07:59]    Tasks Passed: 5 / 5
+[2026-07-26 17:07:59]    Tasks Failed: 0 / 5
+[2026-07-26 17:07:59]    Log output written to: D:\projects\lexigaze\output\overnight_run.log
+[2026-07-26 17:07:59] ======================================================================
