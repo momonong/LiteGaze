@@ -17,7 +17,16 @@ def load_unigaze_b16(device: str = "cpu") -> nn.Module:
 
 def device_from_arg(value: str) -> torch.device:
     if value == "auto":
-        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if torch.cuda.is_available():
+            try:
+                # Verify that conv2d CUDA kernels execute without error on device
+                t = torch.zeros((1, 3, 224, 224), device="cuda")
+                conv = nn.Conv2d(3, 16, kernel_size=16, stride=16).to("cuda")
+                _ = conv(t)
+                return torch.device("cuda")
+            except Exception:
+                return torch.device("cpu")
+        return torch.device("cpu")
     return torch.device(value)
 
 

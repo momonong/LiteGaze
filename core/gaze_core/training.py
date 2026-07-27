@@ -112,9 +112,22 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
         if not records:
             return {"ok": False, "error": "no valid calibration samples found"}, 400
 
-        # Load baseline UniGaze-B model (CPU or GPU)
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        base_model = UniGazeFeatureWrapper(load_unigaze_b16(device)).to(device).eval()
+        # Load baseline UniGaze-B model (CPU or GPU with safe fallback)
+        device = "cpu"
+        if torch.cuda.is_available():
+            try:
+                t = torch.zeros((1, 3, 224, 224), device="cuda")
+                conv = torch.nn.Conv2d(3, 16, kernel_size=16, stride=16).to("cuda")
+                _ = conv(t)
+                device = "cuda"
+            except Exception:
+                device = "cpu"
+
+        try:
+            base_model = UniGazeFeatureWrapper(load_unigaze_b16(device)).to(device).eval()
+        except Exception:
+            device = "cpu"
+            base_model = UniGazeFeatureWrapper(load_unigaze_b16(device)).to(device).eval()
 
         gaze_list = []
         target_list = []
