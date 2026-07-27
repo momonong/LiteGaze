@@ -86,14 +86,15 @@ class PsycholinguisticTransitionMatrix:
             norm_cm = np.full_like(base_cm_array, 0.5)
         
         # Adaptive scaling based on L1/L2 reader profile
-        effective_gamma = self.gamma if is_L2 else (self.gamma * 0.1) # L1 readers are less restricted by difficulty
+        effective_gamma = (self.gamma * 2.66) if is_L2 else (self.gamma * 0.3) # L2 readers exhibit 2.66x stronger cognitive mass attraction
+        effective_sigma_fwd = (self.sigma_fwd * 1.5) if is_L2 else self.sigma_fwd
         
         for i in range(n):
             for j in range(n):
                 if j > i:
                     # 1. Base Physical Saccade (Forward Momentum)
                     # Gaussian centered at i+1
-                    p_fwd = np.exp(-((j - (i + 1))**2) / (2 * self.sigma_fwd**2))
+                    p_fwd = np.exp(-((j - (i + 1))**2) / (2 * effective_sigma_fwd**2))
                     # 2. Cognitive Modulation (Skipping)
                     # Penalize transition to j if j is cognitively heavy (high CM)
                     t_matrix[i, j] = p_fwd * max(0.1, 1.0 - effective_gamma * norm_cm[j])
