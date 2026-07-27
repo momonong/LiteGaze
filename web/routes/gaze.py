@@ -179,16 +179,26 @@ def api_sample():
 
 @gaze_api_bp.post("/train")
 def api_train():
-    body = request.get_json(force=True) or {}
-    response, status = train_placeholder(ROOT, body)
-    return jsonify(response), status
+    try:
+        body = request.get_json(force=True) or {}
+        response, status = train_placeholder(ROOT, body)
+        return jsonify(response), status
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"ok": False, "error": f"Train failed: {exc}"}), 500
 
 
 @gaze_api_bp.post("/predict")
 def api_predict():
-    body = request.get_json(force=True) or {}
-    response, status = predict(ROOT, body)
-    return jsonify(response), status
+    try:
+        body = request.get_json(force=True) or {}
+        response, status = predict(ROOT, body)
+        return jsonify(response), status
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"ok": False, "error": f"Predict failed: {exc}"}), 500
 
 
 @gaze_bp.post("/save_pairs")

@@ -110,8 +110,22 @@ class LanguageModelCalculator:
         else:
             self.model = AutoModelForMaskedLM.from_pretrained(model_name, attn_implementation="eager")
 
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model.to(self.device).eval()
+        self.device = "cpu"
+        if torch.cuda.is_available():
+            try:
+                t = torch.zeros((1, 3, 224, 224), device="cuda")
+                conv = torch.nn.Conv2d(3, 16, kernel_size=16, stride=16).to("cuda")
+                _ = conv(t)
+                self.device = "cuda"
+            except Exception:
+                self.device = "cpu"
+
+        try:
+            self.model.to(self.device).eval()
+        except Exception:
+            self.device = "cpu"
+            self.model.to("cpu").eval()
+
         self.use_fp16 = (self.device == "cuda")
 
     @torch.inference_mode()

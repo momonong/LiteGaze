@@ -34,8 +34,22 @@ def get_base_model():
             import torch
             from core.unigaze_personalization.model import UniGazeFeatureWrapper, load_unigaze_b16
 
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            base_model = UniGazeFeatureWrapper(load_unigaze_b16(device)).to(device).eval()
+            device = "cpu"
+            if torch.cuda.is_available():
+                try:
+                    t = torch.zeros((1, 3, 224, 224), device="cuda")
+                    conv = torch.nn.Conv2d(3, 16, kernel_size=16, stride=16).to("cuda")
+                    _ = conv(t)
+                    device = "cuda"
+                except Exception:
+                    device = "cpu"
+
+            try:
+                base_model = UniGazeFeatureWrapper(load_unigaze_b16(device)).to(device).eval()
+            except Exception:
+                device = "cpu"
+                base_model = UniGazeFeatureWrapper(load_unigaze_b16(device)).to(device).eval()
+
             _model_cache["base_model"] = base_model
         return base_model
 
