@@ -182,7 +182,7 @@ class MultiLineAdaptiveEMDecoder:
             line_drift_y = smoothed_line_drifts
 
             # E-Step: Correct gaze points line-by-line and re-decode
-            corrected_gaze = raw_gaze_sequence.copy()
+            corrected_gaze = np.asarray(raw_gaze_sequence, dtype=np.float64).copy()
             corrected_gaze[:, 0] -= global_drift_x
 
             # Apply continuous vertical correction function based on gaze y-position
