@@ -90,7 +90,12 @@ def predict(root: Path, payload: dict) -> tuple[dict, int]:
 
         # Run MediaPipe face detection and facial normalization
         preprocessor = get_preprocessor()
-        processed = preprocessor.process(img)
+        try:
+            processed = preprocessor.process(img)
+        except ValueError as ve:
+            if "no face detected" in str(ve):
+                return {"ok": False, "error": "no face detected in frame"}, 400
+            raise
 
         # Feed image tensor to neural network
         base_model = get_base_model()
