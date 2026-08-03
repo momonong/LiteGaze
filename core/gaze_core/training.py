@@ -8,6 +8,8 @@ import cv2
 import numpy as np
 import torch
 
+from core.device import resolve_torch_device
+
 from .model_registry import clean_model_name, model_path
 from .sample_store import ensure_sessions_dir
 
@@ -112,21 +114,15 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
         if not records:
             return {"ok": False, "error": "no valid calibration samples found"}, 400
 
-        # Load baseline UniGaze-B model (CPU or GPU with safe fallback)
-        device = "cpu"
-        if torch.cuda.is_available():
-            try:
-                t = torch.zeros((1, 3, 224, 224), device="cuda")
-                conv = torch.nn.Conv2d(3, 16, kernel_size=16, stride=16).to("cuda")
-                _ = conv(t)
-                device = "cuda"
-            except Exception:
-                device = "cpu"
+        # Load baseline UniGaze-B model using the shared runtime device policy.
+        device = resolve_torch_device()
 
         try:
             base_model = UniGazeFeatureWrapper(load_unigaze_b16(device)).to(device).eval()
         except Exception:
-            device = "cpu"
+            if device.type == "cpu":
+                raise
+            device = torch.device("cpu")
             base_model = UniGazeFeatureWrapper(load_unigaze_b16(device)).to(device).eval()
 
         gaze_list = []

@@ -1,8 +1,8 @@
 Configuration,Gaze Accuracy (%),RDS Correlation (rho),Latency (ms)
-1. Raw Gaze + No Cog + Linear,18.59,0.0636,2.81
-2. Viterbi + No Cog + Linear,54.49,0.0561,290.42
-3. Viterbi + EM Calib + No Cog + Linear,96.79,0.1342,435.21
-4. STOCK-T v1 + surprisal + Linear,38.46,0.2519,285.35
-5. STOCK-T v2 + surprisal + Multiplicative,44.87,0.2428,243.35
-6. STOCK-T v3 + surprisal + Bayesian,93.59,0.3864,409.15
-7. STOCK-T v3 + CogMass + Bayesian,93.59,0.4267,429.18
+1. Raw Gaze + No Cog + Linear,18.59,0.0636,2.68
+2. Viterbi + No Cog + Linear,54.49,0.0561,260.48
+3. Viterbi + EM Calib + No Cog + Linear,96.79,0.1342,394.96
+4. STOCK-T v1 + surprisal + Linear,38.46,0.2519,253.41
+5. STOCK-T v2 + surprisal + Multiplicative,44.87,0.2428,248.19
+6. STOCK-T v3 + surprisal + Bayesian,93.59,0.3864,435.57
+7. STOCK-T v3 + CogMass + Bayesian,93.59,0.4267,467.0

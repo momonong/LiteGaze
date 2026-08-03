@@ -25,7 +25,7 @@ The repository contains a `uv.lock` file. If you have [uv](https://github.com/as
 uv sync
 
 # Download the English dependency parser model for spaCy
-.venv/bin/python -m spacy download en_core_web_sm
+uv run python -m spacy download en_core_web_sm
 ```
 
 ### Option B — Conda Setup
@@ -66,6 +66,10 @@ Configure `.env` with the following variables:
 # Path where Hugging Face weights are cached
 HF_HOME="/home/ubuntu/.cache/huggingface"
 
+# Runtime accelerator policy (auto, cpu, cuda, or cuda:N)
+# Use cpu to keep VRAM free and prevent CUDA probing in the main runtime paths.
+LEXIGAZE_DEVICE=auto
+
 # Required for Google AI Studio API (Inspector analyses, summaries)
 GEMINI_API_KEY=your_gemini_api_key_here
 
@@ -80,10 +84,10 @@ MODEL_NAME="gemma-4-26b-a4b-it"
 To run the Flask application locally:
 ```bash
 # Standard local mode
-.venv/bin/python -X utf8 run.py
+uv run python -X utf8 run.py
 
 # Integrated remote collection mode (spawns an ngrok tunnel automatically)
-.venv/bin/python -X utf8 run.py --tunnel
+uv run python -X utf8 run.py --tunnel
 ```
 
 Upon starting standard local mode successfully, you should see:
@@ -155,31 +159,57 @@ LexiGaze includes sandbox scripts to test and evaluate gaze correction, NLP mode
 ### Diagnostic 5.1: Comparative Module Sandbox
 To evaluate the combined performance of gaze decoders, NLP metrics, and fusion methods:
 ```bash
-.venv/bin/python scripts/inspect_performance_demo.py
+uv run python scripts/inspect_performance_demo.py
 ```
 This simulates webcam drift (+45px vertical drift, 30-40px jitter) on a 156-word GECO reading trial, printing accuracy, Spearman correlation, and processing latency:
 
 | Configuration | Gaze Accuracy (%) | RDS Correlation ($\rho$) | Latency (ms) | Target Optimization Direction |
 | :--- | :---: | :---: | :---: | :--- |
-| **Raw Gaze + No Cog + Linear** | 18.59% | 0.0636 | ~1.5 ms | **Baseline**: Heavily impacted by calibration drift. |
-| **Viterbi + No Cog + Linear** | 48.72% | 0.0910 | ~140 ms | **Spatio-Temporal Prior**: Corrects drift but lacks online tuning. |
-| **Viterbi + EM Calib + No Cog** | 73.72% | 0.2050 | ~210 ms | **EM Self-Calibration**: Re-calibrates offsets during reading. |
-| **STOCK-T v3 + surprisal + Bayesian** | **78.21%** | **0.2258** | ~210 ms | **Optimal Joint System**: Max accuracy & difficulty correlation. |
+| **Raw Gaze + No Cog + Linear** | 18.59% | 0.0636 | ~3 ms | **Baseline**: Heavily impacted by calibration drift. |
+| **Viterbi + No Cog + Linear** | 54.49% | 0.0561 | ~260 ms | **Spatio-Temporal Prior**: Corrects some drift but lacks online tuning. |
+| **Viterbi + EM Calib + No Cog** | **96.79%** | 0.1342 | ~395 ms | **EM Self-Calibration**: Highest gaze accuracy in this seeded simulation. |
+| **STOCK-T v3 + surprisal + Bayesian** | 93.59% | 0.3864 | ~436 ms | **Joint Diagnostic**: High simulated recovery without CogMass. |
+| **STOCK-T v3 + CogMass + Bayesian** | 93.59% | **0.4267** | ~467 ms | **Provenance-risk diagnostic**: not eligible for predictive claims. |
+
+These are single-participant simulation diagnostics, and latency changes with host load. Do not interpret them as cross-subject prediction or tune production thresholds from this table.
 
 ### Diagnostic 5.2: Multimodal Fusion Calibration
-To compare the six mathematical fusion methods on GECO:
+To compare the eleven mathematical fusion methods on GECO:
 ```bash
-.venv/bin/python scripts/experiment_fusion.py
+uv run python scripts/experiment_fusion.py
 ```
 This generates evaluation summaries and plots under `output/`:
 * `fusion_correlation_comparison.png` - Compares Spearman $\rho$ and Pearson $r$.
 * `rds_distributions.png` - Plots score distributions across algorithms.
 
+This script constructs simulated dwell from the same TRT used as its evaluation target. Use it for descriptive calibration and implementation comparison, not out-of-sample predictive claims.
+
+### Diagnostic 5.3: Frozen GECO Generalization Protocol
+
+To reproduce the preregistered 37-participant new-reader/new-trial evaluation without GPU use:
+
+```bash
+LEXIGAZE_DEVICE=cpu CUDA_VISIBLE_DEVICES="" uv run python scripts/evaluate_geco_generalization.py
+```
+
+Read `docs/GECO_GENERALIZATION_PROTOCOL_V1_1_2026-08-03.md` before running. Do not change folds, features, Ridge alpha, exclusions, or the primary endpoint based on `output/geco_generalization_*` results. Future feature development must use separate development data.
+
+### Diagnostic 5.4: Frozen GECO-to-PROVO Zero-Shot Protocol
+
+Acquire or verify the official OSF file, then reproduce the CPU-only independent-corpus evaluation:
+
+```bash
+uv run python scripts/download_provo.py
+LEXIGAZE_DEVICE=cpu CUDA_VISIBLE_DEVICES="" uv run python scripts/evaluate_provo_zero_shot.py
+```
+
+Read `docs/PROVO_ZERO_SHOT_PROTOCOL_V1_1_2026-08-03.md` before running. The frozen result uses 18 GECO L1 participants for training and all 84 PROVO participants for test-only inference. GECO lexical Ridge reaches macro participant Spearman $\rho=0.2205$, but word length is stronger at $\rho=0.2951$; PROVO v1.1 must not be used to retune the model.
+
 ### 📈 Directions for Future Improvement
-1. **Gaze Correction Accuracy**: Raw webcam tracking suffers from vertical drift (~45px). Implementing **Auto-Calibrating EM Decoders** (`AutoCalibratingDecoder`) or **Psycholinguistic Transition Matrices** (`PsycholinguisticTransitionMatrix`) corrects this, increasing coordinate mapping accuracy from 18.5% to 78.2%.
+1. **Gaze Correction Accuracy**: Raw webcam tracking suffers from vertical drift (~45px). The current seeded diagnostic shows Auto-Calibrating EM reaching 96.79% on one simulated trial; this must be verified on held-out real webcam sessions before a production claim.
 2. **Computational Latency**: Running Viterbi and EM decoding sequentially adds ~200ms processing delay per page. Next-step optimizations should focus on compiling the transition matrix operations using **Cython/Numba** or vectorizing loops via **NumPy**.
 3. **Adaptive Snapping & Layout Constraints**: Using **Proficiency-Adaptive OVP Anchor Tuning (PAOAT)** and **Oculomotor Spatio-Temporal Monotonicity Constraints (OSTMC)** dynamically corrects coordinates to match human reading layouts, boosting subject tracking accuracy and preventing vertical line-skipping.
-4. **Cognitive Weight Calibration**: Currently, Bayesian and Multiplicative fusion yield higher correlation values ($\rho > 0.80$) on human reading times than simple Linear summation by modeling interaction effects (skipped words vs high surprisal). Tuning the prior boundaries in `scripts/fusion_module.py` will further improve prediction fidelity.
+4. **Cognitive Feature Generalization**: GECO double holdout and the independent PROVO zero-shot test both show that richer fixed Ridge combinations do not beat word length. Keep word length and lexical rarity as mandatory baselines; develop any constrained replacement on a third corpus and confirm it once on another untouched corpus. GECO and PROVO are frozen tests, not tuning data.
 
 ---
 

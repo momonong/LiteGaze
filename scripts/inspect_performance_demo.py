@@ -7,43 +7,57 @@ multimodal fusion models) side-by-side to inspect their joint effects on
 system accuracy, difficulty correlation, and latency.
 """
 
-import os
-import sys
 import time
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import spearmanr
 
-# Add project root to path
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
-from scripts.geco.core.transition_model import ReadingTransitionMatrix, PsycholinguisticTransitionMatrix
-from scripts.geco.core.viterbi_decoder import viterbi_gaze_decode
-from scripts.geco.core.baseline_decoders import NearestBoundingBoxDecoder, StandardKalmanDecoder, StaticBayesianDecoder
-from scripts.geco.core.em_calibration import AutoCalibratingDecoder
-from scripts.geco.core.attention_transition import AttentionGuidedMatrix
-from scripts.fusion_module import LexiGazeFusion
+if __package__:
+    from .experiment_manifest import capture_source_snapshot, write_experiment_manifest
+    from .fusion_module import LexiGazeFusion
+    from .geco.core.attention_transition import AttentionGuidedMatrix
+    from .geco.core.baseline_decoders import NearestBoundingBoxDecoder
+    from .geco.core.em_calibration import AutoCalibratingDecoder
+    from .geco.core.transition_model import (
+        PsycholinguisticTransitionMatrix,
+        ReadingTransitionMatrix,
+    )
+    from .geco.core.viterbi_decoder import viterbi_gaze_decode
+else:
+    from experiment_manifest import capture_source_snapshot, write_experiment_manifest
+    from fusion_module import LexiGazeFusion
+    from geco.core.attention_transition import AttentionGuidedMatrix
+    from geco.core.baseline_decoders import NearestBoundingBoxDecoder
+    from geco.core.em_calibration import AutoCalibratingDecoder
+    from geco.core.transition_model import (
+        PsycholinguisticTransitionMatrix,
+        ReadingTransitionMatrix,
+    )
+    from geco.core.viterbi_decoder import viterbi_gaze_decode
 
 # Configuration
-DATA_PATH = "archive/data/geco/geco_pp01_cognitive_mass.csv"
-ATTN_PATH = "archive/data/geco/geco_pp01_cognitive_mass_attention.npy"
-OUTPUT_DIR = "output"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DATA_PATH = PROJECT_ROOT / "archive/data/geco/geco_pp01_cognitive_mass.csv"
+ATTN_PATH = PROJECT_ROOT / "archive/data/geco/geco_pp01_cognitive_mass_attention.npy"
+CLEAN_TRIAL_PATH = PROJECT_ROOT / "archive/data/geco/geco_pp01_trial5_clean.csv"
+OUTPUT_DIR = PROJECT_ROOT / "output"
 
 # Noise injection parameters (simulating typical webcam inaccuracies)
+RANDOM_SEED = 42
 DRIFT_Y = 45.0
 SIGMA_X = 40.0
 SIGMA_Y = 30.0
+CALIBRATION_WINDOW_SIZE = 30
 
-def inject_noise(df):
+def inject_noise(df, rng):
     """Inject systematic vertical drift and random Gaussian horizontal/vertical jitter."""
-    np.random.seed(42)
     df = df.copy()
-    df['noisy_x'] = df['true_x'] + np.random.normal(0, SIGMA_X, len(df))
-    df['noisy_y'] = df['true_y'] + np.random.normal(0, SIGMA_Y, len(df)) + DRIFT_Y
+    df['noisy_x'] = df['true_x'] + rng.normal(0, SIGMA_X, len(df))
+    df['noisy_y'] = df['true_y'] + rng.normal(0, SIGMA_Y, len(df)) + DRIFT_Y
     return df
 
 def calculate_accuracy(target_indices, predicted_indices):
@@ -52,30 +66,44 @@ def calculate_accuracy(target_indices, predicted_indices):
     return (correct / len(target_indices)) * 100
 
 def main():
+    experiment_started = time.perf_counter()
+    source_snapshot = capture_source_snapshot(PROJECT_ROOT)
     print("=========================================================")
     print("      LexiGaze Module Performance Inspection Demo         ")
     print("=========================================================")
     
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     
-    if not os.path.exists(DATA_PATH):
+    if not DATA_PATH.exists():
         print(f"Error: {DATA_PATH} not found. Ensure raw data exists in archive/data/geco/")
-        return
+        write_experiment_manifest(
+            OUTPUT_DIR / "demo_system_comparison_manifest.json",
+            "joint_system_performance_geco_pp01_trial5",
+            root=PROJECT_ROOT,
+            datasets=[DATA_PATH, ATTN_PATH, CLEAN_TRIAL_PATH],
+            config=_base_manifest_config(),
+            metrics={"error": f"missing required dataset: {DATA_PATH}"},
+            seed=RANDOM_SEED,
+            status="failed",
+            duration_seconds=round(time.perf_counter() - experiment_started, 6),
+            source_snapshot=source_snapshot,
+        )
+        return 1
         
     # Load dataset
+    rng = np.random.RandomState(RANDOM_SEED)
     df = pd.read_csv(DATA_PATH)
-    df = inject_noise(df)
+    df = inject_noise(df, rng)
     
     # Extract actual reading times from GECO (we merge with the clean trial data to get TRT)
-    clean_trial_path = "archive/data/geco/geco_pp01_trial5_clean.csv"
-    if os.path.exists(clean_trial_path):
-        df_clean = pd.read_csv(clean_trial_path)
+    if CLEAN_TRIAL_PATH.exists():
+        df_clean = pd.read_csv(CLEAN_TRIAL_PATH)
         df = pd.merge(df, df_clean[["WORD_ID", "WORD_TOTAL_READING_TIME"]], on="WORD_ID", how="left")
         # Fill missing values if any
         df["WORD_TOTAL_READING_TIME"] = df["WORD_TOTAL_READING_TIME"].fillna(df["WORD_TOTAL_READING_TIME"].median())
     else:
         # Fallback to simulated reading times if clean CSV is missing
-        df["WORD_TOTAL_READING_TIME"] = df["cognitive_mass"] * 100 + np.random.normal(100, 50, len(df))
+        df["WORD_TOTAL_READING_TIME"] = df["cognitive_mass"] * 100 + rng.normal(100, 50, len(df))
         df["WORD_TOTAL_READING_TIME"] = np.clip(df["WORD_TOTAL_READING_TIME"], 50, None)
 
     # Word layout coordinates
@@ -85,10 +113,10 @@ def main():
     trt = df["WORD_TOTAL_READING_TIME"].values
     
     # Load attention matrix
-    attn_matrix = np.load(ATTN_PATH) if os.path.exists(ATTN_PATH) else None
+    attn_matrix = np.load(ATTN_PATH) if ATTN_PATH.exists() else None
     
     # Define system configurations
-    # We will compare six distinct system configurations
+    # We will compare seven distinct system configurations
     configs = {
         "1. Raw Gaze + No Cog + Linear": {
             "gaze_decoder": "nearest_box",
@@ -146,7 +174,7 @@ def main():
         elif dec_name == "viterbi_em":
             transition_builder = ReadingTransitionMatrix()
             t_matrix = transition_builder.build_matrix(df['cognitive_mass'].values, is_L2_reader=True)
-            calibrator = AutoCalibratingDecoder(calibration_window_size=30)
+            calibrator = AutoCalibratingDecoder(calibration_window_size=CALIBRATION_WINDOW_SIZE)
             decoded_indices, _ = calibrator.calibrate_and_decode(gaze_sequence, word_boxes, df['cognitive_mass'].values, t_matrix, sigma_gaze=[SIGMA_X, SIGMA_Y])
         elif dec_name == "stock_t_v1":
             stock_t_v1_builder = AttentionGuidedMatrix(mu_saccade=1.0)
@@ -159,7 +187,7 @@ def main():
         elif dec_name == "stock_t_v3_pom":
             pom_builder = PsycholinguisticTransitionMatrix(sigma_fwd=1.0, sigma_reg=1.5, gamma=0.5)
             t_matrix_pom = pom_builder.build_matrix(len(df), df['cognitive_mass'].values)
-            calibrator_pom = AutoCalibratingDecoder(calibration_window_size=30)
+            calibrator_pom = AutoCalibratingDecoder(calibration_window_size=CALIBRATION_WINDOW_SIZE)
             decoded_indices, _ = calibrator_pom.calibrate_and_decode(gaze_sequence, word_boxes, df['cognitive_mass'].values, t_matrix_pom, sigma_gaze=[SIGMA_X, SIGMA_Y])
         else:
             decoded_indices = true_indices
@@ -215,14 +243,59 @@ def main():
     print("="*70)
     
     # Save statistics as CSV
-    df_res.to_csv(os.path.join(OUTPUT_DIR, "demo_system_comparison.csv"), index=False)
+    df_res.to_csv(OUTPUT_DIR / "demo_system_comparison.csv", index=False)
     
     # Plot performance figures
     plot_comparison(df_res)
+    best_accuracy_row = df_res.loc[df_res["Gaze Accuracy (%)"].idxmax()]
+    best_rds_row = df_res.loc[df_res["RDS Correlation (rho)"].idxmax()]
+    manifest_path = write_experiment_manifest(
+        OUTPUT_DIR / "demo_system_comparison_manifest.json",
+        "joint_system_performance_geco_pp01_trial5",
+        root=PROJECT_ROOT,
+        datasets=[DATA_PATH, ATTN_PATH, CLEAN_TRIAL_PATH],
+        artifacts=[
+            OUTPUT_DIR / "demo_system_comparison.csv",
+            OUTPUT_DIR / "demo_performance_comparison.png",
+        ],
+        config={
+            **_base_manifest_config(),
+            "reading_time_source": "geco_clean_trial" if CLEAN_TRIAL_PATH.exists() else "simulated",
+            "attention_matrix_available": ATTN_PATH.exists(),
+            "system_configurations": configs,
+        },
+        metrics={
+            "row_count": len(df),
+            "best_gaze_accuracy_configuration": best_accuracy_row["Configuration"],
+            "best_gaze_accuracy_percent": best_accuracy_row["Gaze Accuracy (%)"],
+            "best_rds_configuration": best_rds_row["Configuration"],
+            "best_spearman_rho": best_rds_row["RDS Correlation (rho)"],
+            "configuration_results": df_res.to_dict(orient="records"),
+        },
+        seed=RANDOM_SEED,
+        duration_seconds=round(time.perf_counter() - experiment_started, 6),
+        source_snapshot=source_snapshot,
+    )
     
     print(f"\nSaved comparison statistics to: {OUTPUT_DIR}/demo_system_comparison.csv")
     print(f"Saved performance chart to: {OUTPUT_DIR}/demo_performance_comparison.png")
+    print(f"Saved reproducibility manifest to: {manifest_path}")
     print("=========================================================")
+    return 0
+
+
+def _base_manifest_config():
+    return {
+        "corpus": "GECO",
+        "participant": "pp01",
+        "trial": 5,
+        "drift_y_px": DRIFT_Y,
+        "sigma_x_px": SIGMA_X,
+        "sigma_y_px": SIGMA_Y,
+        "calibration_window_size": CALIBRATION_WINDOW_SIZE,
+        "evaluation_scope": "single_participant_seeded_simulation",
+        "cognitive_mass_predictive_generalization_eligible": False,
+    }
 
 def plot_comparison(df):
     """Draw a side-by-side bar chart showing system performance trade-offs."""
@@ -263,8 +336,8 @@ def plot_comparison(df):
     axes[2].set_ylabel("")
     
     plt.tight_layout()
-    plt.savefig(os.path.join(OUTPUT_DIR, "demo_performance_comparison.png"), dpi=300)
+    plt.savefig(OUTPUT_DIR / "demo_performance_comparison.png", dpi=300)
     plt.close()
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

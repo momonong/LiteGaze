@@ -1,0 +1,31 @@
+{
+  "geco": {
+    "corpus": "GECO_L1",
+    "file_count": 6104,
+    "fixated_row_count": 241679,
+    "participant_trial_count": 3052,
+    "root": "D:/projects/lexigaze/data/geco/population/L1",
+    "row_count": 324240,
+    "sha256_tree": "b9833e60b84ff49f8f8c9c7c4e7e990f091779bb1ef679933085c57f202b01bd",
+    "size_bytes": 24905820,
+    "subject_count": 18,
+    "trial_count": 178
+  },
+  "provo": {
+    "corpus": "PROVO",
+    "filename": "Provo_Corpus-Eyetracking_Data.csv",
+    "first_pass_skipped_row_count": 101605,
+    "fixated_row_count": 153566,
+    "osf_project": "https://osf.io/sjefs/",
+    "participant_text_count": 4620,
+    "path": "D:/projects/lexigaze/data/provo/raw/Provo_Corpus-Eyetracking_Data.csv",
+    "row_count": 230412,
+    "sha256": "38aedcb29bc9171009916eb2bcc2375729f104a2a1005c64a563da94b611b9e7",
+    "size_bytes": 69662713,
+    "skipped_row_count": 76846,
+    "source_url": "https://osf.io/download/a32be/",
+    "subject_count": 84,
+    "text_count": 55,
+    "unique_word_item_count": 2743
+  }
+}

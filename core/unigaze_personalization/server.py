@@ -252,7 +252,7 @@ def create_app(data_dir: str | Path = "data/sessions") -> FastAPI:
             import cv2
             from .dataset import read_manifest
             from .transforms import to_unigaze_tensor
-            from .model import UniGazeFeatureWrapper, load_unigaze_b16
+            from .model import UniGazeFeatureWrapper, device_from_arg, load_unigaze_b16
 
             # 1. Load calibration data points
             records = read_manifest(manifest_path)
@@ -260,7 +260,7 @@ def create_app(data_dir: str | Path = "data/sessions") -> FastAPI:
                 raise ValueError("No records found in manifest")
 
             # Load base unigaze model
-            device = "cuda" if torch.cuda.is_available() else "cpu"
+            device = device_from_arg("auto")
             base_model = UniGazeFeatureWrapper(load_unigaze_b16(device)).to(device).eval()
 
             gaze_list = []
@@ -484,9 +484,9 @@ def create_app(data_dir: str | Path = "data/sessions") -> FastAPI:
             if base_model is None:
                 try:
                     import torch
-                    from .model import UniGazeFeatureWrapper, load_unigaze_b16
+                    from .model import UniGazeFeatureWrapper, device_from_arg, load_unigaze_b16
 
-                    device = "cuda" if torch.cuda.is_available() else "cpu"
+                    device = device_from_arg("auto")
                     base_model = UniGazeFeatureWrapper(load_unigaze_b16(device)).to(device).eval()
                     _model_cache["base_model"] = base_model
                 except Exception as exc:
@@ -587,9 +587,9 @@ def create_app(data_dir: str | Path = "data/sessions") -> FastAPI:
             if base_model is None:
                 try:
                     import torch
-                    from .model import UniGazeFeatureWrapper, load_unigaze_b16
+                    from .model import UniGazeFeatureWrapper, device_from_arg, load_unigaze_b16
 
-                    device = "cuda" if torch.cuda.is_available() else "cpu"
+                    device = device_from_arg("auto")
                     base_model = UniGazeFeatureWrapper(load_unigaze_b16(device)).to(device).eval()
                     _model_cache["base_model"] = base_model
                 except Exception as exc:

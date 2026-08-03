@@ -25,7 +25,7 @@ lexigaze/
 │   ├── cognition/                  # NLP cognitive pipeline and pre-trained weights
 │   ├── cognitive_inspector/        # Diagnostic analyzer and Markdown report generator
 │   ├── gaze_core/                  # Gaze prediction filters, training, and registries
-│   └── unigaze_personalization/    # MediaPipe preprocessing, datasets, and ONNX models
+│   └── unigaze_personalization/    # MediaPipe preprocessing, datasets, and PyTorch models
 │
 ├── web/                            # 🌐 THE MAIN FLASK WEB APPLICATION PACKAGE
 │   ├── routes/                     # Blueprints (cognitive, gaze, demo, fusion, inspector)
@@ -51,18 +51,23 @@ To avoid mixed purposes, our documentation is structured as follows:
 
 | Document | Purpose | Key Contents |
 | :--- | :--- | :--- |
-| **[README.md](file://D:/projects/lexigaze/README.md)** | Project Landing Page | High-level overview, key features, folder structure, quick links. |
-| **[ARCHITECTURE.md](file://D:/projects/lexigaze/ARCHITECTURE.md)** | Technical Architecture | Subsystems, detailed perception/cognition data flows, JSON schemas. |
-| **[INSTRUCTION.md](file://D:/projects/lexigaze/INSTRUCTION.md)** | Operations & Walkthrough | Setup, step-by-step testing workflow, performance diagnostic guide. |
-| **[INSTRUCTION_DATA.md](file://D:/projects/lexigaze/INSTRUCTION_DATA.md)** | Distributed Setup | Setup guide for Ubuntu server and Windows laptop client. |
-| **[AGENT.md](file://D:/projects/lexigaze/AGENT.md)** | Developer Rules | Code quality standards, imports, relative API rules. |
-| **[CONTRIBUTING.md](file://D:/projects/lexigaze/CONTRIBUTING.md)** | Git Guidelines | Branch names, commit messages, and collaborative pull requests. |
+| **[README.md](README.md)** | Project Landing Page | High-level overview, key features, folder structure, quick links. |
+| **[ARCHITECTURE.md](ARCHITECTURE.md)** | Technical Architecture | Subsystems, detailed perception/cognition data flows, JSON schemas. |
+| **[INSTRUCTION.md](INSTRUCTION.md)** | Operations & Walkthrough | Setup, step-by-step testing workflow, performance diagnostic guide. |
+| **[INSTRUCTION_DATA.md](INSTRUCTION_DATA.md)** | Distributed Setup | Setup guide for Ubuntu server and Windows laptop client. |
+| **[Project Health Audit](docs/PROJECT_HEALTH_AUDIT_2026-08-03.md)** | Dated Engineering Record | Implemented guardrails, CPU benchmark results, validation evidence, and prioritized follow-up research. |
+| **[GECO Generalization Protocol v1.1](docs/GECO_GENERALIZATION_PROTOCOL_V1_1_2026-08-03.md)** | Preregistered Research Protocol | Subject/trial double holdout, leakage controls, fixed analysis, and stopping rules. |
+| **[GECO Generalization Execution Log](docs/GECO_GENERALIZATION_EXECUTION_LOG_2026-08-03.md)** | Research Result Record | Full-population outcomes, hashes, deviations, interpretation limits, and follow-up decisions. |
+| **[PROVO Zero-Shot Protocol v1.1](docs/PROVO_ZERO_SHOT_PROTOCOL_V1_1_2026-08-03.md)** | Preregistered Cross-Corpus Protocol | GECO-only training, independent PROVO testing, EyeLink schema amendment, and frozen decision rules. |
+| **[PROVO Zero-Shot Execution Log](docs/PROVO_ZERO_SHOT_EXECUTION_LOG_2026-08-03.md)** | Cross-Corpus Result Record | Official data hashes, outcome isolation, participant inference, reproducibility evidence, and development boundary. |
+| **[AGENT.md](AGENT.md)** | Developer Rules | Code quality standards, imports, relative API rules. |
+| **[CONTRIBUTING.md](CONTRIBUTING.md)** | Git Guidelines | Branch names, commit messages, and collaborative pull requests. |
 
 ---
 
 ## ⚡ Quick Start
 
-For detailed requirements and alternative installations (such as Standard `venv` or `conda`), please see **[INSTRUCTION.md](file://D:/projects/lexigaze/INSTRUCTION.md)**.
+For detailed requirements and alternative installations (such as Standard `venv` or `conda`), please see **[INSTRUCTION.md](INSTRUCTION.md)**.
 
 ### 1. Fast Setup with uv
 ```bash
@@ -70,7 +75,7 @@ For detailed requirements and alternative installations (such as Standard `venv`
 uv sync
 
 # Download spaCy English model for NLP pipeline
-.venv/bin/python -m spacy download en_core_web_sm
+uv run python -m spacy download en_core_web_sm
 ```
 
 ### 2. Configure Environment
@@ -78,6 +83,10 @@ Create a `.env` file in the project root:
 ```env
 # Optional: Path where Hugging Face weights are cached (defaults to ~/.cache/huggingface)
 # HF_HOME="/home/ubuntu/.cache/huggingface"
+
+# Accelerator policy: auto, cpu, cuda, or cuda:N
+# Set cpu when VRAM must remain available for other workloads.
+LEXIGAZE_DEVICE=auto
 
 GEMINI_API_KEY=your_gemini_api_key_here
 MODEL_NAME="gemma-4-26b-a4b-it"
@@ -87,6 +96,6 @@ MODEL_NAME="gemma-4-26b-a4b-it"
 Launch the Flask backend:
 ```bash
 # Use the UTF-8 flag to avoid console printing crashes
-.venv/bin/python -X utf8 run.py
+uv run python -X utf8 run.py
 ```
 Open **`http://localhost:8080`** in your browser.

@@ -39,7 +39,9 @@
    - [6.1 GECO Benchmark System Performance Evaluation](#61-geco-benchmark-system-performance-evaluation)
    - [6.2 Comparative Accuracy Breakdown under Extreme Drift](#62-comparative-accuracy-breakdown-under-extreme-drift)
    - [6.3 Multimodal Fusion Evaluation on Human Reading Time (TRT)](#63-multimodal-fusion-evaluation-on-human-reading-time-trt)
-   - [6.4 Identification and Qualitative Analysis of High-Cognitive-Load Words](#64-identification-and-qualitative-analysis-of-high-cognitive-load-words)
+   - [6.4 Preregistered Cross-Subject and Cross-Trial Generalization](#64-preregistered-cross-subject-and-cross-trial-generalization)
+   - [6.5 Frozen GECO-to-PROVO Cross-Corpus Transfer](#65-frozen-geco-to-provo-cross-corpus-transfer)
+   - [6.6 Identification and Qualitative Analysis of High-Cognitive-Load Words](#66-identification-and-qualitative-analysis-of-high-cognitive-load-words)
 7. [Complete REST API Reference](#7-complete-rest-api-reference)
 8. [Codebase Organization & File Map](#8-codebase-organization--file-map)
 9. [Deployment, Environment Setup & Troubleshooting](#9-deployment-environment-setup--troubleshooting)
@@ -82,7 +84,7 @@ graph TD
 
     subgraph PERC["👁️ Perception Subsystem (core/gaze_core & core/unigaze_personalization)"]
         MP["MediaPipe 3D Face Landmarker"]
-        VIT["UniGaze ViT ONNX Model"]
+        VIT["UniGaze ViT PyTorch Model"]
         POLY["9-Point Polynomial Regression"]
         FILT["OneEuro & Corridor Filter"]
     end
@@ -146,7 +148,7 @@ flowchart LR
     A["Webcam Frame (640x480)"] --> B["MediaPipe 3D Landmarker"]
     B --> C["Extract 468 Landmarks & Head Pose"]
     C --> D["Crop & Normalize Face Region"]
-    D --> E["UniGaze ViT (ONNX Runtime)"]
+    D --> E["UniGaze ViT (PyTorch / unigaze)"]
     E --> F["Raw Gaze Pitch / Yaw Vector"]
     F --> G["2nd-Degree Polynomial Model"]
     G --> H["Raw Screen Coordinates (X, Y)"]
@@ -155,7 +157,7 @@ flowchart LR
 ```
 
 - **MediaPipe Landmark Extractor**: Detects 468 3D facial landmarks, isolates eye region bounding boxes, and calculates head pose angles (pitch, yaw, roll).
-- **UniGaze ViT Neural Network**: An ONNX Runtime execution engine (`unigaze_b16.onnx`) executing Vision Transformer inference to generate raw gaze direction vectors.
+- **UniGaze ViT Neural Network**: A PyTorch model loaded by the `unigaze` package to generate raw gaze direction vectors.
 - **Polynomial Personalization Adapter**: A 2nd-degree polynomial regression model mapping raw gaze vectors to screen pixel coordinates $[X, Y]$, fitted against a 9-point calibration manifest.
 - **Signal Filtering**: Incorporates a `OneEuroFilter` for jitter reduction and horizontal corridor constraints for line tracking.
 
@@ -361,7 +363,7 @@ sequenceDiagram
     participant Browser as Web Browser (JavaScript)
     participant Flask as Flask Backend (/api/gaze/predict)
     participant MP as MediaPipe Landmarker
-    participant ViT as UniGaze ONNX ViT
+    participant ViT as UniGaze PyTorch ViT
     participant Poly as Polynomial Model
 
     Browser->>Flask: POST /api/gaze/predict (Base64 JPEG Frame)
@@ -573,16 +575,16 @@ Generated under `output/fused_rds_dataset.csv`:
 ## 6. Empirical Benchmarks & Experimental Results
 
 ### 6.1 GECO Benchmark System Performance Evaluation
-Evaluated on the **Ghent Eye-Tracking Corpus (GECO)** under simulated extreme webcam drift ($+45\text{px}$ vertical offset, $\sigma_x=40\text{px}, \sigma_y=30\text{px}$ gaussian jitter) across 157 words:
+Evaluated on the **Ghent Eye-Tracking Corpus (GECO)** under simulated extreme webcam drift ($+45\text{px}$ vertical offset, $\sigma_x=40\text{px}, \sigma_y=30\text{px}$ gaussian jitter) across 156 word records:
+
+> **Validity scope:** Sections 6.1-6.3 are single-participant simulation/calibration diagnostics. They are useful for pipeline debugging but are not cross-subject predictive evidence. In particular, the fusion benchmark constructs simulated dwell from the same TRT used as its evaluation target.
 
 ```
                                GAZE WORD-MAPPING ACCURACY (%)
 Raw Gaze Baseline ─── 18.59%
-Viterbi Base      ─────────────── 48.72%
-Viterbi + EM      ───────────────────────────────── 73.72%
-STOCK-T v3 (POM)  ────────────────────────────────────── 78.21%
-                  └──────┬───────┴───────┬───────┴───────┬───────┘
-                         20%             40%             60%             80%
+Viterbi Base      ───────────────── 54.49%
+Viterbi + EM      ───────────────────────────────── 96.79%
+STOCK-T v3 (POM)  ──────────────────────────────── 93.59%
 ```
 
 ---
@@ -592,30 +594,59 @@ Data extracted from `output/demo_system_comparison.csv`:
 
 | Pipeline Configuration | Gaze Decoder | Cognitive Pipeline | Fusion Method | Gaze Accuracy (%) | RDS Correlation ($\rho$) | Latency (ms) | Academic Significance |
 | :--- | :--- | :--- | :--- | :---: | :---: | :---: | :--- |
-| **1. Raw Baseline** | Nearest Box (`nearest_box`) | None (`none`) | Linear | **18.59%** | 0.0636 | **1.55 ms** | Vulnerable to vertical drift (+45px). |
-| **2. Viterbi Base** | Standard HMM (`viterbi_base`) | None (`none`) | Linear | **48.72%** | 0.0910 | 140.07 ms | Saccade priors filter high-frequency noise. |
-| **3. Viterbi + EM** | Auto-Calibrating (`viterbi_em`) | None (`none`) | Linear | **73.72%** | 0.2050 | 210.74 ms | Dynamic EM window offsets +45px drift. |
-| **4. STOCK-T v1** | POM Gravitational Field | Surprisal (`surprisal`) | Linear | **75.00%** | 0.2110 | 208.50 ms | Incorporates cognitive mass attraction. |
-| **5. STOCK-T v2** | POM + EM | Surprisal (`surprisal`) | Multiplicative | **78.21%** | 0.2185 | 211.20 ms | Multiplicative fusion filters skipped words. |
-| **6. STOCK-T v3** | POM + EM (Optimal) | Surprisal (`surprisal`) | Bayesian | **78.21%** | **0.2258** | 209.78 ms | Peak accuracy & difficulty correlation. |
+| **1. Raw Baseline** | Nearest Box (`nearest_box`) | None (`none`) | Linear | **18.59%** | 0.0636 | **2.68 ms** | Vulnerable to vertical drift (+45px). |
+| **2. Viterbi Base** | Standard HMM (`viterbi_base`) | None (`none`) | Linear | **54.49%** | 0.0561 | 260.48 ms | Saccade priors filter high-frequency noise. |
+| **3. Viterbi + EM** | Auto-Calibrating (`viterbi_em`) | None (`none`) | Linear | **96.79%** | 0.1342 | 394.96 ms | Highest gaze accuracy in this seeded simulation. |
+| **4. STOCK-T v1** | Attention-guided transition | Surprisal (`surprisal`) | Linear | **38.46%** | 0.2519 | 253.41 ms | Cognitive transition diagnostic. |
+| **5. STOCK-T v2** | Cognitive transition | Surprisal (`surprisal`) | Multiplicative | **44.87%** | 0.2428 | 248.19 ms | Multiplicative fusion diagnostic. |
+| **6. STOCK-T v3** | POM + EM | Surprisal (`surprisal`) | Bayesian | **93.59%** | 0.3864 | 435.57 ms | High simulated gaze recovery. |
+| **7. STOCK-T v3 + CogMass** | POM + EM | Cognitive mass | Bayesian | **93.59%** | **0.4267** | 467.00 ms | Best single-trial RDS correlation; provenance-risk for predictive claims. |
+
+Latency is host-load dependent; the manifest records the exact hardware and per-run values.
 
 ---
 
-### 6.3 Multimodal Fusion Evaluation on Human Reading Time (TRT)
-Evaluated against human Total Reading Time (TRT) ground truth (`output/fusion_evaluation_summary.csv`):
+### 6.3 Single-Trial Multimodal Fusion Calibration
 
-| Fusion Method | Pearson $r$ | Pearson $p$-value | Spearman $\rho$ | Spearman $p$-value | Strategic Recommendation |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| **Linear** | **0.8880** | $7.91 \times 10^{-54}$ | **0.8816** | $4.40 \times 10^{-52}$ | Highest ground truth correlation on clean data. |
-| **Sigmoid** | 0.8490 | $1.65 \times 10^{-44}$ | **0.8816** | $4.40 \times 10^{-52}$ | Effective for binary difficulty classification. |
-| **Multiplicative** | 0.6812 | $1.30 \times 10^{-22}$ | 0.8007 | $4.28 \times 10^{-36}$ | Best noise robustness for webcam tracking. |
-| **Bayesian** | 0.7556 | $4.34 \times 10^{-30}$ | 0.7993 | $6.95 \times 10^{-36}$ | Optimal probabilistic interpretation. |
-| **Reciprocal Rank (RRF)** | 0.7742 | $2.13 \times 10^{-32}$ | 0.7819 | $2.05 \times 10^{-33}$ | Parameter-free ensemble baseline. |
-| **Attention-Gated** | 0.5742 | $4.63 \times 10^{-15}$ | 0.7507 | $1.59 \times 10^{-29}$ | Strict fixation thresholding. |
+The current seeded 156-row run (`output/fusion_experiment_manifest.json`) compares eleven fusion functions. RRF has the highest Spearman correlation ($\rho=0.6569$); Sigmoid has the highest Pearson correlation ($r=0.7503$). These numbers describe how the functions combine a target-derived simulated dwell signal with cognitive features. They must not be reported as out-of-sample reading-time prediction.
+
+The complete method table, parameters, data hashes, source hashes, and plots are recorded in `output/fusion_experiment_report.md` and `output/fusion_experiment_manifest.json`.
 
 ---
 
-### 6.4 Identification and Qualitative Analysis of High-Cognitive-Load Words
+### 6.4 Preregistered Cross-Subject and Cross-Trial Generalization
+
+The CPU-only v1.1 protocol was committed before the full result, uses 37 participants and 5,892 participant-trials, and holds out both reader folds and trial folds. Feature scaling is trained only on the remaining folds; no question-answer set, held-out target, same-event gaze, or test-driven hyperparameter selection is used.
+
+| Protocol / Model | Primary metric | 95% participant-bootstrap CI | Interpretation |
+| :--- | :---: | :---: | :--- |
+| New reader + new trial, text-only Ridge | Macro Spearman $\rho=0.1216$ | $[0.0926, 0.1513]$ | Positive but modest; does not beat word length. |
+| New reader + new trial, word length | Macro Spearman $\rho=0.1225$ | $[0.0932, 0.1522]$ | Mandatory simple baseline. |
+| New reader + known passage, other-reader duration prior | Macro Spearman $\rho=0.3105$ | $[0.3002, 0.3212]$ | Useful only when the passage has population history. |
+| New reader + known passage, other-reader fixation prior | Macro ROC AUC $0.7766$ | $[0.7647, 0.7888]$ | Strong secondary known-passage signal. |
+
+See `docs/GECO_GENERALIZATION_EXECUTION_LOG_2026-08-03.md` and `output/geco_generalization_manifest.json`. GECO v1.1 is now frozen as a test protocol; future feature development must use separate development data, followed by a preregistered cross-corpus evaluation.
+
+---
+
+### 6.5 Frozen GECO-to-PROVO Cross-Corpus Transfer
+
+The independent CPU-only PROVO v1.1 evaluation trains fixed lexical Ridge and logistic models on all 18 GECO L1 participants, then evaluates all 84 PROVO participants without fitting feature scales, coefficients, offsets, filters, or thresholds on PROVO. The protocol was committed before full-file outcomes; its sole amendment corrected EyeLink interest-area field semantics before any model was fitted.
+
+| Frozen score | PROVO macro participant result | 95% participant-bootstrap CI | Interpretation |
+| :--- | :---: | :---: | :--- |
+| GECO lexical Ridge | Spearman $\rho=0.2205$ | $[0.2035, 0.2377]$ | Positive basic transfer. |
+| Word length only | Spearman $\rho=0.2951$ | $[0.2758, 0.3144]$ | Strongest prespecified duration baseline. |
+| Lexical rarity only | Spearman $\rho=0.2811$ | $[0.2623, 0.2996]$ | Strong simple cross-corpus baseline. |
+| GECO fixation logistic | ROC AUC $0.6486$ | $[0.6410, 0.6561]$ | Modest secondary any-fixation transfer. |
+
+Ridge minus word length is $-0.0746$, 95% CI $[-0.0853,-0.0634]$, with paired sign-flip $p=0.000010$. The frozen decision is `basic_lexical_transfer_only`: the GECO model transfers some lexical ranking signal but is reliably worse than raw word length. This rules out presenting the unconstrained Ridge combination as a corpus-independent improvement.
+
+See `docs/PROVO_ZERO_SHOT_EXECUTION_LOG_2026-08-03.md` and `output/provo_zero_shot_manifest.json`. Both GECO and PROVO results are frozen tests. Any richer candidate must be developed on another corpus and confirmed once on a separate untouched corpus.
+
+---
+
+### 6.6 Identification and Qualitative Analysis of High-Cognitive-Load Words
 Top 10 cognitive bottleneck words identified by the optimal fusion model (`output/fusion_experiment_report.md`):
 
 | Rank | Word ID | Word | Human TRT (ms) | BERT Surprisal (bits) | Linear RDS | Primary Cognitive Driver |
@@ -637,7 +668,7 @@ Top 10 cognitive bottleneck words identified by the optimal fusion model (`outpu
 
 ### 7.1 System & Module Health Diagnostics
 - `GET /api/ping` — Core backend health and active layout session count.
-- `GET /api/gaze/health` — Gaze tracking module and ONNX model status.
+- `GET /api/gaze/health` — Gaze tracking module and configured runtime device policy.
 - `GET /api/cognitive/health` — Cognition engine status and loaded HuggingFace models list.
 - `GET /api/fuse/health` — Fusion engine status and available algorithms list.
 
@@ -690,7 +721,7 @@ lexigaze/
 │   │   └── training.py                     # 2nd-degree polynomial regression trainer
 │   └── unigaze_personalization/            # Neural ViT Model Infrastructure
 │       ├── preprocess.py                   # Facial landmarker, cropping & normalization
-│       ├── model.py                        # ONNX Runtime UniGaze ViT execution wrapper
+│       ├── model.py                        # PyTorch UniGaze ViT loading and feature wrapper
 │       └── server.py                       # Standalone personalization service endpoints
 │
 ├── web/                                    # 🌐 FLASK WEB APPLICATION PACKAGE
@@ -753,7 +784,7 @@ lexigaze/
 uv sync
 
 # Download spaCy English model
-.venv/bin/python -m spacy download en_core_web_sm
+uv run python -m spacy download en_core_web_sm
 ```
 
 #### Option B — Conda Environment
@@ -782,6 +813,9 @@ Create a `.env` file in the project root:
 # Optional: Path where Hugging Face weights are cached
 HF_HOME="/home/ubuntu/.cache/huggingface"
 
+# Runtime accelerator policy (auto, cpu, cuda, or cuda:N)
+LEXIGAZE_DEVICE=auto
+
 # Google AI Studio API Key for Cognitive Inspector Markdown reports
 GEMINI_API_KEY=your_gemini_api_key_here
 
@@ -795,10 +829,10 @@ MODEL_NAME="gemma-4-26b-a4b-it"
 
 ```bash
 # Standard local mode (Access via http://localhost:8080)
-.venv/bin/python -X utf8 run.py
+uv run python -X utf8 run.py
 
 # Remote cross-platform mode (Spawns ngrok HTTPS tunnel & QR Code)
-.venv/bin/python -X utf8 run.py --tunnel
+uv run python -X utf8 run.py --tunnel
 ```
 
 ---
@@ -807,7 +841,7 @@ MODEL_NAME="gemma-4-26b-a4b-it"
 
 1. **`UnicodeEncodeError` on Startup**:
    - **Cause**: Windows terminal encoding mismatch (CP950/Big5).
-   - **Solution**: Always launch using `.venv/bin/python -X utf8 run.py`.
+   - **Solution**: Always launch using `uv run python -X utf8 run.py`.
 
 2. **`ModuleNotFoundError: No module named 'web'`**:
    - **Cause**: Script executed from a subdirectory.

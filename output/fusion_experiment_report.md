@@ -1,8 +1,14 @@
 # LexiGaze Multimodal Gaze-Cognitive Fusion Report
 
-This report summarizes the comparative evaluation of six different fusion algorithms designed to combine eye-gaze tracking metrics (total reading time / dwell duration) with cognitive load metrics (information surprisal from BERT) into a unified **Reading Difficulty Score (RDS)**.
+This report summarizes the comparative evaluation of eleven fusion algorithms designed to combine eye-gaze tracking metrics (total reading time / dwell duration) with cognitive load metrics (information surprisal from BERT) into a unified **Reading Difficulty Score (RDS)**.
 
-The algorithms were tested on the **GECO Corpus (pp01, Trial 5)** dataset consisting of 157 words read by a human subject. The ground-truth reading difficulty is represented by the actual human **Total Reading Time (TRT)**.
+The algorithms were tested on **156 merged word records** from the **GECO Corpus (pp01, Trial 5)**. The ground-truth reading difficulty is represented by the actual human **Total Reading Time (TRT)**.
+
+---
+
+## Validity Scope
+
+This is a **descriptive calibration diagnostic**, not an out-of-sample prediction benchmark. The simulated dwell and fixation inputs are constructed from the same TRT used as the evaluation target, and the current cognitive-mass extraction path can include GECO-supervised XGBoost/Ridge scores. Use `output/geco_generalization_report.md` for preregistered new-reader/new-trial evidence.
 
 ---
 
@@ -55,7 +61,7 @@ Below are the top 10 words identified as having the highest reading difficulty u
 
 ## Visualizations Generated in `output/`
 
-1. **`fusion_correlation_comparison.png`**: Bar chart comparing Pearson and Spearman correlation coefficients across all 6 methods.
+1. **`fusion_correlation_comparison.png`**: Bar chart comparing Pearson and Spearman correlation coefficients across all 11 methods.
 2. **`rds_distributions.png`**: Density plot showing the RDS score distributions.
 3. **`gaze_cognitive_space_rds.png`**: Scatter plot of the 2D gaze-cognitive space (Surprisal vs. Dwell time) colored by fused RDS.
 4. **`top_difficult_words.png`**: Horizontal bar plot of the top 10 most difficult words.

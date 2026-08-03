@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from flask import Blueprint, jsonify, request
@@ -18,7 +19,12 @@ gaze_api_bp = Blueprint("gaze_api", __name__, url_prefix="/api")
 @gaze_bp.get("/health")
 def health():
     ensure_runs_dir(ROOT)
-    return jsonify({"ok": True, "backend": "chenghao-gaze", "mode": "http-polling"})
+    return jsonify({
+        "ok": True,
+        "backend": "chenghao-gaze",
+        "mode": "http-polling",
+        "device_policy": os.environ.get("LEXIGAZE_DEVICE", "auto"),
+    })
 
 
 @gaze_bp.get("/models")
@@ -142,7 +148,12 @@ def model_ops(model_name):
 @gaze_api_bp.get("/health")
 def api_health():
     ensure_runs_dir(ROOT)
-    return jsonify({"ok": True, "backend": "chenghao-gaze", "mode": "http-polling"})
+    return jsonify({
+        "ok": True,
+        "backend": "chenghao-gaze",
+        "mode": "http-polling",
+        "device_policy": os.environ.get("LEXIGAZE_DEVICE", "auto"),
+    })
 
 
 @gaze_api_bp.get("/list_models")

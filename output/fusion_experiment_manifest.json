@@ -1,0 +1,215 @@
+{
+  "artifacts": [
+    {
+      "exists": true,
+      "path": "output/fusion_evaluation_summary.csv",
+      "sha256": "9b32b2ebd19761820595a81cf4dea1e0b2be038b26ab5df0605ea997abec7b75",
+      "size_bytes": 553
+    },
+    {
+      "exists": true,
+      "path": "output/fused_rds_dataset.csv",
+      "sha256": "cf87c5f5594d8139f1a2a11124e2fb578570bf0e1306eacbd3a75c0b004bef73",
+      "size_bytes": 39239
+    },
+    {
+      "exists": true,
+      "path": "output/fusion_correlation_comparison.png",
+      "sha256": "7f58b52e1e1518ac85ad13a0e44ae738187e8cda9bd7edb6cca9762b88c3be2f",
+      "size_bytes": 183104
+    },
+    {
+      "exists": true,
+      "path": "output/rds_distributions.png",
+      "sha256": "6e4f902da519a56c2b06a17222348ed0c07a822b676267f68734e74c68f79aba",
+      "size_bytes": 537334
+    },
+    {
+      "exists": true,
+      "path": "output/gaze_cognitive_space_rds.png",
+      "sha256": "4dac0384fff76c59097378b1ad6eacc4bbf07fd05d86b9fd12b6248be1db80a5",
+      "size_bytes": 255219
+    },
+    {
+      "exists": true,
+      "path": "output/top_difficult_words.png",
+      "sha256": "bc8c0b31fc17774d28155dbd9320e0f1860b2c4728723ccd004c6f46c2da643c",
+      "size_bytes": 117136
+    },
+    {
+      "exists": true,
+      "path": "output/fusion_experiment_report.md",
+      "sha256": "0fd7319c724978619e62203b559188b10930a16f89579c0687144d4ccf757016",
+      "size_bytes": 4006
+    }
+  ],
+  "config": {
+    "corpus": "GECO",
+    "dwell_jitter_sigma": 40.0,
+    "evaluation_scope": "single_participant_descriptive_calibration",
+    "fixation_jitter_sigma": 10.0,
+    "fixation_scale": 0.85,
+    "gated_threshold": 0.25,
+    "participant": "pp01",
+    "predictive_generalization_eligible": false,
+    "same_event_gaze_derived_from_target_trt": true,
+    "skip_rate": 0.3,
+    "trial": 5
+  },
+  "datasets": [
+    {
+      "exists": true,
+      "path": "archive/data/geco/geco_pp01_trial5_clean.csv",
+      "sha256": "824aab36d5478666f9f20672abf9b352e8e768da458ce84e7a76a5e0d0471a25",
+      "size_bytes": 4853
+    },
+    {
+      "exists": true,
+      "path": "archive/data/geco/geco_pp01_cognitive_mass.csv",
+      "sha256": "9b83248ee7d91044c6f87142f3999407483ebd028f2b27351bc6e77db9503609",
+      "size_bytes": 7207
+    }
+  ],
+  "experiment": {
+    "command": [
+      "scripts\\experiment_fusion.py"
+    ],
+    "created_at": "2026-08-03T08:03:33.917590+00:00",
+    "duration_seconds": 1.830903,
+    "name": "fusion_comparison_geco_pp01_trial5",
+    "seed": 42,
+    "status": "completed"
+  },
+  "metrics": {
+    "best_pearson_method": "Sigmoid",
+    "best_pearson_r": 0.7503,
+    "best_spearman_method": "Rrf",
+    "best_spearman_rho": 0.6569,
+    "method_results": [
+      {
+        "Method": "Linear",
+        "Pearson p-val": "1.11e-27",
+        "Pearson r": 0.7341,
+        "Spearman p-val": "1.55e-17",
+        "Spearman rho": 0.614
+      },
+      {
+        "Method": "Multiplicative",
+        "Pearson p-val": "3.17e-19",
+        "Pearson r": 0.6383,
+        "Spearman p-val": "1.79e-06",
+        "Spearman rho": 0.3716
+      },
+      {
+        "Method": "Gated",
+        "Pearson p-val": "1.10e-13",
+        "Pearson r": 0.5495,
+        "Spearman p-val": "3.95e-18",
+        "Spearman rho": 0.6228
+      },
+      {
+        "Method": "Sigmoid",
+        "Pearson p-val": "1.78e-29",
+        "Pearson r": 0.7503,
+        "Spearman p-val": "1.55e-17",
+        "Spearman rho": 0.614
+      },
+      {
+        "Method": "Bayesian",
+        "Pearson p-val": "1.10e-19",
+        "Pearson r": 0.6445,
+        "Spearman p-val": "4.53e-07",
+        "Spearman rho": 0.3909
+      },
+      {
+        "Method": "Rrf",
+        "Pearson p-val": "3.02e-26",
+        "Pearson r": 0.7203,
+        "Spearman p-val": "1.26e-20",
+        "Spearman rho": 0.6569
+      },
+      {
+        "Method": "Spillover_bayesian",
+        "Pearson p-val": "6.89e-18",
+        "Pearson r": 0.6192,
+        "Spearman p-val": "3.36e-13",
+        "Spearman rho": 0.5403
+      },
+      {
+        "Method": "Parafoveal",
+        "Pearson p-val": "9.90e-21",
+        "Pearson r": 0.6582,
+        "Spearman p-val": "1.47e-08",
+        "Spearman rho": 0.4344
+      },
+      {
+        "Method": "Spillover_rrf",
+        "Pearson p-val": "1.49e-20",
+        "Pearson r": 0.656,
+        "Spearman p-val": "7.61e-15",
+        "Spearman rho": 0.5704
+      },
+      {
+        "Method": "Parafoveal_rrf",
+        "Pearson p-val": "7.95e-26",
+        "Pearson r": 0.7161,
+        "Spearman p-val": "2.22e-20",
+        "Spearman rho": 0.6537
+      },
+      {
+        "Method": "Spillover_parafoveal_rrf",
+        "Pearson p-val": "1.87e-20",
+        "Pearson r": 0.6547,
+        "Spearman p-val": "4.49e-15",
+        "Spearman rho": 0.5744
+      }
+    ],
+    "pearson_r_for_best_spearman": 0.7203,
+    "row_count": 156
+  },
+  "runtime": {
+    "device_policy": "cpu",
+    "gpus": [
+      {
+        "driver_version": "581.57",
+        "memory_total_mib": "24463",
+        "name": "NVIDIA GeForce RTX 5090 Laptop GPU"
+      }
+    ],
+    "implementation": "CPython",
+    "machine": "AMD64",
+    "packages": {
+      "matplotlib": "3.10.9",
+      "numpy": "2.4.4",
+      "pandas": "3.0.2",
+      "scipy": "1.17.1",
+      "seaborn": "0.13.2",
+      "torch": "2.13.0+cu130",
+      "transformers": "5.7.0"
+    },
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9"
+  },
+  "schema_version": 1,
+  "source": {
+    "branch": "codex/feat/runtime-resource-guardrails",
+    "commit": "4267f4352f22cb047051bb2325bef212c72e94cc",
+    "dirty": false,
+    "files": [
+      {
+        "exists": true,
+        "path": "scripts/experiment_manifest.py",
+        "sha256": "a09488d0f874f25e1be5f4bf7d27b214a3b1743b5d2bd26f5b06036942dee71a",
+        "size_bytes": 8192
+      },
+      {
+        "exists": true,
+        "path": "scripts/experiment_fusion.py",
+        "sha256": "9f676ce0175f0816801f4709ab95c6f1a2fecbcf21c506536354788a778471f6",
+        "size_bytes": 14933
+      }
+    ],
+    "tracked_changes": false,
+    "tracked_diff_from_head_sha256": null
+  }
+}

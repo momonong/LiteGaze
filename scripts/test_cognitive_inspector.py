@@ -3,6 +3,7 @@ import unittest
 import json
 import shutil
 from pathlib import Path
+from unittest.mock import patch
 
 # Setup root path for import
 ROOT = Path(__file__).resolve().parent.parent
@@ -52,7 +53,8 @@ class TestCognitiveInspectorUnit(unittest.TestCase):
                 "timestamp_ms": 1000 + i * 150
             })
             
-        result = self.inspector.analyze(gaze_history, lang="en")
+        with patch("core.cognitive_inspector.inspector.zipf_frequency") as zipf_mock:
+            result = self.inspector.analyze(gaze_history, lang="en")
         summary = result["summary"]
         profile = result["user_profile"]
 
@@ -62,6 +64,25 @@ class TestCognitiveInspectorUnit(unittest.TestCase):
         self.assertGreaterEqual(profile["reading_ability_score"], 70)
         self.assertLess(profile["cognitive_load_index"], 40)
         self.assertEqual(profile["attention_index"], 100)
+        self.assertEqual(profile["english_proficiency_score"], 88.0)
+        self.assertEqual(profile["avg_struggle_word_frequency"], 0.0)
+        zipf_mock.assert_not_called()
+
+    def test_reread_marks_only_revisited_word_as_struggle(self):
+        """回看時只應將真正重訪的單字送入詞頻評估。"""
+        gaze_history = [
+            {"word": "the", "index": 0, "confidence": "high", "timestamp_ms": 1000},
+            {"word": "cat", "index": 1, "confidence": "high", "timestamp_ms": 1150},
+            {"word": "the", "index": 0, "confidence": "high", "timestamp_ms": 1300},
+        ]
+
+        with patch(
+            "core.cognitive_inspector.inspector.zipf_frequency", return_value=7.0
+        ) as zipf_mock:
+            result = self.inspector.analyze(gaze_history, lang="en")
+
+        zipf_mock.assert_called_once_with("the", "en")
+        self.assertLess(result["user_profile"]["english_proficiency_score"], 88.0)
 
     def test_regressions_and_rereads(self):
         """測試包含回看（Regression）與重讀（Reread）的困難閱讀情境。"""

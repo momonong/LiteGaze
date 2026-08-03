@@ -1,0 +1,122 @@
+{
+  "configuration": {
+    "bootstrap_samples": 10000,
+    "feature_columns": [
+      "log_char_length",
+      "zipf_frequency",
+      "relative_position",
+      "starts_upper",
+      "ends_punctuation"
+    ],
+    "logistic_alpha": 1.0,
+    "logistic_max_iterations": 100,
+    "logistic_tolerance": 1e-08,
+    "protocol_path": "docs/PROVO_ZERO_SHOT_PROTOCOL_V1_1_2026-08-03.md",
+    "ridge_alpha": 1.0,
+    "seed": 20260804,
+    "sign_flip_samples": 100000
+  },
+  "created_at": "2026-08-03T08:41:39.294185+00:00",
+  "datasets": {
+    "geco": {
+      "corpus": "GECO_L1",
+      "file_count": 6104,
+      "fixated_row_count": 241679,
+      "participant_trial_count": 3052,
+      "root": "D:/projects/lexigaze/data/geco/population/L1",
+      "row_count": 324240,
+      "sha256_tree": "b9833e60b84ff49f8f8c9c7c4e7e990f091779bb1ef679933085c57f202b01bd",
+      "size_bytes": 24905820,
+      "subject_count": 18,
+      "trial_count": 178
+    },
+    "provo": {
+      "corpus": "PROVO",
+      "filename": "Provo_Corpus-Eyetracking_Data.csv",
+      "first_pass_skipped_row_count": 101605,
+      "fixated_row_count": 153566,
+      "osf_project": "https://osf.io/sjefs/",
+      "participant_text_count": 4620,
+      "path": "D:/projects/lexigaze/data/provo/raw/Provo_Corpus-Eyetracking_Data.csv",
+      "row_count": 230412,
+      "sha256": "38aedcb29bc9171009916eb2bcc2375729f104a2a1005c64a563da94b611b9e7",
+      "size_bytes": 69662713,
+      "skipped_row_count": 76846,
+      "source_url": "https://osf.io/download/a32be/",
+      "subject_count": 84,
+      "text_count": 55,
+      "unique_word_item_count": 2743
+    }
+  },
+  "duration_seconds": 38.37683890003245,
+  "leakage_controls": {
+    "device": "cpu",
+    "geco_cognitive_mass_used": false,
+    "provo_cloze_or_lsa_used": false,
+    "provo_corpus_offset_fitted": false,
+    "provo_features_used_for_scaling": false,
+    "provo_outcomes_used_for_training": false,
+    "question_answer_dataset_used": false,
+    "torch_imported": false
+  },
+  "protocol_version": "1.1",
+  "results": {
+    "decision": "basic_lexical_transfer_only",
+    "duration_models": [
+      {
+        "bootstrap_ci_95": [
+          0.2034595514174923,
+          0.237703039188804
+        ],
+        "macro_mean_spearman_rho": 0.22049388385006485,
+        "mean_mae_log": 0.46302243021368944,
+        "model": "geco_lexical_ridge",
+        "participant_count": 84
+      },
+      {
+        "bootstrap_ci_95": [
+          0.275827995129437,
+          0.31444785820660287
+        ],
+        "macro_mean_spearman_rho": 0.29508804847259607,
+        "mean_mae_log": null,
+        "model": "word_length_only",
+        "participant_count": 84
+      },
+      {
+        "bootstrap_ci_95": [
+          0.2622963938900109,
+          0.29955014733140367
+        ],
+        "macro_mean_spearman_rho": 0.28112554668252177,
+        "mean_mae_log": null,
+        "model": "lexical_rarity_only",
+        "participant_count": 84
+      }
+    ],
+    "primary_tests": {
+      "ridge_minus_word_length_bootstrap_ci_95": [
+        -0.08530393263839169,
+        -0.06343280744470733
+      ],
+      "ridge_minus_word_length_macro_rho": -0.07459416462253111,
+      "ridge_vs_word_length_paired_two_sided_p": 9.99990000099999e-06,
+      "ridge_vs_zero_two_sided_p": 9.99990000099999e-06
+    },
+    "secondary_fixation": {
+      "brier_bootstrap_ci_95": [
+        0.2073001224153945,
+        0.2271076676148605
+      ],
+      "macro_mean_brier": 0.21698854261477424,
+      "macro_mean_roc_auc": 0.6486385447595979,
+      "model": "geco_fixation_logistic",
+      "participant_count": 84,
+      "roc_auc_bootstrap_ci_95": [
+        0.6410292815380052,
+        0.6561159945114041
+      ]
+    }
+  },
+  "status": "completed"
+}

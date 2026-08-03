@@ -21,7 +21,7 @@ LexiGaze is divided into four decoupled subsystems, each responsible for a disti
 │  PERCEPTION MODULE   │    │   COGNITION MODULE   │    │  FUSION ENGINE  │
 │   (core/gaze_core)   │    │   (core/cognition)   │    │    (scripts)    │
 │  - Landmark Detect   │    │  - HuggingFace LLMs  │    │  - Viterbi POM  │
-│  - UniGaze ONNX ViT  │    │  - Surprisal Engine  │    │  - EM Calibrate │
+│ - UniGaze PyTorch ViT│    │  - Surprisal Engine  │    │  - EM Calibrate │
 │  - Polynomial Reg    │    │  - XGBoost Scorer    │    │  - Multi. Sum   │
 └──────────────────────┘    └──────────────────────┘    └─────────────────┘
 ```
@@ -29,7 +29,7 @@ LexiGaze is divided into four decoupled subsystems, each responsible for a disti
 ### 1. Perception Module (`core/gaze_core/` & `core/unigaze_personalization/`)
 Processes real-time webcam streams to track eye coordinates:
 * **Preprocessing**: Face landmarker extracts 3D facial landmarks and crops the face region.
-* **Neural Gaze Prediction**: The cropped face is transformed and passed to a pre-trained UniGaze-B16 ViT model (loaded via ONNX Runtime), outputting pitch/yaw angles.
+* **Neural Gaze Prediction**: The cropped face is transformed and passed to a pre-trained UniGaze-B16 ViT model loaded through the PyTorch-based `unigaze` package, outputting pitch/yaw angles.
 * **Calibration Adaptation**: Corrects eye-tracking systematic bias (e.g. laptop-screen posture changes) using a polynomial regression model fit to a 9-point grid.
 * **Smoothing**: Appling OneEuro and horizontal corridor filters to minimize jitter.
 
@@ -60,7 +60,7 @@ The web presentation framework (built on Flask) providing interactive reading da
 [MediaPipe Landmark Processor] ──► Crop & Pose Estimation
        │
        ▼ (Normalized Face Image)
-[UniGaze ONNX Model] ────────────► Raw Gaze Vector [Pitch, Yaw]
+[UniGaze PyTorch Model] ─────────► Raw Gaze Vector [Pitch, Yaw]
        │
        ▼
 [Polynomial Adapter Model] ──────► Corrected Screen Coordinates [X, Y]

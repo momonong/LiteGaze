@@ -36,9 +36,6 @@ miniconda3/
 .gemini/
 .antigravitycli/
 
-# uv
-uv.lock
-
 # huggingface cache
 hub/
 
@@ -51,6 +48,7 @@ gaze_data/
 # binary model / wasm files (large, not tracked)
 *.onnx
 *.task
+!web/static/face_landmarker.task
 wasm/
 
 # ngrok binaries

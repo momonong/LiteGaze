@@ -1,0 +1,172 @@
+{
+  "artifacts": [
+    {
+      "exists": true,
+      "path": "output/provo_zero_shot_fingerprint.json",
+      "sha256": "c826a67df84fcd7a47d00ec39c1a4829f680f9d2591c300229be09ffd438a165",
+      "size_bytes": 1024
+    },
+    {
+      "exists": true,
+      "path": "output/provo_zero_shot_subject_metrics.csv",
+      "sha256": "829c043259e46cf852c934bc2432356305a63d0deadc83e0f2383dec6e7e28b0",
+      "size_bytes": 11341
+    },
+    {
+      "exists": true,
+      "path": "output/provo_zero_shot_models.json",
+      "sha256": "eee65959ec5676874237bd459fd07e3fcc510e8e77a3bc86889da1b084d6d304",
+      "size_bytes": 1428
+    },
+    {
+      "exists": true,
+      "path": "output/provo_zero_shot_summary.json",
+      "sha256": "feb74580a6de7c4b818501485cd4d0ad21018326730b6de460b7584426a569c6",
+      "size_bytes": 3709
+    },
+    {
+      "exists": true,
+      "path": "output/provo_zero_shot_report.md",
+      "sha256": "ab31103409bf1b7370063dcf1fa8909deb4604c138ffe375dec0fd3b2d136be3",
+      "size_bytes": 2093
+    },
+    {
+      "exists": true,
+      "path": "output/provo_zero_shot.png",
+      "sha256": "4310c1b96c2ea7340c8726c94621e724f91bab6c0ca5fd2de7e23b235201b508",
+      "size_bytes": 69148
+    }
+  ],
+  "config": {
+    "bootstrap_samples": 10000,
+    "feature_columns": [
+      "log_char_length",
+      "zipf_frequency",
+      "relative_position",
+      "starts_upper",
+      "ends_punctuation"
+    ],
+    "logistic_alpha": 1.0,
+    "logistic_max_iterations": 100,
+    "logistic_tolerance": 1e-08,
+    "protocol_path": "docs/PROVO_ZERO_SHOT_PROTOCOL_V1_1_2026-08-03.md",
+    "ridge_alpha": 1.0,
+    "seed": 20260804,
+    "sign_flip_samples": 100000
+  },
+  "datasets": [
+    {
+      "exists": true,
+      "path": "data/provo/raw/Provo_Corpus-Eyetracking_Data.csv",
+      "sha256": "38aedcb29bc9171009916eb2bcc2375729f104a2a1005c64a563da94b611b9e7",
+      "size_bytes": 69662713
+    },
+    {
+      "exists": true,
+      "path": "output/provo_zero_shot_fingerprint.json",
+      "sha256": "c826a67df84fcd7a47d00ec39c1a4829f680f9d2591c300229be09ffd438a165",
+      "size_bytes": 1024
+    }
+  ],
+  "experiment": {
+    "command": [
+      "scripts/evaluate_provo_zero_shot.py"
+    ],
+    "created_at": "2026-08-03T08:41:39.493687+00:00",
+    "duration_seconds": 38.37683890003245,
+    "name": "geco_to_provo_zero_shot_v1_1",
+    "seed": 20260804,
+    "status": "completed"
+  },
+  "metrics": {
+    "decision": "basic_lexical_transfer_only",
+    "primary_model": {
+      "bootstrap_ci_95": [
+        0.2034595514174923,
+        0.237703039188804
+      ],
+      "macro_mean_spearman_rho": 0.22049388385006485,
+      "mean_mae_log": 0.46302243021368944,
+      "model": "geco_lexical_ridge",
+      "participant_count": 84
+    },
+    "primary_tests": {
+      "ridge_minus_word_length_bootstrap_ci_95": [
+        -0.08530393263839169,
+        -0.06343280744470733
+      ],
+      "ridge_minus_word_length_macro_rho": -0.07459416462253111,
+      "ridge_vs_word_length_paired_two_sided_p": 9.99990000099999e-06,
+      "ridge_vs_zero_two_sided_p": 9.99990000099999e-06
+    },
+    "secondary_fixation": {
+      "brier_bootstrap_ci_95": [
+        0.2073001224153945,
+        0.2271076676148605
+      ],
+      "macro_mean_brier": 0.21698854261477424,
+      "macro_mean_roc_auc": 0.6486385447595979,
+      "model": "geco_fixation_logistic",
+      "participant_count": 84,
+      "roc_auc_bootstrap_ci_95": [
+        0.6410292815380052,
+        0.6561159945114041
+      ]
+    }
+  },
+  "runtime": {
+    "device_policy": "cpu",
+    "gpus": [
+      {
+        "driver_version": "581.57",
+        "memory_total_mib": "24463",
+        "name": "NVIDIA GeForce RTX 5090 Laptop GPU"
+      }
+    ],
+    "implementation": "CPython",
+    "machine": "AMD64",
+    "packages": {
+      "matplotlib": "3.10.9",
+      "numpy": "2.4.4",
+      "pandas": "3.0.2",
+      "scipy": "1.17.1",
+      "wordfreq": "3.1.1"
+    },
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9"
+  },
+  "schema_version": 1,
+  "source": {
+    "branch": "codex/feat/runtime-resource-guardrails",
+    "commit": "2fef969bbfde0ee5d0bd0ad7f44644c1f9544803",
+    "dirty": false,
+    "files": [
+      {
+        "exists": true,
+        "path": "scripts/experiment_manifest.py",
+        "sha256": "a09488d0f874f25e1be5f4bf7d27b214a3b1743b5d2bd26f5b06036942dee71a",
+        "size_bytes": 8192
+      },
+      {
+        "exists": true,
+        "path": "scripts/evaluate_provo_zero_shot.py",
+        "sha256": "369b6767ea22d3eb9ae2cf40faeac2f1e9b15584a76510eae8dea02f41e89867",
+        "size_bytes": 36113
+      },
+      {
+        "exists": true,
+        "path": "docs/PROVO_ZERO_SHOT_PROTOCOL_V1_1_2026-08-03.md",
+        "sha256": "9bdd94b8bf3c737c2e67c5416bdc3a11fda48df1f372b331481c82a883bc02a2",
+        "size_bytes": 4129
+      },
+      {
+        "exists": true,
+        "path": "scripts/download_provo.py",
+        "sha256": "457ec42ab627634ef6789bf28d6d0160fc299938509e4711236058c8d5f8ec83",
+        "size_bytes": 3911
+      }
+    ],
+    "tracked_changes": false,
+    "tracked_diff_from_head_sha256": null
+  }
+}

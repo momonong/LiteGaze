@@ -1,19 +1,11 @@
 # IMPORTANT: Start with `python -X utf8 run.py` to prevent UnicodeEncodeError
 # crashes on Windows CP950 when library code prints non-Big5 characters.
-import webbrowser
+import argparse
 import sys
+import webbrowser
 from pathlib import Path
 
-import argparse
-
 sys.dont_write_bytecode = True
-
-# Fix HF_HOME if it's set to a Windows drive path on a non-Windows OS
-import os
-if os.name != 'nt' and os.environ.get("HF_HOME"):
-    _hf_home = os.environ["HF_HOME"]
-    if ":" in _hf_home or _hf_home.startswith("D:") or _hf_home.startswith("C:"):
-        del os.environ["HF_HOME"]
 
 ROOT = Path(__file__).parent
 DATA_DIR = ROOT / 'data'
@@ -29,7 +21,6 @@ if __name__ == '__main__':
 
     ngrok_proc = None
     if args.tunnel:
-        sys.path.insert(0, str(ROOT))
         try:
             from scripts.setup_remote_collection import download_ngrok, start_tunnel
             print("Configuring ngrok tunnel...")
