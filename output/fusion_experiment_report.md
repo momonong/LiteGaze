@@ -6,6 +6,12 @@ The algorithms were tested on **156 merged word records** from the **GECO Corpus
 
 ---
 
+## Validity Scope
+
+This is a **descriptive calibration diagnostic**, not an out-of-sample prediction benchmark. The simulated dwell and fixation inputs are constructed from the same TRT used as the evaluation target, and the current cognitive-mass extraction path can include GECO-supervised XGBoost/Ridge scores. Use `output/geco_generalization_report.md` for preregistered new-reader/new-trial evidence.
+
+---
+
 ## Fusion Performance Summary
 
 Each fusion method was evaluated by computing its Pearson correlation ($r$) and Spearman rank correlation ($\rho$) against the ground-truth Total Reading Time.

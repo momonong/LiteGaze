@@ -39,17 +39,20 @@
     {
       "exists": true,
       "path": "output/fusion_experiment_report.md",
-      "sha256": "73ddb1a2a6e22e243e868d48b795f89f5b4d657aa4fa165a10975c656356a8a8",
-      "size_bytes": 3588
+      "sha256": "0fd7319c724978619e62203b559188b10930a16f89579c0687144d4ccf757016",
+      "size_bytes": 4006
     }
   ],
   "config": {
     "corpus": "GECO",
     "dwell_jitter_sigma": 40.0,
+    "evaluation_scope": "single_participant_descriptive_calibration",
     "fixation_jitter_sigma": 10.0,
     "fixation_scale": 0.85,
     "gated_threshold": 0.25,
     "participant": "pp01",
+    "predictive_generalization_eligible": false,
+    "same_event_gaze_derived_from_target_trt": true,
     "skip_rate": 0.3,
     "trial": 5
   },
@@ -71,8 +74,8 @@
     "command": [
       "scripts\\experiment_fusion.py"
     ],
-    "created_at": "2026-08-03T07:14:01.068421+00:00",
-    "duration_seconds": 1.252398,
+    "created_at": "2026-08-03T08:03:33.917590+00:00",
+    "duration_seconds": 1.830903,
     "name": "fusion_comparison_geco_pp01_trial5",
     "seed": 42,
     "status": "completed"
@@ -190,23 +193,23 @@
   "schema_version": 1,
   "source": {
     "branch": "codex/feat/runtime-resource-guardrails",
-    "commit": "b22b63728e79cdbf68d2b85385f33089aac4ac30",
-    "dirty": true,
+    "commit": "4267f4352f22cb047051bb2325bef212c72e94cc",
+    "dirty": false,
     "files": [
       {
         "exists": true,
         "path": "scripts/experiment_manifest.py",
-        "sha256": "071b0d69d8eb59d81f6daaeb1cd8aa6b911deda1d731b001cc2329f423ab753d",
-        "size_bytes": 7586
+        "sha256": "a09488d0f874f25e1be5f4bf7d27b214a3b1743b5d2bd26f5b06036942dee71a",
+        "size_bytes": 8192
       },
       {
         "exists": true,
         "path": "scripts/experiment_fusion.py",
-        "sha256": "444a728e5c54bb16e3948ab6e5bd99c6d8d5bc3d46f89cce48711a607e904b5e",
-        "size_bytes": 14153
+        "sha256": "9f676ce0175f0816801f4709ab95c6f1a2fecbcf21c506536354788a778471f6",
+        "size_bytes": 14933
       }
     ],
-    "tracked_changes": true,
-    "tracked_diff_from_head_sha256": "cd908962c529ebec19c9708b52303ff52d58264ab0e3d1a7f9445316858e7742"
+    "tracked_changes": false,
+    "tracked_diff_from_head_sha256": null
   }
 }
