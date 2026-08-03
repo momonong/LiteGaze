@@ -169,3 +169,19 @@ FP16 ran from clean commit `248a9bc` under a clean guard. The machine-readable r
 Decision: reject FP16 autocast for batch-one UniGaze inference. Its numerical parity is acceptable, but autocast/cast overhead outweighs any Tensor Core benefit and fails the latency gate.
 
 Next, test BF16 under the same conditions.
+
+### Phase C3: BF16 autocast
+
+BF16 ran from clean commit `6b15957` under a clean guard. The machine-readable result is [`results/2026-08-04-cuda-amp-bf16-model.json`](results/2026-08-04-cuda-amp-bf16-model.json).
+
+| Metric | Eager FP32 | AMP BF16 | Outcome |
+| --- | ---: | ---: | --- |
+| End-to-end p50 | 7.439 ms | 7.820 ms | 5.12% slower |
+| End-to-end p95 | 8.136 ms | 8.350 ms | 2.63% slower |
+| Model-forward p50 | 6.578 ms | 7.002 ms | 6.44% slower |
+| Peak allocated VRAM | 369.965 MiB | 371.332 MiB | +1.367 MiB |
+| Max absolute error | 0.0 | 0.002088 | within 0.005 tolerance |
+
+Decision: reject BF16 autocast. Like FP16, it passes numerical parity but adds latency at batch one. Neither mixed-precision mode should be enabled in production based on these results.
+
+Next, attempt `torch.compile` default and reduce-overhead modes. Compilation remains isolated by process and bounded by the five-minute supervisor timeout.
