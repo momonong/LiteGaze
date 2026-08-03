@@ -95,4 +95,20 @@ This is a diagnostic measurement, not an acceptance baseline: it used one warm-u
 | Throughput from p50 / p95 | 8.410 / 8.338 FPS |
 | Eager FP32 max absolute error | 0.0 |
 
-Next, commit the benchmark contract, collect a clean 10-warm-up/30-iteration CPU baseline, and wait for a clean GPU preflight before Phase B/C. No held-out session or question-answer data will be used while selecting the performance implementation.
+### Phase A clean CPU eager baseline
+
+The first acceptance-shaped model workload ran from clean commit `d61a1b0`, with 10 warm-up and 30 measured iterations. The machine-readable result is [`results/2026-08-04-cpu-eager-model.json`](results/2026-08-04-cpu-eager-model.json).
+
+| Metric | Observation |
+| --- | ---: |
+| Model load | 1,851.796 ms |
+| First iteration end-to-end | 104.533 ms |
+| Steady-state end-to-end p50 / p95 | 107.372 / 268.984 ms |
+| Model-forward p50 / p95 | 106.825 / 265.253 ms |
+| Throughput from p50 / p95 | 9.313 / 3.718 FPS |
+| Maximum end-to-end latency | 805.016 ms |
+| Eager FP32 max absolute error | 0.0 |
+
+The wide CPU tail is a finding, not a speedup: PyTorch used 16 threads on a hybrid-core laptop, and the benchmark currently has no CPU-idleness guard. CPU thread-count/affinity experiments may be worthwhile, but they require repeated runs before any production decision.
+
+Next, preserve this result in Git and let the quiet-device guard decide whether Phase B/C CUDA baselines may start. No held-out session or question-answer data will be used while selecting the performance implementation.

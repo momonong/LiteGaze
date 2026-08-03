@@ -1,0 +1,143 @@
+{
+  "device": "cpu",
+  "environment": {
+    "cuda_visible_devices": "-1",
+    "logical_cpu_count": 16,
+    "packages": {
+      "mediapipe": "1.0.0",
+      "numpy": "2.4.6",
+      "opencv_python": "5.0.0.93",
+      "torch": "2.13.0+cu130",
+      "unigaze": "0.1.3"
+    },
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9",
+    "torch": {
+      "cuda_build": "13.0",
+      "cudnn": null,
+      "num_interop_threads": 16,
+      "num_threads": 16
+    }
+  },
+  "first_iteration_ms": {
+    "device_to_host_ms": 0.0278,
+    "end_to_end_ms": 104.5329,
+    "host_to_device_ms": 0.0045,
+    "model_forward_ms": 102.6557,
+    "tensor_transform_ms": 1.8127
+  },
+  "guard": null,
+  "input": {
+    "encoded_bytes": null,
+    "kind": "synthetic-gradient",
+    "sha256": "cc2bc00f2b3dfd2cbe06d81d60d3fea1d63e5bb35aceecafd479c76c2d77e189",
+    "shape": [
+      224,
+      224,
+      3
+    ],
+    "suffix": null
+  },
+  "last_output_shape": [
+    1,
+    2
+  ],
+  "latency": {
+    "device_to_host_ms": {
+      "count": 30,
+      "max_ms": 0.0706,
+      "mean_ms": 0.018457,
+      "min_ms": 0.0139,
+      "p50_ms": 0.0158,
+      "p95_ms": 0.02556,
+      "p99_ms": 0.057695,
+      "stdev_ms": 0.010065
+    },
+    "end_to_end_ms": {
+      "count": 30,
+      "max_ms": 805.0161,
+      "mean_ms": 139.396177,
+      "min_ms": 90.8794,
+      "p50_ms": 107.37235,
+      "p95_ms": 268.98447,
+      "p99_ms": 683.400801,
+      "stdev_ms": 133.716044
+    },
+    "host_to_device_ms": {
+      "count": 30,
+      "max_ms": 0.0424,
+      "mean_ms": 0.005393,
+      "min_ms": 0.0028,
+      "p50_ms": 0.004,
+      "p95_ms": 0.00582,
+      "p99_ms": 0.031844,
+      "stdev_ms": 0.00691
+    },
+    "model_forward_ms": {
+      "count": 30,
+      "max_ms": 803.8046,
+      "mean_ms": 138.560917,
+      "min_ms": 90.265,
+      "p50_ms": 106.8248,
+      "p95_ms": 265.252555,
+      "p99_ms": 680.940126,
+      "stdev_ms": 133.324645
+    },
+    "tensor_transform_ms": {
+      "count": 30,
+      "max_ms": 5.3708,
+      "mean_ms": 0.78187,
+      "min_ms": 0.4242,
+      "p50_ms": 0.5321,
+      "p95_ms": 1.31126,
+      "p99_ms": 4.2485,
+      "stdev_ms": 0.88547
+    }
+  },
+  "measured_iterations": 30,
+  "parity": {
+    "absolute_tolerance": 1e-05,
+    "allclose": true,
+    "max_abs_error": 0.0,
+    "mean_abs_error": 0.0,
+    "observed": [
+      -0.15443190932273865,
+      0.42162930965423584
+    ],
+    "reference": [
+      -0.15443190932273865,
+      0.42162930965423584
+    ],
+    "relative_tolerance": 0.0001
+  },
+  "resources": {
+    "system_gpu_after": null,
+    "telemetry_error": null,
+    "torch_cuda": null
+  },
+  "revision": {
+    "commit": "d61a1b0b97310d71cfa9ca961382dfdcb156b32a",
+    "dirty": false
+  },
+  "schema_version": 1,
+  "setup_ms": {
+    "input_load": 1.3816,
+    "model_load": 1851.7962,
+    "preprocessor_init": 0.0,
+    "variant_wrapper": 0.0008
+  },
+  "status": "passed",
+  "supervisor": {
+    "duration_seconds": 11.616,
+    "timed_out": false,
+    "timeout_seconds": 300,
+    "worker_exit": 0
+  },
+  "throughput_fps": {
+    "from_p50": 9.313385,
+    "from_p95": 3.717687
+  },
+  "variant": "eager",
+  "warmup_iterations": 10,
+  "workload": "model"
+}
