@@ -116,4 +116,24 @@ The wide CPU tail is a finding, not a speedup: PyTorch used 16 threads on a hybr
 
 After normalizing the device to `cuda:0`, a dirty-worktree diagnostic run with one warm-up and three measured iterations completed successfully. End-to-end p50/p95 was 7.145/7.297 ms, model-forward p50/p95 was 6.430/6.486 ms, and peak PyTorch allocation was 369.965 MiB. Eager FP32 parity was exact. The 287.815 ms first iteration is kept separate and not counted as steady state.
 
-Next, preserve this result in Git and let the quiet-device guard decide whether Phase B/C CUDA baselines may start. No held-out session or question-answer data will be used while selecting the performance implementation.
+### Phase B clean CUDA eager baseline
+
+The clean model workload ran from commit `84ff748`, after a five-sample guard passed at 0% utilization, 88 MiB, and 51 °C. It used 10 warm-up and 30 measured iterations. The machine-readable result is [`results/2026-08-04-cuda-eager-model.json`](results/2026-08-04-cuda-eager-model.json).
+
+| Metric | Observation |
+| --- | ---: |
+| Model load | 1,840.714 ms |
+| First iteration end-to-end / forward | 215.723 / 213.876 ms |
+| Steady-state end-to-end p50 / p95 | 7.439 / 8.136 ms |
+| Model-forward p50 / p95 | 6.578 / 7.283 ms |
+| Tensor transform p50 / p95 | 0.467 / 0.540 ms |
+| Host-to-device p50 / p95 | 0.132 / 0.178 ms |
+| Device-to-host p50 / p95 | 0.146 / 0.199 ms |
+| Throughput from p50 / p95 | 134.419 / 122.904 FPS |
+| Peak allocated / reserved VRAM | 369.965 / 418.000 MiB |
+| Post-run utilization / temperature | 54% / 55 °C |
+| Eager FP32 max absolute error | 0.0 |
+
+CUDA reduced model-only p50 by about 14.4× relative to the clean CPU eager run. CPU p95 is too scheduling-sensitive for a credible tail-speedup ratio. The model forward still accounts for roughly 88% of CUDA end-to-end p50, so inference context and numeric-format candidates remain worth measuring.
+
+Next, preserve this baseline in Git and compare `torch.inference_mode()` first. No held-out session or question-answer data will be used while selecting the performance implementation.
