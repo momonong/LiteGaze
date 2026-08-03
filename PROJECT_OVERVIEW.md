@@ -592,13 +592,15 @@ Data extracted from `output/demo_system_comparison.csv`:
 
 | Pipeline Configuration | Gaze Decoder | Cognitive Pipeline | Fusion Method | Gaze Accuracy (%) | RDS Correlation ($\rho$) | Latency (ms) | Academic Significance |
 | :--- | :--- | :--- | :--- | :---: | :---: | :---: | :--- |
-| **1. Raw Baseline** | Nearest Box (`nearest_box`) | None (`none`) | Linear | **18.59%** | 0.0636 | **2.34 ms** | Vulnerable to vertical drift (+45px). |
-| **2. Viterbi Base** | Standard HMM (`viterbi_base`) | None (`none`) | Linear | **54.49%** | 0.0561 | 192.06 ms | Saccade priors filter high-frequency noise. |
-| **3. Viterbi + EM** | Auto-Calibrating (`viterbi_em`) | None (`none`) | Linear | **96.79%** | 0.1342 | 289.29 ms | Highest gaze accuracy in this seeded simulation. |
-| **4. STOCK-T v1** | Attention-guided transition | Surprisal (`surprisal`) | Linear | **38.46%** | 0.2519 | 189.97 ms | Cognitive transition diagnostic. |
-| **5. STOCK-T v2** | Cognitive transition | Surprisal (`surprisal`) | Multiplicative | **44.87%** | 0.2428 | 232.85 ms | Multiplicative fusion diagnostic. |
-| **6. STOCK-T v3** | POM + EM | Surprisal (`surprisal`) | Bayesian | **93.59%** | 0.3864 | 305.19 ms | High simulated gaze recovery. |
-| **7. STOCK-T v3 + CogMass** | POM + EM | Cognitive mass | Bayesian | **93.59%** | **0.4267** | 292.67 ms | Best single-trial RDS correlation; provenance-risk for predictive claims. |
+| **1. Raw Baseline** | Nearest Box (`nearest_box`) | None (`none`) | Linear | **18.59%** | 0.0636 | **2.68 ms** | Vulnerable to vertical drift (+45px). |
+| **2. Viterbi Base** | Standard HMM (`viterbi_base`) | None (`none`) | Linear | **54.49%** | 0.0561 | 260.48 ms | Saccade priors filter high-frequency noise. |
+| **3. Viterbi + EM** | Auto-Calibrating (`viterbi_em`) | None (`none`) | Linear | **96.79%** | 0.1342 | 394.96 ms | Highest gaze accuracy in this seeded simulation. |
+| **4. STOCK-T v1** | Attention-guided transition | Surprisal (`surprisal`) | Linear | **38.46%** | 0.2519 | 253.41 ms | Cognitive transition diagnostic. |
+| **5. STOCK-T v2** | Cognitive transition | Surprisal (`surprisal`) | Multiplicative | **44.87%** | 0.2428 | 248.19 ms | Multiplicative fusion diagnostic. |
+| **6. STOCK-T v3** | POM + EM | Surprisal (`surprisal`) | Bayesian | **93.59%** | 0.3864 | 435.57 ms | High simulated gaze recovery. |
+| **7. STOCK-T v3 + CogMass** | POM + EM | Cognitive mass | Bayesian | **93.59%** | **0.4267** | 467.00 ms | Best single-trial RDS correlation; provenance-risk for predictive claims. |
+
+Latency is host-load dependent; the manifest records the exact hardware and per-run values.
 
 ---
 

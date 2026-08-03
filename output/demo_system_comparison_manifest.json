@@ -3,21 +3,23 @@
     {
       "exists": true,
       "path": "output/demo_system_comparison.csv",
-      "sha256": "df95d0ac8aee37e5a106ef6a78f95e06e91103f326d1e2fc1c8a76d8e2439711",
-      "size_bytes": 462
+      "sha256": "2162b8e7c5d947fe36c0709da00b32a6620ea7aac4686eb022f5cd23b8e6b756",
+      "size_bytes": 461
     },
     {
       "exists": true,
       "path": "output/demo_performance_comparison.png",
-      "sha256": "f87fe7f87c206d9671129d3736236152c9c8addff673d444d4213bc44181c995",
-      "size_bytes": 262882
+      "sha256": "3b893cac8caec8d673fdc83116ecbe70ffc7aad95afdb51e8014256be2397a1c",
+      "size_bytes": 257773
     }
   ],
   "config": {
     "attention_matrix_available": true,
     "calibration_window_size": 30,
+    "cognitive_mass_predictive_generalization_eligible": false,
     "corpus": "GECO",
     "drift_y_px": 45.0,
+    "evaluation_scope": "single_participant_seeded_simulation",
     "participant": "pp01",
     "reading_time_source": "geco_clean_trial",
     "sigma_x_px": 40.0,
@@ -85,8 +87,8 @@
     "command": [
       "scripts\\inspect_performance_demo.py"
     ],
-    "created_at": "2026-08-03T07:14:08.669506+00:00",
-    "duration_seconds": 1.992162,
+    "created_at": "2026-08-03T08:03:58.859586+00:00",
+    "duration_seconds": 2.914751,
     "name": "joint_system_performance_geco_pp01_trial5",
     "seed": 42,
     "status": "completed"
@@ -100,43 +102,43 @@
       {
         "Configuration": "1. Raw Gaze + No Cog + Linear",
         "Gaze Accuracy (%)": 18.59,
-        "Latency (ms)": 2.34,
+        "Latency (ms)": 2.68,
         "RDS Correlation (rho)": 0.0636
       },
       {
         "Configuration": "2. Viterbi + No Cog + Linear",
         "Gaze Accuracy (%)": 54.49,
-        "Latency (ms)": 192.06,
+        "Latency (ms)": 260.48,
         "RDS Correlation (rho)": 0.0561
       },
       {
         "Configuration": "3. Viterbi + EM Calib + No Cog + Linear",
         "Gaze Accuracy (%)": 96.79,
-        "Latency (ms)": 289.29,
+        "Latency (ms)": 394.96,
         "RDS Correlation (rho)": 0.1342
       },
       {
         "Configuration": "4. STOCK-T v1 + surprisal + Linear",
         "Gaze Accuracy (%)": 38.46,
-        "Latency (ms)": 189.97,
+        "Latency (ms)": 253.41,
         "RDS Correlation (rho)": 0.2519
       },
       {
         "Configuration": "5. STOCK-T v2 + surprisal + Multiplicative",
         "Gaze Accuracy (%)": 44.87,
-        "Latency (ms)": 232.85,
+        "Latency (ms)": 248.19,
         "RDS Correlation (rho)": 0.2428
       },
       {
         "Configuration": "6. STOCK-T v3 + surprisal + Bayesian",
         "Gaze Accuracy (%)": 93.59,
-        "Latency (ms)": 305.19,
+        "Latency (ms)": 435.57,
         "RDS Correlation (rho)": 0.3864
       },
       {
         "Configuration": "7. STOCK-T v3 + CogMass + Bayesian",
         "Gaze Accuracy (%)": 93.59,
-        "Latency (ms)": 292.67,
+        "Latency (ms)": 467.0,
         "RDS Correlation (rho)": 0.4267
       }
     ],
@@ -168,23 +170,23 @@
   "schema_version": 1,
   "source": {
     "branch": "codex/feat/runtime-resource-guardrails",
-    "commit": "b22b63728e79cdbf68d2b85385f33089aac4ac30",
-    "dirty": true,
+    "commit": "76dd0672cf435f65c7eab2f8f6b7c8a043edcf58",
+    "dirty": false,
     "files": [
       {
         "exists": true,
         "path": "scripts/experiment_manifest.py",
-        "sha256": "071b0d69d8eb59d81f6daaeb1cd8aa6b911deda1d731b001cc2329f423ab753d",
-        "size_bytes": 7586
+        "sha256": "a09488d0f874f25e1be5f4bf7d27b214a3b1743b5d2bd26f5b06036942dee71a",
+        "size_bytes": 8192
       },
       {
         "exists": true,
         "path": "scripts/inspect_performance_demo.py",
-        "sha256": "6c80a7fd998a7ce5ddba4a80383a271d4c6746a4286fc2bca7f8fe2da315a005",
-        "size_bytes": 15016
+        "sha256": "13d447a4add4cff15eba502940ad7a4d0d054df8d8d4dc92d3a502aa47b94dad",
+        "size_bytes": 15349
       }
     ],
-    "tracked_changes": true,
-    "tracked_diff_from_head_sha256": "f7de6224a6ddf28514d6eec933ca29a664eb31100af478c91b1106d9039fdd96"
+    "tracked_changes": false,
+    "tracked_diff_from_head_sha256": null
   }
 }

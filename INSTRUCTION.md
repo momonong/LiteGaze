@@ -165,13 +165,13 @@ This simulates webcam drift (+45px vertical drift, 30-40px jitter) on a 156-word
 
 | Configuration | Gaze Accuracy (%) | RDS Correlation ($\rho$) | Latency (ms) | Target Optimization Direction |
 | :--- | :---: | :---: | :---: | :--- |
-| **Raw Gaze + No Cog + Linear** | 18.59% | 0.0636 | ~2 ms | **Baseline**: Heavily impacted by calibration drift. |
-| **Viterbi + No Cog + Linear** | 54.49% | 0.0561 | ~192 ms | **Spatio-Temporal Prior**: Corrects some drift but lacks online tuning. |
-| **Viterbi + EM Calib + No Cog** | **96.79%** | 0.1342 | ~289 ms | **EM Self-Calibration**: Highest gaze accuracy in this seeded simulation. |
-| **STOCK-T v3 + surprisal + Bayesian** | 93.59% | 0.3864 | ~305 ms | **Joint Diagnostic**: High simulated recovery without CogMass. |
-| **STOCK-T v3 + CogMass + Bayesian** | 93.59% | **0.4267** | ~293 ms | **Provenance-risk diagnostic**: not eligible for predictive claims. |
+| **Raw Gaze + No Cog + Linear** | 18.59% | 0.0636 | ~3 ms | **Baseline**: Heavily impacted by calibration drift. |
+| **Viterbi + No Cog + Linear** | 54.49% | 0.0561 | ~260 ms | **Spatio-Temporal Prior**: Corrects some drift but lacks online tuning. |
+| **Viterbi + EM Calib + No Cog** | **96.79%** | 0.1342 | ~395 ms | **EM Self-Calibration**: Highest gaze accuracy in this seeded simulation. |
+| **STOCK-T v3 + surprisal + Bayesian** | 93.59% | 0.3864 | ~436 ms | **Joint Diagnostic**: High simulated recovery without CogMass. |
+| **STOCK-T v3 + CogMass + Bayesian** | 93.59% | **0.4267** | ~467 ms | **Provenance-risk diagnostic**: not eligible for predictive claims. |
 
-These are single-participant simulation diagnostics. Do not interpret them as cross-subject prediction or tune production thresholds from this table.
+These are single-participant simulation diagnostics, and latency changes with host load. Do not interpret them as cross-subject prediction or tune production thresholds from this table.
 
 ### Diagnostic 5.2: Multimodal Fusion Calibration
 To compare the eleven mathematical fusion methods on GECO:
