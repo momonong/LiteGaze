@@ -255,4 +255,6 @@ Decision: TF32 provisionally clears latency, parity, and memory gates without a 
 
 A clean eager `highest` replicate ran from commit `1b732dd`; its result is [`results/2026-08-04-cuda-eager-model-r2.json`](results/2026-08-04-cuda-eager-model-r2.json). End-to-end p50/p95 was 7.525/7.878 ms and model-forward p50/p95 was 6.608/6.828 ms. This is within 1.16% at p50 and 3.18% at p95 of the original eager baseline, supporting a stable FP32 reference.
 
-Next, collect the matching clean TF32 replicate before any production change.
+The matching TF32 replicate ran from commit `e08a90a`; its result is [`results/2026-08-04-cuda-tf32-high-model-r2.json`](results/2026-08-04-cuda-tf32-high-model-r2.json). End-to-end p50/p95 was 5.449/7.245 ms and model-forward p50/p95 was 4.612/6.112 ms, with the same 0.000356 maximum error. Against its paired eager run, TF32 improved p50 by 27.59% and p95 by 8.03%.
+
+Across the first two clean runs, the mean-of-run p50 improves from 7.482 to 5.275 ms (29.49%) and mean-of-run p95 improves from 8.007 to 6.696 ms (16.38%). Because one paired p95 improvement is below the 10% gate, collect a third pair rather than selecting the best run.
