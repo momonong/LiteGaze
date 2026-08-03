@@ -153,3 +153,19 @@ The candidate ran from clean commit `39eeb3b` under a clean guard. The machine-r
 Decision: do not promote `torch.inference_mode()` as a performance change. It does not meet the 10% gate, and this run has worse tail latency. A repeated interleaved experiment could distinguish tail noise from a true regression, but the essentially identical p50 leaves no plausible acceptance benefit for this path.
 
 Next, test FP16 and BF16 autocast independently, with the same synthetic input and eager FP32 parity check.
+
+### Phase C2: FP16 autocast
+
+FP16 ran from clean commit `248a9bc` under a clean guard. The machine-readable result is [`results/2026-08-04-cuda-amp-fp16-model.json`](results/2026-08-04-cuda-amp-fp16-model.json).
+
+| Metric | Eager FP32 | AMP FP16 | Outcome |
+| --- | ---: | ---: | --- |
+| End-to-end p50 | 7.439 ms | 8.074 ms | 8.53% slower |
+| End-to-end p95 | 8.136 ms | 8.813 ms | 8.31% slower |
+| Model-forward p50 | 6.578 ms | 7.249 ms | 10.19% slower |
+| Peak allocated VRAM | 369.965 MiB | 371.332 MiB | +1.367 MiB |
+| Max absolute error | 0.0 | 0.000475 | within 0.005 tolerance |
+
+Decision: reject FP16 autocast for batch-one UniGaze inference. Its numerical parity is acceptable, but autocast/cast overhead outweighs any Tensor Core benefit and fails the latency gate.
+
+Next, test BF16 under the same conditions.
