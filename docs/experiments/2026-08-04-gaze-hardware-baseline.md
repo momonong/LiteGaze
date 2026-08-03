@@ -313,3 +313,9 @@ The production loader now selects PyTorch's `high` float32-matmul policy only af
 This is deliberately smaller than adopting `torch.compile`: it needs no new runtime package, has no compilation cold start, and does not change model/input/output dtypes. Six Torch-free unit tests cover supported CUDA, CPU, older CUDA, capability-query failure, precision restoration, and import isolation. The full offline CPU gate passes 33/33 tests without importing Torch or changing GPU use.
 
 Status: implementation candidate only. Commit it before performance validation so every post-change benchmark records a clean revision; the previously requested longer pair remains blocked while an unrelated GPU workload exceeds the quiet-device budget.
+
+### Phase F research: MediaPipe acceleration boundary
+
+The fixed-frame stage breakdown makes MediaPipe face normalization the largest median stage after TF32. The installed Python API exposes `BaseOptions.Delegate.GPU`, but the current official [MediaPipe BaseOptions documentation](https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/BaseOptions) limits Python GPU delegate support to Ubuntu. This project is currently running on Windows, and the GPU guard also observed an unrelated active workload, so forcing the delegate here would be unsupported and would compete for the same device.
+
+Decision: reject MediaPipe GPU delegation as the next Windows production change. A later experiment should instead isolate host-side scheduling, PyTorch CPU thread count, and MediaPipe `VIDEO` running mode; the latter is a semantic/architecture change and requires frozen output-quality validation, not just a latency result.
