@@ -6,8 +6,10 @@ The opt-in hardware benchmark measures the production UniGaze path without joini
 
 - `model`: transforms one already-normalized RGB image and measures tensor transfer plus UniGaze inference.
 - `pipeline`: additionally measures JPEG decode and MediaPipe face normalization from an explicit local image.
+- `video-legacy`: reproduces the offline-video route's resize, JPEG quality-50 encode, base64 encode/decode, JPEG decode, MediaPipe normalization, and inference.
+- `video-direct`: uses the same resize and downstream stages but passes the OpenCV BGR frame directly, measuring the proposed removal of the redundant JPEG/base64 round trip.
 
-The pipeline workload requires `--image`. The image stays outside Git; the summary stores only its SHA-256, dimensions, encoded byte size, and whether a face was detected.
+Every non-model workload requires `--image`. The image stays outside Git; the summary stores only its SHA-256, dimensions, encoded byte size, and suffix. Video workloads also record the target width and JPEG-quality contract.
 
 ## Variants
 

@@ -29,7 +29,7 @@ Every hardware optimization must start from a versioned benchmark contract and p
 
 The first target is the production gaze inference path. Candidate changes are evaluated in increasing order of risk:
 
-1. `torch.inference_mode()` and removal of redundant image encoding/decoding;
+1. `torch.inference_mode()` and removal of redundant image encoding/decoding, measured against the same fixed frame;
 2. transfer behavior and direct-frame execution;
 3. automatic mixed precision;
 4. `torch.compile` modes;

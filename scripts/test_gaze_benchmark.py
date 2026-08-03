@@ -135,6 +135,11 @@ class GazeBenchmarkUnitTests(unittest.TestCase):
         _validate_args(cuda_args)
         self.assertEqual(cuda_args.matmul_precision, "high")
 
+    def test_video_workload_requires_an_explicit_image(self):
+        args = _parse_args(["--workload", "video-direct"])
+        with self.assertRaisesRegex(ValueError, "non-model workloads"):
+            _validate_args(args)
+
     def test_triton_preflight_is_torch_free(self):
         with mock.patch(
             "scripts.benchmark_gaze_inference.importlib.util.find_spec",

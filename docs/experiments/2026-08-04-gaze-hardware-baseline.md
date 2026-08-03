@@ -81,7 +81,7 @@ This violates the planned 5% utilization and 2,048 MiB existing-memory limits. N
 - The first isolated CPU smoke run exposed a native crash while collecting cuDNN metadata with CUDA hidden. The model inference had completed; the fault came from calling `torch.backends.cudnn.version()` in a CPU-only worker. Environment collection now queries cuDNN only for CUDA runs.
 - The corrected CPU smoke run passed with `CUDA_VISIBLE_DEVICES=-1`, eager FP32 parity at zero maximum absolute error, and no system-GPU telemetry access from the worker.
 - A one-second timeout probe returned exit 124 after 1.3 seconds, terminated the worker process tree, and left no LexiGaze benchmark process behind.
-- The latest offline CPU quality gate passed 25/25 tests in 0.89 seconds. It imported no Torch, attempted no network or subprocess access in the test worker, and left GPU memory unchanged.
+- The latest offline CPU quality gate passed 26/26 tests in 0.77 seconds. It imported no Torch, attempted no network or subprocess access in the test worker, and left GPU memory unchanged.
 
 ### Phase A smoke measurement
 
@@ -223,3 +223,13 @@ Reduce-overhead ran from clean commit `4e54b7f` with another brand-new TorchIndu
 Decision: reject reduce-overhead. Although its compiled model stage is faster than eager, end-to-end p50 is 1.99% slower than eager and 18.74% slower than compile-default; p95 is also worse, and reserved VRAM is higher. Compile-default remains the leading compiled candidate.
 
 Next, add explicit TF32 matmul precision to the benchmark and test it both without compilation and, only if useful, with the winning compiler mode.
+
+### Fixed-frame video-path diagnostic
+
+The full-pipeline fixture is a local ignored 640×360 JPEG (25,098 bytes, SHA-256 `5b6b97ea27b4bb776524482bdd78105bd2efad2a74f7e7e405a886e0859d66ef`). The image path and participant/session metadata are not recorded. MediaPipe uses the official 3,758,596-byte face-landmarker asset cached under the ignored `web/static/*.task` path (SHA-256 `64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff`).
+
+A dirty-worktree CPU diagnostic compared the exact offline-video transport at 240-pixel width and JPEG quality 50 with a direct OpenCV-frame path. The legacy steady-state p50 transport components were approximately 0.144 ms resize, 0.103 ms JPEG encode, 0.023 ms base64 encode, 0.010 ms base64 decode, and 0.109 ms JPEG decode. Direct-frame execution retains resize and therefore removes only about 0.244 ms of steady-state transport work.
+
+The fixed-frame gaze output changed from `[-0.155597, -0.255159]` after the legacy lossy round trip to `[-0.161127, -0.302447]` with the direct frame, a maximum absolute difference of 0.047289 radians. That may represent better image fidelity, but it is not output parity and would change calibration semantics.
+
+Decision: do not change the production route for this micro-optimization. The measured transport saving is well below the 10% gate, while the fixed-frame output shift is material. Keep both workloads in the benchmark so a future, separately frozen quality study can revisit the design without tuning on held-out data.

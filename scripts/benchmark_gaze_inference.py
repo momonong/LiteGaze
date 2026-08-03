@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import contextlib
 import hashlib
 import importlib.metadata
@@ -32,9 +33,12 @@ VARIANTS = (
     "compile-default",
     "compile-reduce-overhead",
 )
-WORKLOADS = ("model", "pipeline")
+WORKLOADS = ("model", "pipeline", "video-legacy", "video-direct")
 DEVICES = ("cpu", "cuda")
 MATMUL_PRECISIONS = ("highest", "high", "medium")
+
+VIDEO_TARGET_WIDTH = 240
+VIDEO_JPEG_QUALITY = 50
 
 DEFAULT_WARMUP = 10
 DEFAULT_ITERATIONS = 30
@@ -97,7 +101,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--image",
         type=Path,
-        help="Explicit local input. Required for the pipeline workload.",
+        help="Explicit local input. Required for every non-model workload.",
     )
     parser.add_argument("--warmup", type=int, default=DEFAULT_WARMUP)
     parser.add_argument("--iterations", type=int, default=DEFAULT_ITERATIONS)
@@ -150,8 +154,8 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--guard-interval-ms must be between 0 and 5000")
     if not 1 <= args.timeout_seconds <= 1800:
         raise ValueError("--timeout-seconds must be between 1 and 1800")
-    if args.workload == "pipeline" and args.image is None:
-        raise ValueError("--image is required for the pipeline workload")
+    if args.workload != "model" and args.image is None:
+        raise ValueError("--image is required for non-model workloads")
     if args.image is not None and not args.image.is_file():
         raise ValueError(f"input image does not exist: {args.image}")
     if args.variant.startswith(("amp-", "compile-")) and args.device != "cuda":
@@ -488,6 +492,7 @@ def _load_input(args: argparse.Namespace, cv2: Any, np: Any) -> dict[str, Any]:
     rgb = cv2.cvtColor(decoded, cv2.COLOR_BGR2RGB)
     return {
         "rgb": rgb,
+        "bgr": decoded,
         "encoded": encoded,
         "metadata": {
             "kind": "local-file",
@@ -524,6 +529,67 @@ def _configure_variant(torch: Any, model: Any, variant: str) -> tuple[Any, float
     return candidate, (time.perf_counter() - started) * 1000
 
 
+def _prepare_pipeline_frame(
+    args: argparse.Namespace,
+    input_data: dict[str, Any],
+    cv2: Any,
+    np: Any,
+) -> tuple[Any, dict[str, float]]:
+    stages: dict[str, float] = {}
+    if args.workload == "pipeline":
+        decode_started = time.perf_counter()
+        image_bgr = cv2.imdecode(
+            np.frombuffer(input_data["encoded"], dtype=np.uint8),
+            cv2.IMREAD_COLOR,
+        )
+        if image_bgr is None:
+            raise ValueError("OpenCV could not decode the benchmark image")
+        stages["decode_ms"] = (time.perf_counter() - decode_started) * 1000
+        return image_bgr, stages
+
+    if args.workload not in {"video-legacy", "video-direct"}:
+        raise ValueError(f"unsupported pipeline workload: {args.workload}")
+
+    resize_started = time.perf_counter()
+    source = input_data["bgr"]
+    height, width = source.shape[:2]
+    target_height = max(1, int(VIDEO_TARGET_WIDTH * height / width))
+    image_bgr = cv2.resize(source, (VIDEO_TARGET_WIDTH, target_height))
+    stages["resize_ms"] = (time.perf_counter() - resize_started) * 1000
+    if args.workload == "video-direct":
+        return image_bgr, stages
+
+    encode_started = time.perf_counter()
+    encoded_ok, encoded = cv2.imencode(
+        ".jpg",
+        image_bgr,
+        [cv2.IMWRITE_JPEG_QUALITY, VIDEO_JPEG_QUALITY],
+    )
+    if not encoded_ok:
+        raise ValueError("OpenCV could not encode the benchmark frame")
+    stages["jpeg_encode_ms"] = (time.perf_counter() - encode_started) * 1000
+
+    base64_encode_started = time.perf_counter()
+    encoded_text = base64.b64encode(encoded.tobytes()).decode("ascii")
+    data_url = f"data:image/jpeg;base64,{encoded_text}"
+    stages["base64_encode_ms"] = (
+        time.perf_counter() - base64_encode_started
+    ) * 1000
+
+    base64_decode_started = time.perf_counter()
+    raw = base64.b64decode(data_url.split(",", 1)[1])
+    stages["base64_decode_ms"] = (
+        time.perf_counter() - base64_decode_started
+    ) * 1000
+
+    decode_started = time.perf_counter()
+    image_bgr = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if image_bgr is None:
+        raise ValueError("OpenCV could not decode the benchmark frame round trip")
+    stages["decode_ms"] = (time.perf_counter() - decode_started) * 1000
+    return image_bgr, stages
+
+
 def _run_iteration(
     *,
     args: argparse.Namespace,
@@ -539,16 +605,11 @@ def _run_iteration(
     stages: dict[str, float] = {}
     total_started = time.perf_counter()
 
-    if args.workload == "pipeline":
-        decode_started = time.perf_counter()
-        image_bgr = cv2.imdecode(
-            np.frombuffer(input_data["encoded"], dtype=np.uint8),
-            cv2.IMREAD_COLOR,
+    if args.workload != "model":
+        image_bgr, transport_stages = _prepare_pipeline_frame(
+            args, input_data, cv2, np
         )
-        if image_bgr is None:
-            raise ValueError("OpenCV could not decode the benchmark image")
-        stages["decode_ms"] = (time.perf_counter() - decode_started) * 1000
-
+        stages.update(transport_stages)
         preprocess_started = time.perf_counter()
         processed = preprocessor.process(image_bgr)
         image_rgb = processed.image_rgb
@@ -706,7 +767,7 @@ def _run_benchmark(args: argparse.Namespace, guard: dict[str, Any] | None) -> di
 
     preprocessor = None
     preprocessor_init_ms = 0.0
-    if args.workload == "pipeline":
+    if args.workload != "model":
         asset = ROOT / "web" / "static" / "face_landmarker.task"
         if not asset.is_file():
             raise BenchmarkRefused(
@@ -776,11 +837,9 @@ def _run_benchmark(args: argparse.Namespace, guard: dict[str, Any] | None) -> di
         for name, value in stages.items():
             observations.setdefault(name, []).append(value)
 
-    if args.workload == "pipeline":
-        decoded = cv2.imdecode(
-            np.frombuffer(input_data["encoded"], dtype=np.uint8), cv2.IMREAD_COLOR
-        )
-        parity_rgb = preprocessor.process(decoded).image_rgb
+    if args.workload != "model":
+        parity_frame, _ = _prepare_pipeline_frame(args, input_data, cv2, np)
+        parity_rgb = preprocessor.process(parity_frame).image_rgb
     else:
         parity_rgb = input_data["rgb"]
     parity = _measure_parity(
@@ -832,6 +891,14 @@ def _run_benchmark(args: argparse.Namespace, guard: dict[str, Any] | None) -> di
         "variant": args.variant,
         "matmul_precision": args.matmul_precision,
         "workload": args.workload,
+        "workload_config": (
+            {
+                "video_target_width": VIDEO_TARGET_WIDTH,
+                "jpeg_quality": VIDEO_JPEG_QUALITY,
+            }
+            if args.workload.startswith("video-")
+            else None
+        ),
         "device": args.device,
         "revision": _git_revision(),
         "input": input_data["metadata"],
