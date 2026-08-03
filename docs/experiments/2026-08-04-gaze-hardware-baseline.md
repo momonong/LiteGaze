@@ -271,3 +271,20 @@ The third eager and TF32 runs are [`results/2026-08-04-cuda-eager-model-r3.json`
 | Mean-of-run model-forward p95 | 6.939 ms | 5.707 ms | 17.75% |
 
 Decision: accept TF32 at the model-workload gate. It is reproducibly faster, preserves the declared tolerance, adds no VRAM, and has no compilation penalty. Production promotion still requires fixed-frame full-pipeline validation and regression tests around CUDA-only configuration.
+
+### Phase D1: fixed-frame `video-legacy` eager baseline
+
+The full offline-video path ran from clean commit `c548b33` under a clean GPU guard; its result is [`results/2026-08-04-cuda-video-legacy-eager.json`](results/2026-08-04-cuda-video-legacy-eager.json).
+
+| Metric | Observation |
+| --- | ---: |
+| End-to-end p50 / p95 | 19.789 / 242.859 ms |
+| MediaPipe preprocess p50 | 10.029 ms |
+| Model-forward p50 | 7.322 ms |
+| Tensor transform p50 | 0.581 ms |
+| Resize + JPEG/base64 round trip p50 | 0.449 ms |
+| Host/device copies p50 | 0.360 ms |
+
+The median confirms that MediaPipe is now the largest stage and the model is second. The p95 is dominated by simultaneous host scheduling stalls: preprocess reached 121.900 ms, tensor transform 10.003 ms, and model forward 76.841 ms. The GPU itself passed a clean preflight, so GPU-only guarding is insufficient for stable full-pipeline tail comparisons.
+
+Next, run TF32 on the identical fixed frame and conditions. Treat median gains separately from tail behavior, and do not promote until the CPU-contended result is understood.

@@ -1,0 +1,348 @@
+{
+  "device": "cuda",
+  "environment": {
+    "accelerator": {
+      "capability": [
+        12,
+        0
+      ],
+      "multiprocessors": 82,
+      "name": "NVIDIA GeForce RTX 5090 Laptop GPU",
+      "total_memory_mib": 24462.562
+    },
+    "cuda_visible_devices": null,
+    "logical_cpu_count": 16,
+    "packages": {
+      "mediapipe": "1.0.0",
+      "numpy": "2.4.6",
+      "opencv_python": "5.0.0.93",
+      "torch": "2.13.0+cu130",
+      "triton": null,
+      "triton_windows": "3.7.1.post27",
+      "unigaze": "0.1.3"
+    },
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9",
+    "torch": {
+      "cuda_build": "13.0",
+      "cudnn": 92000,
+      "float32_matmul_precision": "highest",
+      "num_interop_threads": 16,
+      "num_threads": 16
+    }
+  },
+  "first_iteration_ms": {
+    "base64_decode_ms": 0.0191,
+    "base64_encode_ms": 0.0294,
+    "decode_ms": 0.2242,
+    "device_to_host_ms": 0.174272,
+    "end_to_end_ms": 225.3811,
+    "host_to_device_ms": 0.266336,
+    "jpeg_encode_ms": 0.2184,
+    "model_forward_ms": 209.698044,
+    "preprocess_ms": 12.303,
+    "resize_ms": 0.2274,
+    "tensor_transform_ms": 1.1981
+  },
+  "guard": {
+    "allowed": true,
+    "clean": true,
+    "contaminated": false,
+    "observed_max": {
+      "gpu_utilization_percent": 0.0,
+      "memory_used_mib": 88.0,
+      "temperature_c": 52.0
+    },
+    "override_used": false,
+    "query_errors": [],
+    "reasons": [],
+    "samples": [
+      {
+        "driver_version": "581.57",
+        "gpu_utilization_percent": 0.0,
+        "index": 0,
+        "memory_clock_mhz": 405.0,
+        "memory_total_mib": 24463.0,
+        "memory_used_mib": 88.0,
+        "memory_utilization_percent": 0.0,
+        "name": "NVIDIA GeForce RTX 5090 Laptop GPU",
+        "performance_state": "P8",
+        "power_w": 8.83,
+        "sample": 1,
+        "sm_clock_mhz": 225.0,
+        "temperature_c": 52.0,
+        "uuid": "GPU-e0c86b99-1d5a-70e5-30b7-55212220fb14"
+      },
+      {
+        "driver_version": "581.57",
+        "gpu_utilization_percent": 0.0,
+        "index": 0,
+        "memory_clock_mhz": 405.0,
+        "memory_total_mib": 24463.0,
+        "memory_used_mib": 88.0,
+        "memory_utilization_percent": 0.0,
+        "name": "NVIDIA GeForce RTX 5090 Laptop GPU",
+        "performance_state": "P8",
+        "power_w": 8.51,
+        "sample": 2,
+        "sm_clock_mhz": 225.0,
+        "temperature_c": 52.0,
+        "uuid": "GPU-e0c86b99-1d5a-70e5-30b7-55212220fb14"
+      },
+      {
+        "driver_version": "581.57",
+        "gpu_utilization_percent": 0.0,
+        "index": 0,
+        "memory_clock_mhz": 405.0,
+        "memory_total_mib": 24463.0,
+        "memory_used_mib": 88.0,
+        "memory_utilization_percent": 0.0,
+        "name": "NVIDIA GeForce RTX 5090 Laptop GPU",
+        "performance_state": "P8",
+        "power_w": 8.4,
+        "sample": 3,
+        "sm_clock_mhz": 225.0,
+        "temperature_c": 52.0,
+        "uuid": "GPU-e0c86b99-1d5a-70e5-30b7-55212220fb14"
+      },
+      {
+        "driver_version": "581.57",
+        "gpu_utilization_percent": 0.0,
+        "index": 0,
+        "memory_clock_mhz": 405.0,
+        "memory_total_mib": 24463.0,
+        "memory_used_mib": 88.0,
+        "memory_utilization_percent": 0.0,
+        "name": "NVIDIA GeForce RTX 5090 Laptop GPU",
+        "performance_state": "P8",
+        "power_w": 8.4,
+        "sample": 4,
+        "sm_clock_mhz": 225.0,
+        "temperature_c": 52.0,
+        "uuid": "GPU-e0c86b99-1d5a-70e5-30b7-55212220fb14"
+      },
+      {
+        "driver_version": "581.57",
+        "gpu_utilization_percent": 0.0,
+        "index": 0,
+        "memory_clock_mhz": 405.0,
+        "memory_total_mib": 24463.0,
+        "memory_used_mib": 88.0,
+        "memory_utilization_percent": 0.0,
+        "name": "NVIDIA GeForce RTX 5090 Laptop GPU",
+        "performance_state": "P8",
+        "power_w": 8.19,
+        "sample": 5,
+        "sm_clock_mhz": 225.0,
+        "temperature_c": 52.0,
+        "uuid": "GPU-e0c86b99-1d5a-70e5-30b7-55212220fb14"
+      }
+    ],
+    "thresholds": {
+      "gpu_utilization_percent": 5.0,
+      "memory_used_mib": 2048.0,
+      "temperature_c": 82.0
+    }
+  },
+  "input": {
+    "encoded_bytes": 25098,
+    "kind": "local-file",
+    "sha256": "5b6b97ea27b4bb776524482bdd78105bd2efad2a74f7e7e405a886e0859d66ef",
+    "shape": [
+      360,
+      640,
+      3
+    ],
+    "suffix": ".jpg"
+  },
+  "last_output_shape": [
+    1,
+    2
+  ],
+  "latency": {
+    "base64_decode_ms": {
+      "count": 30,
+      "max_ms": 0.0782,
+      "mean_ms": 0.01902,
+      "min_ms": 0.0084,
+      "p50_ms": 0.0114,
+      "p95_ms": 0.063515,
+      "p99_ms": 0.074111,
+      "stdev_ms": 0.019091
+    },
+    "base64_encode_ms": {
+      "count": 30,
+      "max_ms": 0.205,
+      "mean_ms": 0.04093,
+      "min_ms": 0.0173,
+      "p50_ms": 0.02235,
+      "p95_ms": 0.153595,
+      "p99_ms": 0.190993,
+      "stdev_ms": 0.049059
+    },
+    "decode_ms": {
+      "count": 30,
+      "max_ms": 1.1728,
+      "mean_ms": 0.261723,
+      "min_ms": 0.1077,
+      "p50_ms": 0.14995,
+      "p95_ms": 0.955885,
+      "p99_ms": 1.112596,
+      "stdev_ms": 0.291622
+    },
+    "device_to_host_ms": {
+      "count": 30,
+      "max_ms": 1.729472,
+      "mean_ms": 0.280581,
+      "min_ms": 0.081792,
+      "p50_ms": 0.134208,
+      "p95_ms": 1.22608,
+      "p99_ms": 1.604201,
+      "stdev_ms": 0.392662
+    },
+    "end_to_end_ms": {
+      "count": 30,
+      "max_ms": 283.9738,
+      "mean_ms": 51.29505,
+      "min_ms": 15.7294,
+      "p50_ms": 19.78915,
+      "p95_ms": 242.859425,
+      "p99_ms": 279.260169,
+      "stdev_ms": 76.336623
+    },
+    "host_to_device_ms": {
+      "count": 30,
+      "max_ms": 4.122624,
+      "mean_ms": 0.479315,
+      "min_ms": 0.142336,
+      "p50_ms": 0.226064,
+      "p95_ms": 1.50272,
+      "p99_ms": 3.427747,
+      "stdev_ms": 0.766224
+    },
+    "jpeg_encode_ms": {
+      "count": 30,
+      "max_ms": 1.1431,
+      "mean_ms": 0.249217,
+      "min_ms": 0.095,
+      "p50_ms": 0.14385,
+      "p95_ms": 0.88114,
+      "p99_ms": 1.068541,
+      "stdev_ms": 0.274199
+    },
+    "model_forward_ms": {
+      "count": 30,
+      "max_ms": 101.711906,
+      "mean_ms": 17.556706,
+      "min_ms": 6.204384,
+      "p50_ms": 7.321904,
+      "p95_ms": 76.841377,
+      "p99_ms": 95.874117,
+      "stdev_ms": 25.476095
+    },
+    "preprocess_ms": {
+      "count": 30,
+      "max_ms": 148.0214,
+      "mean_ms": 24.931857,
+      "min_ms": 7.6694,
+      "p50_ms": 10.0292,
+      "p95_ms": 121.90038,
+      "p99_ms": 141.600133,
+      "stdev_ms": 39.041367
+    },
+    "resize_ms": {
+      "count": 30,
+      "max_ms": 0.9022,
+      "mean_ms": 0.2226,
+      "min_ms": 0.0929,
+      "p50_ms": 0.12155,
+      "p95_ms": 0.83541,
+      "p99_ms": 0.884684,
+      "stdev_ms": 0.241507
+    },
+    "tensor_transform_ms": {
+      "count": 30,
+      "max_ms": 155.1147,
+      "mean_ms": 6.74336,
+      "min_ms": 0.4768,
+      "p50_ms": 0.58055,
+      "p95_ms": 10.002945,
+      "p99_ms": 113.175045,
+      "stdev_ms": 27.683322
+    }
+  },
+  "matmul_precision": "highest",
+  "measured_iterations": 30,
+  "parity": {
+    "absolute_tolerance": 1e-05,
+    "allclose": true,
+    "max_abs_error": 0.0,
+    "mean_abs_error": 0.0,
+    "observed": [
+      -0.1555965542793274,
+      -0.25515881180763245
+    ],
+    "reference": [
+      -0.1555965542793274,
+      -0.25515881180763245
+    ],
+    "relative_tolerance": 0.0001
+  },
+  "resources": {
+    "system_gpu_after": {
+      "driver_version": "581.57",
+      "gpu_utilization_percent": 0.0,
+      "index": 0,
+      "memory_clock_mhz": 9001.0,
+      "memory_total_mib": 24463.0,
+      "memory_used_mib": 809.0,
+      "memory_utilization_percent": 0.0,
+      "name": "NVIDIA GeForce RTX 5090 Laptop GPU",
+      "performance_state": "P4",
+      "power_w": 31.53,
+      "sm_clock_mhz": 1935.0,
+      "temperature_c": 55.0,
+      "uuid": "GPU-e0c86b99-1d5a-70e5-30b7-55212220fb14"
+    },
+    "telemetry_error": null,
+    "torch_cuda": {
+      "end_allocated_mib": 362.236,
+      "end_reserved_mib": 418.0,
+      "memory_before": {
+        "allocated_mib": 0.0,
+        "reserved_mib": 0.0
+      },
+      "peak_allocated_mib": 369.965,
+      "peak_reserved_mib": 418.0
+    }
+  },
+  "revision": {
+    "commit": "c548b33075339d46150730034f96e34a3390d89d",
+    "dirty": false
+  },
+  "schema_version": 1,
+  "setup_ms": {
+    "input_load": 4.3637,
+    "model_load": 2121.7076,
+    "preprocessor_init": 449.9776,
+    "variant_wrapper": 0.0014
+  },
+  "status": "passed",
+  "supervisor": {
+    "duration_seconds": 7.238,
+    "timed_out": false,
+    "timeout_seconds": 300,
+    "worker_exit": 0
+  },
+  "throughput_fps": {
+    "from_p50": 50.532741,
+    "from_p95": 4.117608
+  },
+  "variant": "eager",
+  "warmup_iterations": 10,
+  "workload": "video-legacy",
+  "workload_config": {
+    "jpeg_quality": 50,
+    "video_target_width": 240
+  }
+}
