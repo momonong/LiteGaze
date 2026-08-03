@@ -5,6 +5,7 @@ import pandas as pd
 
 from scripts.evaluate_geco_generalization import (
     add_population_priors,
+    aggregate_fixation_durations,
     assign_balanced_folds,
     cross_fitted_double_holdout,
     fit_ridge,
@@ -13,6 +14,22 @@ from scripts.evaluate_geco_generalization import (
 
 
 class TestGecoGeneralization(unittest.TestCase):
+    def test_fixation_rows_are_summed_per_word_without_inventing_zero(self):
+        fixations = pd.DataFrame(
+            {
+                "WORD_ID_WITHIN_TRIAL": [1, 1, 2, 2, 3],
+                "reading_time": [321, 337, ".", np.nan, -5],
+            }
+        )
+
+        aggregated = aggregate_fixation_durations(fixations).set_index(
+            "WORD_ID_WITHIN_TRIAL"
+        )
+
+        self.assertEqual(aggregated.loc[1, "reading_time"], 658)
+        self.assertTrue(np.isnan(aggregated.loc[2, "reading_time"]))
+        self.assertTrue(np.isnan(aggregated.loc[3, "reading_time"]))
+
     def test_balanced_folds_are_deterministic_within_strata(self):
         values = [f"L1|pp{i:02d}" for i in range(1, 10)] + [
             f"L2|pp{i:02d}" for i in range(1, 11)

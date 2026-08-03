@@ -156,11 +156,17 @@ def _source_fingerprints(project_root: Path) -> list[dict[str, Any]]:
     return fingerprint_files(unique_candidates, project_root)
 
 
-def capture_source_snapshot(root: str | Path) -> dict[str, Any]:
+def capture_source_snapshot(
+    root: str | Path,
+    *,
+    extra_files: Iterable[str | Path] = (),
+) -> dict[str, Any]:
     """Capture Git and entry-point state before an experiment writes outputs."""
     project_root = Path(root).resolve()
     source = _git_metadata(project_root)
-    source["files"] = _source_fingerprints(project_root)
+    files = _source_fingerprints(project_root)
+    files.extend(fingerprint_files(extra_files, project_root))
+    source["files"] = list({item["path"]: item for item in files}.values())
     return source
 
 

@@ -1,7 +1,7 @@
 """Leakage-resistant GECO cross-subject and cross-trial evaluation.
 
-The preregistered protocol lives in
-``docs/GECO_GENERALIZATION_PROTOCOL_2026-08-03.md``. This script intentionally
+The preregistered protocol and pre-outcome schema amendment live in
+``docs/GECO_GENERALIZATION_PROTOCOL_V1_1_2026-08-03.md``. This script intentionally
 uses only cached, label-free text features for its primary model and requires no
 GPU or language-model inference.
 """
@@ -36,9 +36,9 @@ else:
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATA_ROOT = PROJECT_ROOT / "data/geco/population"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "output"
-PROTOCOL_PATH = PROJECT_ROOT / "docs/GECO_GENERALIZATION_PROTOCOL_2026-08-03.md"
+PROTOCOL_PATH = PROJECT_ROOT / "docs/GECO_GENERALIZATION_PROTOCOL_V1_1_2026-08-03.md"
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = "1.1"
 RANDOM_SEED = 20260803
 N_SUBJECT_FOLDS = 5
 N_TRIAL_FOLDS = 5
@@ -190,6 +190,25 @@ def add_population_priors(frame: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+def aggregate_fixation_durations(fixations: pd.DataFrame) -> pd.DataFrame:
+    """Sum chronological fixation durations into one total per word item."""
+    required = set(FIXATION_COLUMNS)
+    missing = required.difference(fixations.columns)
+    if missing:
+        raise ValueError(f"fixation data is missing columns: {sorted(missing)}")
+
+    values = fixations.loc[:, FIXATION_COLUMNS].copy()
+    values["reading_time"] = pd.to_numeric(values["reading_time"], errors="coerce")
+    values.loc[values["reading_time"] <= 0, "reading_time"] = np.nan
+    return (
+        values.groupby("WORD_ID_WITHIN_TRIAL", as_index=False, sort=False)[
+            "reading_time"
+        ]
+        .sum(min_count=1)
+        .reset_index(drop=True)
+    )
+
+
 def cross_fitted_double_holdout(
     frame: pd.DataFrame,
     *,
@@ -292,8 +311,7 @@ def load_population(data_root: Path) -> tuple[pd.DataFrame, dict[str, Any]]:
         )
         if layout["WORD_ID_WITHIN_TRIAL"].duplicated().any():
             raise ValueError(f"duplicate layout word IDs: {layout_path}")
-        if fixations["WORD_ID_WITHIN_TRIAL"].duplicated().any():
-            raise ValueError(f"duplicate fixation word IDs: {fixation_path}")
+        fixations = aggregate_fixation_durations(fixations)
 
         merged = layout.merge(
             fixations,
@@ -647,7 +665,7 @@ def _write_report(
     fixation_prior = known["population_fixation_rate"]
     report = f"""# GECO Cross-Subject Generalization Results
 
-Protocol: `docs/GECO_GENERALIZATION_PROTOCOL_2026-08-03.md` (v{PROTOCOL_VERSION})
+Protocol: `docs/GECO_GENERALIZATION_PROTOCOL_V1_1_2026-08-03.md` (v{PROTOCOL_VERSION})
 
 Run completed: {datetime.now(UTC).isoformat()}
 
@@ -754,7 +772,10 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     started = time.perf_counter()
-    source_snapshot = capture_source_snapshot(PROJECT_ROOT)
+    source_snapshot = capture_source_snapshot(
+        PROJECT_ROOT,
+        extra_files=[PROTOCOL_PATH],
+    )
     data_root = args.data_root.resolve()
     output_dir = args.output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -816,6 +837,7 @@ def main() -> int:
             "subject_folds": N_SUBJECT_FOLDS,
             "trial_folds": N_TRIAL_FOLDS,
             "ridge_alpha": RIDGE_ALPHA,
+            "protocol_path": PROTOCOL_PATH.relative_to(PROJECT_ROOT).as_posix(),
             "bootstrap_samples": args.bootstrap_samples,
             "sign_flip_samples": args.sign_flip_samples,
             "primary_features": list(PRIMARY_FEATURES),
