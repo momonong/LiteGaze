@@ -1,19 +1,22 @@
-import sys
-import unittest
 import json
-from pathlib import Path
-
-# Setup root path for import
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
+import os
+import unittest
+from unittest.mock import patch
 
 from web import create_app
 from web.routes.inspector import _clean_json_response
 
+
 class TestAdaptiveStepper(unittest.TestCase):
     def setUp(self):
-        self.app = create_app()
-        self.app.config["TESTING"] = True
+        # Standalone runs must not consume a developer's configured quota.
+        self._env_patcher = patch.dict(os.environ, {"GEMINI_API_KEY": ""})
+        self._env_patcher.start()
+        self.addCleanup(self._env_patcher.stop)
+        self.app = create_app({
+            "TESTING": True,
+            "LEXIGAZE_BLUEPRINTS": ("inspector",),
+        })
         self.client = self.app.test_client()
 
     def test_clean_json_response_helper(self):

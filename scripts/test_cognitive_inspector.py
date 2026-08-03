@@ -1,16 +1,12 @@
-import sys
-import unittest
 import json
-import shutil
+import tempfile
+import unittest
 from pathlib import Path
-
-# Setup root path for import
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
+from unittest.mock import patch
 
 from core.cognitive_inspector.inspector import CognitiveInspector
-from core.cognitive_inspector.report_generator import generate_markdown_report
 from web import create_app
+
 
 class TestCognitiveInspectorUnit(unittest.TestCase):
     def setUp(self):
@@ -165,8 +161,19 @@ class TestCognitiveInspectorUnit(unittest.TestCase):
 
 class TestCognitiveInspectorIntegration(unittest.TestCase):
     def setUp(self):
-        self.app = create_app()
-        self.app.config["TESTING"] = True
+        self._temp_dir = tempfile.TemporaryDirectory(prefix="lexigaze-inspector-")
+        self.addCleanup(self._temp_dir.cleanup)
+        self.reports_dir = Path(self._temp_dir.name)
+        self._reports_patcher = patch(
+            "web.routes.inspector.REPORTS_DIR",
+            self.reports_dir,
+        )
+        self._reports_patcher.start()
+        self.addCleanup(self._reports_patcher.stop)
+        self.app = create_app({
+            "TESTING": True,
+            "LEXIGAZE_BLUEPRINTS": ("inspector",),
+        })
         self.client = self.app.test_client()
         self.reports_to_clean = []
 
@@ -218,7 +225,7 @@ class TestCognitiveInspectorIntegration(unittest.TestCase):
         
         # 驗證實體檔案
         rel_path = data["analysis"]["report_path"]
-        abs_path = ROOT / rel_path
+        abs_path = self.reports_dir / Path(rel_path).name
         self.assertTrue(abs_path.exists())
         
         # 標記以供 tearDown 清理
@@ -272,7 +279,7 @@ class TestCognitiveInspectorIntegration(unittest.TestCase):
         self.assertTrue(del_data["ok"])
         
         # 驗證實體檔案已被刪除
-        abs_path = ROOT / report_path
+        abs_path = self.reports_dir / Path(report_path).name
         self.assertFalse(abs_path.exists())
 
     def test_flask_analyze_invalid_payload(self):

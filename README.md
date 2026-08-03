@@ -57,6 +57,7 @@ To avoid mixed purposes, our documentation is structured as follows:
 | **[INSTRUCTION_DATA.md](file://D:/projects/lexigaze/INSTRUCTION_DATA.md)** | Distributed Setup | Setup guide for Ubuntu server and Windows laptop client. |
 | **[AGENT.md](file://D:/projects/lexigaze/AGENT.md)** | Developer Rules | Code quality standards, imports, relative API rules. |
 | **[CONTRIBUTING.md](file://D:/projects/lexigaze/CONTRIBUTING.md)** | Git Guidelines | Branch names, commit messages, and collaborative pull requests. |
+| **[docs/testing.md](docs/testing.md)** | Safe Validation | Offline CPU gate, CI boundary, and heavy-test policy. |
 
 ---
 
@@ -90,3 +91,11 @@ Launch the Flask backend:
 .venv/bin/python -X utf8 run.py
 ```
 Open **`http://localhost:8080`** in your browser.
+
+### 4. Run the safe regression gate
+
+```bash
+python -X utf8 -m scripts.run_offline_quality_gate
+```
+
+This lane is CPU-only, blocks test-time network access, clears provider credentials, and does not install or import PyTorch. See [docs/testing.md](docs/testing.md) for its scope and the separate heavy-test policy.

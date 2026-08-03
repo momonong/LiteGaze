@@ -1,38 +1,81 @@
-import os
+import json
 import mimetypes
 import uuid
-import json
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
-from flask import Flask, jsonify, request, send_from_directory, render_template
+
+from flask import Flask, jsonify, render_template, request, send_from_directory
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / 'data'
 DATA_DIR.mkdir(exist_ok=True)
 SHENGWEN_STATIC = ROOT / 'archive' / 'shengwen' / 'web' / 'static'
 
+DEFAULT_BLUEPRINTS = (
+    'gaze',
+    'cognitive',
+    'fusion',
+    'demo',
+    'inspector',
+    'gaze_video',
+)
+
 mimetypes.add_type('text/javascript', '.js')
 
-def create_app():
+
+def _register_blueprints(app: Flask) -> None:
+    enabled = app.config.get('LEXIGAZE_BLUEPRINTS')
+    if enabled is None:
+        enabled = DEFAULT_BLUEPRINTS
+    elif isinstance(enabled, str):
+        enabled = (enabled,)
+    else:
+        enabled = tuple(enabled)
+
+    unknown = sorted(set(enabled) - set(DEFAULT_BLUEPRINTS))
+    if unknown:
+        raise ValueError(f"Unknown LexiGaze blueprints: {', '.join(unknown)}")
+
+    # Import only the requested subsystems. The default still registers the
+    # complete application, while focused tests and lightweight deployments
+    # avoid importing PyTorch/OpenCV routes they never use.
+    if 'gaze' in enabled:
+        from web.routes.gaze import gaze_api_bp, gaze_bp
+
+        app.register_blueprint(gaze_bp)
+        app.register_blueprint(gaze_api_bp)
+    if 'cognitive' in enabled:
+        from web.routes.cognitive import cognitive_bp
+
+        app.register_blueprint(cognitive_bp)
+    if 'fusion' in enabled:
+        from web.routes.fusion import fusion_bp
+
+        app.register_blueprint(fusion_bp)
+    if 'demo' in enabled:
+        from web.routes.demo import demo_bp
+
+        app.register_blueprint(demo_bp)
+    if 'inspector' in enabled:
+        from web.routes.inspector import inspector_bp
+
+        app.register_blueprint(inspector_bp)
+    if 'gaze_video' in enabled:
+        from web.routes.gaze_video import gaze_video_bp
+
+        app.register_blueprint(gaze_video_bp)
+
+
+def create_app(config: Mapping[str, object] | None = None):
     # Flask app initialization with static_folder pointing to 'static' and templates to 'templates'
     app = Flask(__name__, static_folder='static', template_folder='templates')
     app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500 MB upload limit
-    
-    # Register blueprints from submodules
-    from web.routes.gaze import gaze_api_bp, gaze_bp
-    from web.routes.cognitive import cognitive_bp
-    from web.routes.fusion import fusion_bp
-    from web.routes.demo import demo_bp
-    from web.routes.inspector import inspector_bp
-    from web.routes.gaze_video import gaze_video_bp
-    
-    app.register_blueprint(gaze_bp)
-    app.register_blueprint(gaze_api_bp)
-    app.register_blueprint(cognitive_bp)
-    app.register_blueprint(fusion_bp)
-    app.register_blueprint(demo_bp)
-    app.register_blueprint(inspector_bp)
-    app.register_blueprint(gaze_video_bp)
+    app.config['LEXIGAZE_BLUEPRINTS'] = None
+    if config:
+        app.config.update(config)
+
+    _register_blueprints(app)
     
     # ── Static files & Template views ─────────────────────────────────────────
     @app.route('/')
