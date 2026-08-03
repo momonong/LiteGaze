@@ -44,6 +44,7 @@ A production change must:
 - avoid increasing peak VRAM by more than 1 GiB unless the gain and deployment budget justify it;
 - report cold-start and compilation cost separately;
 - preserve API contracts and pass the offline CPU quality gate;
+- keep process-wide accelerator settings isolated to the measured subsystem, or require an explicit deployment opt-in plus cross-model validation;
 - be rechecked on held-out session data only after the implementation is frozen.
 
 The 10% latency and 1 GiB VRAM thresholds are initial operating rules, not scientific constants. A later ADR may revise them with evidence.

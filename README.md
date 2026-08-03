@@ -58,6 +58,8 @@ To avoid mixed purposes, our documentation is structured as follows:
 | **[AGENT.md](file://D:/projects/lexigaze/AGENT.md)** | Developer Rules | Code quality standards, imports, relative API rules. |
 | **[CONTRIBUTING.md](file://D:/projects/lexigaze/CONTRIBUTING.md)** | Git Guidelines | Branch names, commit messages, and collaborative pull requests. |
 | **[docs/testing.md](docs/testing.md)** | Safe Validation | Offline CPU gate, CI boundary, and heavy-test policy. |
+| **[Gaze benchmark contract](docs/performance/gaze-inference-benchmark.md)** | Hardware Validation | Guarded workloads, parity, telemetry, and production TF32 scope. |
+| **[Hardware methodology ADR](docs/adr/0001-hardware-performance-methodology.md)** | Performance Decisions | Acceptance gates, data isolation, and reproducibility requirements. |
 
 ---
 

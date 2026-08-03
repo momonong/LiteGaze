@@ -8,6 +8,8 @@ from typing import Any
 
 CUDA_MATMUL_PRECISION = "high"
 TF32_MINIMUM_COMPUTE_CAPABILITY = 8
+PROCESS_WIDE_TF32_ENV = "LEXIGAZE_ENABLE_PROCESS_WIDE_TF32"
+_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 
 
 def cuda_runtime_available(
@@ -18,18 +20,31 @@ def cuda_runtime_available(
 
     current_environment = os.environ if environment is None else environment
     visible_devices = current_environment.get("CUDA_VISIBLE_DEVICES")
-    if visible_devices is not None and visible_devices.strip() in {"", "-1"}:
-        return False
+    if visible_devices is not None:
+        normalized = visible_devices.strip()
+        first_identifier = normalized.split(",", 1)[0].strip()
+        if not normalized or first_identifier == "-1":
+            return False
     return bool(torch_module.cuda.is_available())
 
 
-def enable_cuda_tf32(torch_module: Any, device: str) -> str | None:
-    """Enable TF32-backed float32 matmuls on supported CUDA devices.
+def enable_process_wide_cuda_tf32(
+    torch_module: Any,
+    device: str,
+    environment: Mapping[str, str] | None = None,
+) -> str | None:
+    """Opt in to process-wide TF32 matmuls on supported CUDA devices.
 
     Returns the previous process-wide precision so a caller can restore it if
-    CUDA model initialization fails. CPU and pre-Ampere devices remain on the
-    existing precision policy.
+    CUDA model initialization fails. The default is intentionally disabled:
+    PyTorch's matmul precision is global and may affect non-gaze models sharing
+    the process. CPU and pre-Ampere devices retain their existing policy.
     """
+
+    current_environment = os.environ if environment is None else environment
+    requested = current_environment.get(PROCESS_WIDE_TF32_ENV, "")
+    if requested.strip().lower() not in _TRUE_VALUES:
+        return None
 
     if not str(device).startswith("cuda"):
         return None
@@ -48,7 +63,7 @@ def enable_cuda_tf32(torch_module: Any, device: str) -> str | None:
 
 
 def restore_matmul_precision(torch_module: Any, previous: str | None) -> None:
-    """Restore a precision value returned by :func:`enable_cuda_tf32`."""
+    """Restore a precision value returned by the process-wide TF32 opt-in."""
 
     if previous is not None:
         torch_module.set_float32_matmul_precision(previous)

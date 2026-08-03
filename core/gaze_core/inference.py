@@ -11,7 +11,7 @@ import numpy as np
 from .model_registry import model_path
 from .torch_runtime import (
     cuda_runtime_available,
-    enable_cuda_tf32,
+    enable_process_wide_cuda_tf32,
     restore_matmul_precision,
 )
 
@@ -56,7 +56,7 @@ def get_base_model():
                 except Exception:
                     device = "cpu"
 
-            previous_matmul_precision = enable_cuda_tf32(torch, device)
+            previous_matmul_precision = enable_process_wide_cuda_tf32(torch, device)
             try:
                 base_model = UniGazeFeatureWrapper(load_unigaze_b16(device)).to(device).eval()
             except Exception:

@@ -60,6 +60,12 @@ Compile variants refuse early when no compatible Triton module is installed. Ful
 
 JSON files are written atomically. Profiler traces are optional local artifacts and are not committed.
 
+## Production TF32 scope
+
+The benchmark can evaluate `--matmul-precision high` in an isolated worker, but the shared Flask process defaults to `highest`. PyTorch's matmul precision policy is process-wide and the default application can also run cognitive Torch models, so gaze inference must not silently change their numerical behavior.
+
+Set `LEXIGAZE_ENABLE_PROCESS_WIDE_TF32=1` only for a dedicated gaze-only process or after separately validating every CUDA model that shares the process. The production loader applies the opt-in only to CUDA devices with compute capability 8.0 or newer; CPU and older devices are unchanged, and a CUDA model-load failure restores the previous policy before CPU fallback.
+
 ## Example
 
 ```powershell

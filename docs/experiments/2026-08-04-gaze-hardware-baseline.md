@@ -308,17 +308,23 @@ Decision: keep TF32 as the production candidate because it improves the full-pat
 
 ### Phase E1: hardware-aware production candidate
 
-The production loader now selects PyTorch's `high` float32-matmul policy only after CUDA kernel probing succeeds and only for devices with compute capability 8.0 or newer. CPU and older CUDA devices keep their existing policy. If CUDA model initialization fails, the loader restores the previous process-wide precision before falling back to CPU.
+The initial production candidate selected PyTorch's `high` float32-matmul policy only after CUDA kernel probing succeeded and only for devices with compute capability 8.0 or newer. CPU and older CUDA devices kept their existing policy. If CUDA model initialization failed, the loader restored the previous process-wide precision before falling back to CPU.
 
 This is deliberately smaller than adopting `torch.compile`: it needs no new runtime package, has no compilation cold start, and does not change model/input/output dtypes. Six Torch-free unit tests cover supported CUDA, CPU, older CUDA, capability-query failure, precision restoration, and import isolation. The full offline CPU gate passes 33/33 tests without importing Torch or changing GPU use.
 
-Status: implementation candidate only. Commit it before performance validation so every post-change benchmark records a clean revision; the previously requested longer pair remains blocked while an unrelated GPU workload exceeds the quiet-device budget.
+Status: implementation candidate only. It was committed before post-change review so the runtime behavior and its later scope correction remain auditable.
 
 ### Phase E2: explicitly hidden CUDA regression
 
-A production-loader smoke with `CUDA_VISIBLE_DEVICES=-1` exposed a pre-existing Windows failure before model selection: PyTorch terminated with native access-violation exit code `-1073741819` inside `torch.cuda.is_available()`. The TF32 policy had not run yet. The runtime policy now treats an empty CUDA visibility list or `-1` as an explicit CPU selection and does not initialize the hidden CUDA runtime.
+A production-loader smoke with `CUDA_VISIBLE_DEVICES=-1` exposed a pre-existing Windows failure before model selection: PyTorch terminated with native access-violation exit code `-1073741819` inside `torch.cuda.is_available()`. The TF32 policy had not run yet. Consistent with the official [CUDA environment-variable contract](https://docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/environment-variables.html), the runtime policy now treats an empty CUDA visibility list or leading `-1` as an explicit CPU selection and does not initialize the hidden CUDA runtime.
 
 The identical smoke now loads UniGaze on CPU, keeps float32 matmul precision at `highest`, and exits normally. Two additional Torch-free tests verify that explicit hiding bypasses the CUDA probe while a visible device still uses it. The complete offline gate passes 35/35 tests with credentials cleared, network/process spawning blocked, no artifacts changed, and no Torch import.
+
+### Phase E3: process-wide precision scope review
+
+The default Flask application registers both gaze and cognitive routes. The cognitive pipeline can run BERT/GPT-2 on the same CUDA device, so a permanent gaze-loader precision change would also affect unrelated float32 matrix multiplications. PyTorch offers backend/operator-level TF32 controls, but the settings remain global rather than thread-local; temporarily changing and restoring them around a gaze request would still race with concurrent cognitive requests. See the official [CUDA semantics](https://docs.pytorch.org/docs/main/notes/cuda.html) and the PyTorch maintainers' [precision-context discussion](https://github.com/pytorch/pytorch/issues/167254).
+
+Decision: do not enable TF32 by default in the shared process. `LEXIGAZE_ENABLE_PROCESS_WIDE_TF32=1` is an explicit opt-in for a dedicated gaze-only worker or a deployment that has separately accepted process-wide numerical changes. The capability check, CPU/older-GPU no-op behavior, and fallback restoration remain in place. This preserves the measured acceleration path without silently changing cognition outputs or tuning against a question-answer set. Nine runtime-policy tests are included; the final offline gate passes 36/36 tests without importing Torch.
 
 ### Phase F research: MediaPipe acceleration boundary
 

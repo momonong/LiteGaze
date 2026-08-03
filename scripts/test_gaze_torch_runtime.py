@@ -4,8 +4,9 @@ import sys
 import unittest
 
 from core.gaze_core.torch_runtime import (
+    PROCESS_WIDE_TF32_ENV,
     cuda_runtime_available,
-    enable_cuda_tf32,
+    enable_process_wide_cuda_tf32,
     restore_matmul_precision,
 )
 
@@ -49,7 +50,7 @@ class GazeTorchRuntimeTests(unittest.TestCase):
         self.assertFalse(
             cuda_runtime_available(
                 torch_module,
-                {"CUDA_VISIBLE_DEVICES": "-1"},
+                {"CUDA_VISIBLE_DEVICES": "-1,0"},
             )
         )
         self.assertFalse(
@@ -71,10 +72,23 @@ class GazeTorchRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(torch_module.cuda.availability_queries, 1)
 
-    def test_supported_cuda_device_enables_high_precision_policy(self):
+    def test_default_cuda_policy_does_not_change_process_precision(self):
         torch_module = _FakeTorch(capability=(12, 0))
 
-        previous = enable_cuda_tf32(torch_module, "cuda")
+        previous = enable_process_wide_cuda_tf32(torch_module, "cuda", {})
+
+        self.assertIsNone(previous)
+        self.assertEqual(torch_module.cuda.queries, [])
+        self.assertEqual(torch_module.precision_changes, [])
+
+    def test_supported_cuda_device_enables_explicit_process_wide_opt_in(self):
+        torch_module = _FakeTorch(capability=(12, 0))
+
+        previous = enable_process_wide_cuda_tf32(
+            torch_module,
+            "cuda",
+            {PROCESS_WIDE_TF32_ENV: "true"},
+        )
 
         self.assertEqual(previous, "highest")
         self.assertEqual(torch_module.cuda.queries, ["cuda"])
@@ -83,7 +97,11 @@ class GazeTorchRuntimeTests(unittest.TestCase):
     def test_cpu_preserves_existing_precision_without_querying_cuda(self):
         torch_module = _FakeTorch()
 
-        previous = enable_cuda_tf32(torch_module, "cpu")
+        previous = enable_process_wide_cuda_tf32(
+            torch_module,
+            "cpu",
+            {PROCESS_WIDE_TF32_ENV: "1"},
+        )
 
         self.assertIsNone(previous)
         self.assertEqual(torch_module.cuda.queries, [])
@@ -92,7 +110,11 @@ class GazeTorchRuntimeTests(unittest.TestCase):
     def test_pre_ampere_cuda_device_preserves_existing_precision(self):
         torch_module = _FakeTorch(capability=(7, 5))
 
-        previous = enable_cuda_tf32(torch_module, "cuda:0")
+        previous = enable_process_wide_cuda_tf32(
+            torch_module,
+            "cuda:0",
+            {PROCESS_WIDE_TF32_ENV: "on"},
+        )
 
         self.assertIsNone(previous)
         self.assertEqual(torch_module.precision_changes, [])
@@ -100,7 +122,11 @@ class GazeTorchRuntimeTests(unittest.TestCase):
     def test_capability_probe_failure_preserves_existing_precision(self):
         torch_module = _FakeTorch(error=RuntimeError("driver unavailable"))
 
-        previous = enable_cuda_tf32(torch_module, "cuda")
+        previous = enable_process_wide_cuda_tf32(
+            torch_module,
+            "cuda",
+            {PROCESS_WIDE_TF32_ENV: "yes"},
+        )
 
         self.assertIsNone(previous)
         self.assertEqual(torch_module.precision_changes, [])
