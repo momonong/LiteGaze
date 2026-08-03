@@ -5,7 +5,7 @@
 - Date: 2026-08-04 (Asia/Taipei)
 - Branch: `feat/session-data-integrity`
 - Stacked base: `codex/test/offline-cpu-quality-gate` at `2ee6fea`
-- State: local implementation and validation complete; Ubuntu CI pending
+- State: implementation and local/Ubuntu validation complete; Draft PR #9 open
 - Compute policy: CPU-only, offline quality gate; no Torch import and no LexiGaze GPU allocation
 - Evaluation policy: storage and API contract tests only; no model, prompt, or question-answer dataset is used
 
@@ -118,7 +118,7 @@ Command:
 Result on Windows / Python 3.11.9:
 
 - 27 tests run in 1.927 seconds; zero failures and zero errors;
-- one symlink test skipped because the local Windows account cannot create symlinks; Ubuntu CI will execute it;
+- one symlink test skipped because the local Windows account cannot create symlinks;
 - supervisor completed in 2.803 seconds without timeout;
 - network probe and process-spawn probe blocked;
 - credentials cleared and repository artifact changes empty;
@@ -128,3 +128,13 @@ Result on Windows / Python 3.11.9:
   and never imported Torch.
 
 No model inference, training, prompt tuning, question-answer dataset, or external benchmark was used. These results therefore cannot overfit a question-answer set; they measure only deterministic storage and API behavior.
+
+GitHub Actions then validated the pushed commit on Linux / Python 3.12.13:
+
+- 27 tests passed in 0.787 seconds with zero skips; the symbolic-link rejection test executed successfully;
+- worker completed in 1.233 seconds and the supervisor in 1.468 seconds;
+- network/process probes were blocked, credentials were cleared, artifact changes were empty, and Torch was not imported;
+- the runner exposed no NVIDIA GPU;
+- GitGuardian Security Checks also passed.
+
+Draft PR: <https://github.com/momonong/lexigaze/pull/9>
