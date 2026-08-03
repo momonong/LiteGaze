@@ -288,3 +288,20 @@ The full offline-video path ran from clean commit `c548b33` under a clean GPU gu
 The median confirms that MediaPipe is now the largest stage and the model is second. The p95 is dominated by simultaneous host scheduling stalls: preprocess reached 121.900 ms, tensor transform 10.003 ms, and model forward 76.841 ms. The GPU itself passed a clean preflight, so GPU-only guarding is insufficient for stable full-pipeline tail comparisons.
 
 Next, run TF32 on the identical fixed frame and conditions. Treat median gains separately from tail behavior, and do not promote until the CPU-contended result is understood.
+
+### Phase D2: fixed-frame `video-legacy` TF32 comparison
+
+TF32 ran from clean commit `ce029c7` with the same input hash, 10 warm-up iterations, 30 measured iterations, and a clean GPU guard. Its result is [`results/2026-08-04-cuda-video-legacy-tf32.json`](results/2026-08-04-cuda-video-legacy-tf32.json).
+
+| Metric | Eager `highest` | TF32 `high` | Change |
+| --- | ---: | ---: | ---: |
+| End-to-end p50 | 19.789 ms | 18.363 ms | 7.21% faster |
+| End-to-end p95 | 242.859 ms | 206.677 ms | 14.90% faster |
+| Model-forward p50 | 7.322 ms | 6.486 ms | 11.42% faster |
+| MediaPipe preprocess p50 | 10.029 ms | 10.017 ms | 0.13% faster |
+| Peak allocated / reserved VRAM | 369.965 / 418 MiB | 369.965 / 418 MiB | unchanged |
+| Max absolute gaze error | 0.0 | 0.0000187 | within 0.005 tolerance |
+
+The end-to-end p95 clears the numeric gate, but it is not yet trustworthy evidence: the eager and TF32 runs both contain simultaneous CPU-side stalls, and TF32's model-forward p95 is actually worse in this short sample. The uncontended medians show the expected model-stage improvement while MediaPipe now caps the user-visible median gain.
+
+Decision: keep TF32 as the production candidate because it improves the full-path median, preserves output tolerance, and adds neither VRAM nor compilation cost. Before implementation, run longer paired fixed-frame samples so the acceptance decision does not depend on one noisy 30-iteration tail.
