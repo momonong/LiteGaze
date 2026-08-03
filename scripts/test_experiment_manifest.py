@@ -64,7 +64,9 @@ class TestExperimentManifest(unittest.TestCase):
                 )
 
             manifest = json.loads(written.read_text(encoding="utf-8"))
-            temporary_files = list(destination.parent.glob(f".{destination.name}.*.tmp"))
+            temporary_files = list(
+                destination.parent.glob(f".{destination.name}.*.tmp")
+            )
 
         self.assertEqual(manifest["schema_version"], 1)
         self.assertEqual(manifest["experiment"]["name"], "unit_test_experiment")
@@ -98,6 +100,31 @@ class TestExperimentManifest(unittest.TestCase):
             metadata["tracked_diff_from_head_sha256"],
             hashlib.sha256(diff.encode("utf-8")).hexdigest(),
         )
+
+    def test_pre_run_source_snapshot_is_preserved(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            destination = root / "manifest.json"
+            snapshot = {
+                "commit": "protocol-lock",
+                "branch": "test/generalization",
+                "dirty": False,
+                "files": [{"path": "study.py", "sha256": "source-hash"}],
+            }
+            with (
+                patch("scripts.experiment_manifest._gpu_inventory", return_value=[]),
+                patch("scripts.experiment_manifest._package_versions", return_value={}),
+            ):
+                write_experiment_manifest(
+                    destination,
+                    "snapshot_test",
+                    root=root,
+                    source_snapshot=snapshot,
+                )
+
+            manifest = json.loads(destination.read_text(encoding="utf-8"))
+
+        self.assertEqual(manifest["source"], snapshot)
 
 
 if __name__ == "__main__":

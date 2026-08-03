@@ -10,10 +10,10 @@ import platform
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+from collections.abc import Iterable, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable, Mapping
-
+from typing import Any
 
 SCHEMA_VERSION = 1
 DEFAULT_PACKAGES = (
@@ -121,7 +121,9 @@ def _display_path(path: Path, root: Path) -> str:
         return resolved.as_posix()
 
 
-def fingerprint_files(paths: Iterable[str | Path], root: str | Path) -> list[dict[str, Any]]:
+def fingerprint_files(
+    paths: Iterable[str | Path], root: str | Path
+) -> list[dict[str, Any]]:
     """Return stable metadata and hashes for inputs or generated artifacts."""
     project_root = Path(root).resolve()
     fingerprints = []
@@ -154,6 +156,14 @@ def _source_fingerprints(project_root: Path) -> list[dict[str, Any]]:
     return fingerprint_files(unique_candidates, project_root)
 
 
+def capture_source_snapshot(root: str | Path) -> dict[str, Any]:
+    """Capture Git and entry-point state before an experiment writes outputs."""
+    project_root = Path(root).resolve()
+    source = _git_metadata(project_root)
+    source["files"] = _source_fingerprints(project_root)
+    return source
+
+
 def build_experiment_manifest(
     experiment_name: str,
     *,
@@ -166,17 +176,21 @@ def build_experiment_manifest(
     status: str = "completed",
     duration_seconds: float | None = None,
     packages: Iterable[str] = DEFAULT_PACKAGES,
+    source_snapshot: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a JSON-serializable manifest without importing ML frameworks."""
     project_root = Path(root).resolve()
-    source = _git_metadata(project_root)
-    source["files"] = _source_fingerprints(project_root)
+    source = (
+        dict(source_snapshot)
+        if source_snapshot is not None
+        else capture_source_snapshot(project_root)
+    )
     return {
         "schema_version": SCHEMA_VERSION,
         "experiment": {
             "name": experiment_name,
             "status": status,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "duration_seconds": duration_seconds,
             "seed": seed,
             "command": sys.argv,
