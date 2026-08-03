@@ -66,9 +66,11 @@ DEFAULT_PROVO_PATH = (
     PROJECT_ROOT / "data/provo/raw/Provo_Corpus-Eyetracking_Data.csv"
 )
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "output"
-PROTOCOL_PATH = PROJECT_ROOT / "docs/PROVO_ZERO_SHOT_PROTOCOL_2026-08-03.md"
+PROTOCOL_PATH = (
+    PROJECT_ROOT / "docs/PROVO_ZERO_SHOT_PROTOCOL_V1_1_2026-08-03.md"
+)
 
-PROTOCOL_VERSION = "1"
+PROTOCOL_VERSION = "1.1"
 RANDOM_SEED = 20260804
 RIDGE_ALPHA = 1.0
 LOGISTIC_ALPHA = 1.0
@@ -102,6 +104,9 @@ PROVO_COLUMNS = (
     "Word",
     "Word_Cleaned",
     "Word_Length",
+    "IA_ID",
+    "IA_LABEL",
+    "TRIAL_INDEX",
     "IA_DWELL_TIME",
     "IA_SKIP",
 )
@@ -356,20 +361,22 @@ def validate_provo_frame(raw: pd.DataFrame) -> pd.DataFrame:
         raise ValueError(f"PROVO data is missing columns: {sorted(missing)}")
     values = raw.loc[:, PROVO_COLUMNS].copy()
 
-    for column in ("Participant_ID", "Word_Unique_ID", "Word", "Word_Cleaned"):
+    for column in ("Participant_ID", "IA_LABEL"):
         values[column] = values[column].astype(str).str.strip()
         if bool((values[column] == "").any()):
             raise ValueError(f"PROVO {column} contains empty values")
 
     text_id = pd.to_numeric(values["Text_ID"], errors="coerce")
-    word_number = pd.to_numeric(values["Word_Number"], errors="coerce")
-    reported_length = pd.to_numeric(values["Word_Length"], errors="coerce")
+    interest_area_id = pd.to_numeric(values["IA_ID"], errors="coerce")
+    trial_index = pd.to_numeric(values["TRIAL_INDEX"], errors="coerce")
     if not (
         np.isfinite(text_id).all()
-        and np.isfinite(word_number).all()
-        and np.isfinite(reported_length).all()
+        and np.isfinite(interest_area_id).all()
+        and np.isfinite(trial_index).all()
     ):
-        raise ValueError("PROVO text IDs, word numbers, and word lengths must be finite")
+        raise ValueError(
+            "PROVO text IDs, interest-area IDs, and trial indexes must be finite"
+        )
 
     raw_skip = values["IA_SKIP"].replace("", np.nan)
     skip = pd.to_numeric(raw_skip, errors="coerce")
@@ -385,27 +392,24 @@ def validate_provo_frame(raw: pd.DataFrame) -> pd.DataFrame:
     if bool(invalid_dwell.any()):
         raise ValueError("PROVO IA_DWELL_TIME contains unexpected non-numeric values")
     positive_dwell = np.isfinite(dwell) & (dwell > 0)
-    visited_without_duration = (skip == 0) & ~positive_dwell
-    skipped_with_duration = (skip == 1) & positive_dwell
-    if bool(visited_without_duration.any()) or bool(skipped_with_duration.any()):
-        raise ValueError(
-            "PROVO IA_SKIP/dwell contradiction: "
-            f"visited_without_positive_duration={int(visited_without_duration.sum())}, "
-            f"skipped_with_positive_duration={int(skipped_with_duration.sum())}"
-        )
 
     frame = pd.DataFrame(
         {
             "corpus": "PROVO",
             "subject": values["Participant_ID"],
             "trial": text_id.astype(int).astype(str),
-            "word_id": values["Word_Unique_ID"],
-            "word_position": word_number.astype(float),
-            "word": values["Word"],
+            "word_id": interest_area_id.astype(int).astype(str),
+            "word_position": interest_area_id.astype(float),
+            "word": values["IA_LABEL"],
+            "trial_index": trial_index.astype(int),
+            "annotation_word_id": values["Word_Unique_ID"].astype(str),
+            "annotation_word_number": values["Word_Number"].astype(str),
+            "annotation_word": values["Word"].astype(str),
             "word_cleaned": values["Word_Cleaned"],
-            "reported_word_length": reported_length.astype(float),
+            "reported_word_length": values["Word_Length"].astype(str),
             "reading_time": dwell.astype(float),
-            "fixated": (skip == 0).astype(bool),
+            "fixated": positive_dwell.astype(bool),
+            "first_pass_skipped": (skip == 1).astype(bool),
         }
     )
     key = ["subject", "trial", "word_id"]
@@ -456,6 +460,9 @@ def load_provo(path: Path) -> tuple[pd.DataFrame, dict[str, Any]]:
         "row_count": len(population),
         "fixated_row_count": int(population["fixated"].sum()),
         "skipped_row_count": int((~population["fixated"]).sum()),
+        "first_pass_skipped_row_count": int(
+            population["first_pass_skipped"].sum()
+        ),
     }
     return population, fingerprint
 
@@ -737,7 +744,7 @@ def _write_report(
     fixation = summaries["secondary_fixation"]
     report = f"""# GECO-to-PROVO Zero-Shot Results
 
-Protocol: `docs/PROVO_ZERO_SHOT_PROTOCOL_2026-08-03.md` (v{PROTOCOL_VERSION})
+Protocol: `docs/PROVO_ZERO_SHOT_PROTOCOL_V1_1_2026-08-03.md` (v{PROTOCOL_VERSION})
 
 Run completed: {datetime.now(UTC).isoformat()}
 
@@ -936,7 +943,7 @@ def main() -> int:
     ]
     write_experiment_manifest(
         manifest_path,
-        "geco_to_provo_zero_shot_v1",
+        "geco_to_provo_zero_shot_v1_1",
         root=PROJECT_ROOT,
         datasets=[args.provo_path, fingerprint_path],
         artifacts=artifacts,

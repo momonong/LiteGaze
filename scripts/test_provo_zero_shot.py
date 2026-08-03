@@ -73,23 +73,30 @@ class TestProvoZeroShot(unittest.TestCase):
             np.isfinite(featured.loc[:, FEATURE_COLUMNS].to_numpy()).all()
         )
 
-    def test_provo_schema_rejects_skip_duration_contradiction(self):
+    def test_provo_schema_uses_complete_interest_area_fields(self):
         raw = pd.DataFrame(
             {
                 "Participant_ID": ["Sub01", "Sub01"],
-                "Word_Unique_ID": ["QID1", "QID2"],
+                "Word_Unique_ID": ["NA", "QID2"],
                 "Text_ID": [1, 1],
-                "Word_Number": [2, 3],
-                "Word": ["hello", "world"],
-                "Word_Cleaned": ["hello", "world"],
-                "Word_Length": [5, 5],
+                "Word_Number": ["NA", 3],
+                "Word": ["NA", "world"],
+                "Word_Cleaned": ["NA", "world"],
+                "Word_Length": ["NA", 5],
+                "IA_ID": [1, 2],
+                "IA_LABEL": ["Hello", "world"],
+                "TRIAL_INDEX": [7, 7],
                 "IA_DWELL_TIME": [120, 90],
                 "IA_SKIP": [0, 1],
             }
         )
 
-        with self.assertRaisesRegex(ValueError, "contradiction"):
-            validate_provo_frame(raw)
+        validated = validate_provo_frame(raw)
+
+        self.assertEqual(validated["word"].tolist(), ["Hello", "world"])
+        self.assertEqual(validated["word_id"].tolist(), ["1", "2"])
+        self.assertEqual(validated["fixated"].tolist(), [True, True])
+        self.assertEqual(validated["first_pass_skipped"].tolist(), [False, True])
 
     def test_fixed_logistic_uses_train_statistics_and_converges(self):
         features = np.array(
