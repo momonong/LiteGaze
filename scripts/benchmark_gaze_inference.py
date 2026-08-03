@@ -67,6 +67,12 @@ class BenchmarkRefused(RuntimeError):
     """Raised when a safety precondition blocks a hardware run."""
 
 
+def torch_device_spec(device: str) -> str:
+    """Return an explicit device string accepted by current PyTorch builds."""
+
+    return "cuda:0" if device == "cuda" else device
+
+
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--device", choices=DEVICES, default="cpu")
@@ -661,7 +667,7 @@ def _run_benchmark(args: argparse.Namespace, guard: dict[str, Any] | None) -> di
     )
     from core.unigaze_personalization.transforms import to_unigaze_tensor
 
-    device = torch.device(args.device)
+    device = torch.device(torch_device_spec(args.device))
     if device.type == "cuda" and not torch.cuda.is_available():
         raise BenchmarkRefused("PyTorch reports that CUDA is unavailable")
 
@@ -695,7 +701,7 @@ def _run_benchmark(args: argparse.Namespace, guard: dict[str, Any] | None) -> di
         }
 
     model_started = time.perf_counter()
-    base_model = UniGazeFeatureWrapper(load_unigaze_b16(args.device)).to(device).eval()
+    base_model = UniGazeFeatureWrapper(load_unigaze_b16(str(device))).to(device).eval()
     model_load_ms = (time.perf_counter() - model_started) * 1000
     candidate, variant_setup_ms = _configure_variant(torch, base_model, args.variant)
 

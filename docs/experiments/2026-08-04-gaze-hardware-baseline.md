@@ -77,10 +77,11 @@ This violates the planned 5% utilization and 2,048 MiB existing-memory limits. N
 ### Infrastructure validation
 
 - The real GPU preflight observed a 63% utilization peak, 4,059 MiB already allocated, and 79 °C across three samples. It returned `status=refused` before starting a Torch worker, as intended.
+- After the background workload ended, a five-sample preflight passed at 0% utilization, 88 MiB, and 52 °C. The first CUDA worker then stopped before model loading because PyTorch 2.13 requires an explicit index in `torch.cuda.set_device`; benchmark device strings are now normalized from `cuda` to `cuda:0` and covered by a regression test.
 - The first isolated CPU smoke run exposed a native crash while collecting cuDNN metadata with CUDA hidden. The model inference had completed; the fault came from calling `torch.backends.cudnn.version()` in a CPU-only worker. Environment collection now queries cuDNN only for CUDA runs.
 - The corrected CPU smoke run passed with `CUDA_VISIBLE_DEVICES=-1`, eager FP32 parity at zero maximum absolute error, and no system-GPU telemetry access from the worker.
 - A one-second timeout probe returned exit 124 after 1.3 seconds, terminated the worker process tree, and left no LexiGaze benchmark process behind.
-- The offline CPU quality gate passed 22/22 tests in 0.86 seconds. It imported no Torch, attempted no network or subprocess access in the test worker, and left GPU memory unchanged.
+- The latest offline CPU quality gate passed 23/23 tests in 0.76 seconds. It imported no Torch, attempted no network or subprocess access in the test worker, and left GPU memory unchanged.
 
 ### Phase A smoke measurement
 
@@ -110,5 +111,9 @@ The first acceptance-shaped model workload ran from clean commit `d61a1b0`, with
 | Eager FP32 max absolute error | 0.0 |
 
 The wide CPU tail is a finding, not a speedup: PyTorch used 16 threads on a hybrid-core laptop, and the benchmark currently has no CPU-idleness guard. CPU thread-count/affinity experiments may be worthwhile, but they require repeated runs before any production decision.
+
+### Corrected CUDA smoke measurement
+
+After normalizing the device to `cuda:0`, a dirty-worktree diagnostic run with one warm-up and three measured iterations completed successfully. End-to-end p50/p95 was 7.145/7.297 ms, model-forward p50/p95 was 6.430/6.486 ms, and peak PyTorch allocation was 369.965 MiB. Eager FP32 parity was exact. The 287.815 ms first iteration is kept separate and not counted as steady state.
 
 Next, preserve this result in Git and let the quiet-device guard decide whether Phase B/C CUDA baselines may start. No held-out session or question-answer data will be used while selecting the performance implementation.

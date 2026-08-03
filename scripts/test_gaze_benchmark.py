@@ -12,6 +12,7 @@ from scripts.benchmark_gaze_inference import (
     parse_nvidia_smi_row,
     percentile,
     summarize_latencies,
+    torch_device_spec,
 )
 
 
@@ -111,6 +112,10 @@ class GazeBenchmarkUnitTests(unittest.TestCase):
 
     def test_import_does_not_load_torch(self):
         self.assertNotIn("torch", sys.modules)
+
+    def test_cuda_device_spec_has_an_explicit_index(self):
+        self.assertEqual(torch_device_spec("cuda"), "cuda:0")
+        self.assertEqual(torch_device_spec("cpu"), "cpu")
 
 
 if __name__ == "__main__":
