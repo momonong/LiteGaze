@@ -258,3 +258,16 @@ A clean eager `highest` replicate ran from commit `1b732dd`; its result is [`res
 The matching TF32 replicate ran from commit `e08a90a`; its result is [`results/2026-08-04-cuda-tf32-high-model-r2.json`](results/2026-08-04-cuda-tf32-high-model-r2.json). End-to-end p50/p95 was 5.449/7.245 ms and model-forward p50/p95 was 4.612/6.112 ms, with the same 0.000356 maximum error. Against its paired eager run, TF32 improved p50 by 27.59% and p95 by 8.03%.
 
 Across the first two clean runs, the mean-of-run p50 improves from 7.482 to 5.275 ms (29.49%) and mean-of-run p95 improves from 8.007 to 6.696 ms (16.38%). Because one paired p95 improvement is below the 10% gate, collect a third pair rather than selecting the best run.
+
+The third eager and TF32 runs are [`results/2026-08-04-cuda-eager-model-r3.json`](results/2026-08-04-cuda-eager-model-r3.json) and [`results/2026-08-04-cuda-tf32-high-model-r3.json`](results/2026-08-04-cuda-tf32-high-model-r3.json). The paired end-to-end result was 7.345/7.563 ms versus 5.179/6.519 ms at p50/p95, a 29.50%/13.81% improvement.
+
+| Three-run aggregate | Eager `highest` | TF32 `high` | Improvement |
+| --- | ---: | ---: | ---: |
+| Mean-of-run end-to-end p50 | 7.437 ms | 5.243 ms | 29.50% |
+| Mean-of-run end-to-end p95 | 7.859 ms | 6.637 ms | 15.55% |
+| Median-of-run end-to-end p50 | 7.439 ms | 5.179 ms | 30.39% |
+| Median-of-run end-to-end p95 | 7.878 ms | 6.519 ms | 17.25% |
+| Mean-of-run model-forward p50 | 6.569 ms | 4.423 ms | 32.67% |
+| Mean-of-run model-forward p95 | 6.939 ms | 5.707 ms | 17.75% |
+
+Decision: accept TF32 at the model-workload gate. It is reproducibly faster, preserves the declared tolerance, adds no VRAM, and has no compilation penalty. Production promotion still requires fixed-frame full-pipeline validation and regression tests around CUDA-only configuration.
