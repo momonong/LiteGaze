@@ -137,3 +137,19 @@ The clean model workload ran from commit `84ff748`, after a five-sample guard pa
 CUDA reduced model-only p50 by about 14.4× relative to the clean CPU eager run. CPU p95 is too scheduling-sensitive for a credible tail-speedup ratio. The model forward still accounts for roughly 88% of CUDA end-to-end p50, so inference context and numeric-format candidates remain worth measuring.
 
 Next, preserve this baseline in Git and compare `torch.inference_mode()` first. No held-out session or question-answer data will be used while selecting the performance implementation.
+
+### Phase C1: `torch.inference_mode()`
+
+The candidate ran from clean commit `39eeb3b` under a clean guard. The machine-readable result is [`results/2026-08-04-cuda-inference-model.json`](results/2026-08-04-cuda-inference-model.json).
+
+| Metric | Eager | `inference_mode` | Outcome |
+| --- | ---: | ---: | --- |
+| End-to-end p50 | 7.439 ms | 7.445 ms | 0.07% slower |
+| End-to-end p95 | 8.136 ms | 10.174 ms | 25.04% slower |
+| Model-forward p50 | 6.578 ms | 6.584 ms | effectively unchanged |
+| Peak allocated VRAM | 369.965 MiB | 369.965 MiB | unchanged |
+| Max absolute error | 0.0 | 0.0 | exact parity |
+
+Decision: do not promote `torch.inference_mode()` as a performance change. It does not meet the 10% gate, and this run has worse tail latency. A repeated interleaved experiment could distinguish tail noise from a true regression, but the essentially identical p50 leaves no plausible acceptance benefit for this path.
+
+Next, test FP16 and BF16 autocast independently, with the same synthetic input and eager FP32 parity check.
