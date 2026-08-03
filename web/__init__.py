@@ -5,6 +5,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory, render_template
+from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / 'data'
@@ -14,6 +15,16 @@ SHENGWEN_STATIC = ROOT / 'archive' / 'shengwen' / 'web' / 'static'
 mimetypes.add_type('text/javascript', '.js')
 
 def create_app():
+    # Load project configuration once for every launch mode (run.py, WSGI, tests).
+    # Explicit process environment variables retain precedence over .env values.
+    load_dotenv(ROOT / ".env", override=False)
+
+    # Ignore host-specific Windows cache paths when the same .env is used remotely.
+    if os.name != "nt" and os.environ.get("HF_HOME"):
+        hf_home = os.environ["HF_HOME"]
+        if ":" in hf_home or hf_home.startswith(("C:\\", "D:\\")):
+            del os.environ["HF_HOME"]
+
     # Flask app initialization with static_folder pointing to 'static' and templates to 'templates'
     app = Flask(__name__, static_folder='static', template_folder='templates')
     app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500 MB upload limit

@@ -129,10 +129,17 @@ def _error(message: str, status: int = 500):
 # ── Health / Warmup ─────────────────────────────────────────────────────────
 @cognitive_bp.get("/health")
 def health():
+    loaded_devices = {
+        lang: pipeline.calculator.device
+        for lang, pipeline in _pipelines.items()
+        if pipeline is not None
+    }
     return jsonify({
         "ok": True,
         "backend": "weichi-cognitive-load",
         "loaded_langs": [lang for lang, p in _pipelines.items() if p is not None],
+        "device_policy": os.environ.get("LEXIGAZE_DEVICE", "auto"),
+        "loaded_devices": loaded_devices,
     })
 
 

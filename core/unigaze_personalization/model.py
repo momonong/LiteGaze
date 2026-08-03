@@ -5,6 +5,8 @@ import functools
 import torch
 from torch import nn
 
+from core.device import resolve_torch_device
+
 
 @functools.lru_cache(maxsize=2)
 def load_unigaze_b16(device: str = "cpu") -> nn.Module:
@@ -16,18 +18,7 @@ def load_unigaze_b16(device: str = "cpu") -> nn.Module:
 
 
 def device_from_arg(value: str) -> torch.device:
-    if value == "auto":
-        if torch.cuda.is_available():
-            try:
-                # Verify that conv2d CUDA kernels execute without error on device
-                t = torch.zeros((1, 3, 224, 224), device="cuda")
-                conv = nn.Conv2d(3, 16, kernel_size=16, stride=16).to("cuda")
-                _ = conv(t)
-                return torch.device("cuda")
-            except Exception:
-                return torch.device("cpu")
-        return torch.device("cpu")
-    return torch.device(value)
+    return resolve_torch_device(value)
 
 
 def count_parameters(model: nn.Module, trainable_only: bool = False) -> int:
