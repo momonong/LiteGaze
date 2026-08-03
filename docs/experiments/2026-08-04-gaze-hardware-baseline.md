@@ -58,7 +58,7 @@ This violates the planned 5% utilization and 2,048 MiB existing-memory limits. N
 | --- | --- | --- | --- | --- |
 | A | model-only synthetic/local normalized frame | eager, inference | CPU only | none |
 | B | full fixed local frame pipeline | eager | quiet CUDA, 30 measured iterations | none |
-| C | model-only | inference, AMP FP16/BF16, compile modes | one variant/process, <=5 minutes | output parity only |
+| C | model-only | inference, TF32, AMP FP16/BF16, compile modes | one variant/process, <=5 minutes | output parity only |
 | D | full pipeline | winning low-risk variants | quiet CUDA | output parity only |
 | E | frozen implementation | held-out sessions | explicit later run | held-out, never tuned |
 
@@ -81,7 +81,7 @@ This violates the planned 5% utilization and 2,048 MiB existing-memory limits. N
 - The first isolated CPU smoke run exposed a native crash while collecting cuDNN metadata with CUDA hidden. The model inference had completed; the fault came from calling `torch.backends.cudnn.version()` in a CPU-only worker. Environment collection now queries cuDNN only for CUDA runs.
 - The corrected CPU smoke run passed with `CUDA_VISIBLE_DEVICES=-1`, eager FP32 parity at zero maximum absolute error, and no system-GPU telemetry access from the worker.
 - A one-second timeout probe returned exit 124 after 1.3 seconds, terminated the worker process tree, and left no LexiGaze benchmark process behind.
-- The latest offline CPU quality gate passed 23/23 tests in 0.76 seconds. It imported no Torch, attempted no network or subprocess access in the test worker, and left GPU memory unchanged.
+- The latest offline CPU quality gate passed 25/25 tests in 0.89 seconds. It imported no Torch, attempted no network or subprocess access in the test worker, and left GPU memory unchanged.
 
 ### Phase A smoke measurement
 

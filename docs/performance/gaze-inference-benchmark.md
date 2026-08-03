@@ -22,6 +22,8 @@ The pipeline workload requires `--image`. The image stays outside Git; the summa
 
 Each non-reference variant computes one eager FP32 output first and reports maximum/mean absolute difference and `allclose` status.
 
+`--matmul-precision` is an orthogonal CUDA dimension. It defaults to `highest`; `high` and `medium` allow lower-precision internal float32 matrix multiplication while keeping float32 inputs/outputs. Results record the effective PyTorch setting, and non-default precision uses the approximate parity tolerance. See the [PyTorch precision API](https://docs.pytorch.org/docs/stable/generated/torch.set_float32_matmul_precision.html).
+
 ## Run policy
 
 Default GPU preflight limits:
@@ -40,7 +42,7 @@ Use `--allow-busy-gpu` only when intentionally measuring contention. Such a resu
 
 The result uses schema version 1 and contains:
 
-- `status`, `variant`, `workload`, and `device`;
+- `status`, `variant`, `matmul_precision`, `workload`, and `device`;
 - `revision` and `input` provenance;
 - `environment` hardware/software fingerprint;
 - `guard` thresholds, samples, and contamination state;
@@ -51,6 +53,8 @@ The result uses schema version 1 and contains:
 - `failure` details when the run cannot complete.
 
 The supervisor performs the GPU guard before importing Torch, starts a fresh worker for every variant, and records the worker exit and timeout state. CUDA stage durations use events with one synchronization at the end of each iteration, so end-to-end timing is not inflated by synchronization between stages.
+
+Compile variants refuse early when no compatible Triton module is installed. Full tracebacks remain local console diagnostics; JSON failures contain the exception type/message without absolute source paths.
 
 JSON files are written atomically. Profiler traces are optional local artifacts and are not committed.
 

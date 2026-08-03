@@ -5,14 +5,18 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from scripts.benchmark_gaze_inference import (
+    _parse_args,
+    _validate_args,
     atomic_write_json,
     gpu_preflight,
     parse_nvidia_smi_row,
     percentile,
     summarize_latencies,
     torch_device_spec,
+    triton_is_available,
 )
 
 
@@ -116,6 +120,28 @@ class GazeBenchmarkUnitTests(unittest.TestCase):
     def test_cuda_device_spec_has_an_explicit_index(self):
         self.assertEqual(torch_device_spec("cuda"), "cuda:0")
         self.assertEqual(torch_device_spec("cpu"), "cpu")
+
+    def test_non_default_matmul_precision_requires_cuda(self):
+        cpu_args = _parse_args(["--device", "cpu", "--matmul-precision", "high"])
+        with self.assertRaisesRegex(ValueError, "requires --device cuda"):
+            _validate_args(cpu_args)
+
+        cuda_args = _parse_args([
+            "--device",
+            "cuda",
+            "--matmul-precision",
+            "high",
+        ])
+        _validate_args(cuda_args)
+        self.assertEqual(cuda_args.matmul_precision, "high")
+
+    def test_triton_preflight_is_torch_free(self):
+        with mock.patch(
+            "scripts.benchmark_gaze_inference.importlib.util.find_spec",
+            return_value=None,
+        ):
+            self.assertFalse(triton_is_available())
+        self.assertNotIn("torch", sys.modules)
 
 
 if __name__ == "__main__":

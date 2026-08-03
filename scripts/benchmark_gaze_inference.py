@@ -6,6 +6,7 @@ import argparse
 import contextlib
 import hashlib
 import importlib.metadata
+import importlib.util
 import json
 import math
 import os
@@ -16,7 +17,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import traceback
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import Any
@@ -34,6 +34,7 @@ VARIANTS = (
 )
 WORKLOADS = ("model", "pipeline")
 DEVICES = ("cpu", "cuda")
+MATMUL_PRECISIONS = ("highest", "high", "medium")
 
 DEFAULT_WARMUP = 10
 DEFAULT_ITERATIONS = 30
@@ -73,10 +74,25 @@ def torch_device_spec(device: str) -> str:
     return "cuda:0" if device == "cuda" else device
 
 
+def triton_is_available() -> bool:
+    """Return whether a compile-capable Triton module can be discovered."""
+
+    try:
+        return importlib.util.find_spec("triton") is not None
+    except (ImportError, ValueError):
+        return False
+
+
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--device", choices=DEVICES, default="cpu")
     parser.add_argument("--variant", choices=VARIANTS, default="eager")
+    parser.add_argument(
+        "--matmul-precision",
+        choices=MATMUL_PRECISIONS,
+        default="highest",
+        help="Internal float32 CUDA matmul precision.",
+    )
     parser.add_argument("--workload", choices=WORKLOADS, default="model")
     parser.add_argument(
         "--image",
@@ -140,6 +156,8 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise ValueError(f"input image does not exist: {args.image}")
     if args.variant.startswith(("amp-", "compile-")) and args.device != "cuda":
         raise ValueError(f"{args.variant} requires --device cuda")
+    if args.matmul_precision != "highest" and args.device != "cuda":
+        raise ValueError("non-default --matmul-precision requires --device cuda")
     for name in (
         "max_background_gpu_utilization",
         "max_background_gpu_memory_mib",
@@ -409,12 +427,15 @@ def _full_environment(torch: Any, device: Any) -> dict[str, Any]:
             "numpy": _package_version("numpy"),
             "opencv_python": _package_version("opencv-python"),
             "torch": torch.__version__,
+            "triton": _package_version("triton"),
+            "triton_windows": _package_version("triton-windows"),
             "unigaze": _package_version("unigaze"),
         },
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
         "torch": {
             "cuda_build": torch.version.cuda,
             "cudnn": cudnn_version,
+            "float32_matmul_precision": torch.get_float32_matmul_precision(),
             "num_interop_threads": torch.get_num_interop_threads(),
             "num_threads": torch.get_num_threads(),
         },
@@ -600,7 +621,10 @@ def _run_iteration(
 
 
 def _parity_tolerances(args: argparse.Namespace) -> tuple[float, float]:
-    approximate = args.variant in {"amp-fp16", "amp-bf16"}
+    approximate = (
+        args.variant in {"amp-fp16", "amp-bf16"}
+        or args.matmul_precision != "highest"
+    )
     absolute = args.max_abs_error
     relative = args.max_relative_error
     if absolute is None:
@@ -653,6 +677,10 @@ def _measure_parity(
 
 
 def _run_benchmark(args: argparse.Namespace, guard: dict[str, Any] | None) -> dict[str, Any]:
+    if args.variant.startswith("compile-") and not triton_is_available():
+        raise BenchmarkRefused(
+            "torch.compile CUDA variants require a compatible Triton installation"
+        )
     if not args.allow_model_download:
         os.environ["HF_HUB_OFFLINE"] = "1"
         os.environ["TRANSFORMERS_OFFLINE"] = "1"
@@ -670,6 +698,7 @@ def _run_benchmark(args: argparse.Namespace, guard: dict[str, Any] | None) -> di
     device = torch.device(torch_device_spec(args.device))
     if device.type == "cuda" and not torch.cuda.is_available():
         raise BenchmarkRefused("PyTorch reports that CUDA is unavailable")
+    torch.set_float32_matmul_precision(args.matmul_precision)
 
     input_started = time.perf_counter()
     input_data = _load_input(args, cv2, np)
@@ -801,6 +830,7 @@ def _run_benchmark(args: argparse.Namespace, guard: dict[str, Any] | None) -> di
         "schema_version": SCHEMA_VERSION,
         "status": "passed" if parity["allclose"] else "failed",
         "variant": args.variant,
+        "matmul_precision": args.matmul_precision,
         "workload": args.workload,
         "device": args.device,
         "revision": _git_revision(),
@@ -834,19 +864,15 @@ def _base_summary(args: argparse.Namespace) -> dict[str, Any]:
         "schema_version": SCHEMA_VERSION,
         "status": "error",
         "variant": args.variant,
+        "matmul_precision": args.matmul_precision,
         "workload": args.workload,
         "device": args.device,
-        "revision": None,
+        "revision": _git_revision(),
         "environment": _minimal_environment(),
     }
 
 
-def _failure_summary(
-    args: argparse.Namespace,
-    exc: Exception,
-    *,
-    include_traceback: bool,
-) -> dict[str, Any]:
+def _failure_summary(args: argparse.Namespace, exc: Exception) -> dict[str, Any]:
     summary = _base_summary(args)
     summary.update({
         "status": "refused" if isinstance(exc, BenchmarkRefused) else "error",
@@ -855,8 +881,6 @@ def _failure_summary(
             "message": str(exc),
         },
     })
-    if include_traceback:
-        summary["failure"]["traceback"] = traceback.format_exc()
     return summary
 
 
@@ -866,10 +890,10 @@ def _run_worker(args: argparse.Namespace) -> int:
         summary = _run_benchmark(args, guard=None)
         exit_code = 0 if summary["status"] == "passed" else 1
     except BenchmarkRefused as exc:
-        summary = _failure_summary(args, exc, include_traceback=False)
+        summary = _failure_summary(args, exc)
         exit_code = 2
     except Exception as exc:
-        summary = _failure_summary(args, exc, include_traceback=True)
+        summary = _failure_summary(args, exc)
         exit_code = 1
     atomic_write_json(args.summary_path, summary)
     return exit_code
@@ -889,6 +913,8 @@ def _worker_command(args: argparse.Namespace, summary_path: Path) -> list[str]:
         args.device,
         "--variant",
         args.variant,
+        "--matmul-precision",
+        args.matmul_precision,
         "--workload",
         args.workload,
         "--warmup",
@@ -1017,10 +1043,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         summary, exit_code = _run_supervisor(args)
     except BenchmarkRefused as exc:
-        summary = _failure_summary(args, exc, include_traceback=False)
+        summary = _failure_summary(args, exc)
         exit_code = 2
     except Exception as exc:
-        summary = _failure_summary(args, exc, include_traceback=True)
+        summary = _failure_summary(args, exc)
         exit_code = 1
 
     if args.json_output:
