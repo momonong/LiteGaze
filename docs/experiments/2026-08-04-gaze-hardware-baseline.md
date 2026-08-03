@@ -234,3 +234,19 @@ A dirty-worktree CPU diagnostic compared the exact offline-video transport at 24
 The fixed-frame gaze output changed from `[-0.155597, -0.255159]` after the legacy lossy round trip to `[-0.161127, -0.302447]` with the direct frame, a maximum absolute difference of 0.047289 radians. That may represent better image fidelity, but it is not output parity and would change calibration semantics.
 
 Decision: do not change the production route for this micro-optimization. The measured transport saving is well below the 10% gate, while the fixed-frame output shift is material. Keep both workloads in the benchmark so a future, separately frozen quality study can revisit the design without tuning on held-out data.
+
+### Phase C6: TF32 `high`
+
+After correcting parity isolation, TF32 `high` ran from clean commit `c283f20` under a clean guard. The machine-readable result is [`results/2026-08-04-cuda-tf32-high-model.json`](results/2026-08-04-cuda-tf32-high-model.json).
+
+| Metric | Eager `highest` | Eager TF32 `high` | Outcome |
+| --- | ---: | ---: | --- |
+| First iteration | 215.723 ms | 196.871 ms | 8.74% faster |
+| End-to-end p50 | 7.439 ms | 5.101 ms | 31.43% faster |
+| End-to-end p95 | 8.136 ms | 6.147 ms | 24.45% faster |
+| Model-forward p50 | 6.578 ms | 4.303 ms | 34.59% faster |
+| Model-forward p95 | 7.283 ms | 5.353 ms | 26.50% faster |
+| Peak allocated / reserved VRAM | 369.965 / 418 MiB | 369.965 / 418 MiB | unchanged |
+| Max absolute error | 0.0 | 0.000356 | within 0.005 tolerance |
+
+Decision: TF32 provisionally clears latency, parity, and memory gates without a compile-time penalty. However, the discarded pre-fix run had slower performance despite the same precision setting, so clean eager and TF32 replicates are required before promotion. If the gain persists, TF32 is preferable to compilation because it avoids the 16-second first-run cost.
