@@ -9,6 +9,11 @@ import cv2
 import numpy as np
 
 from .model_registry import model_path
+from .torch_runtime import (
+    cuda_runtime_available,
+    enable_process_wide_cuda_tf32,
+    restore_matmul_precision,
+)
 
 # Thread-safe caching structures
 _preprocessor_lock = threading.Lock()
@@ -22,7 +27,10 @@ def get_preprocessor():
     if _preprocessor is None:
         with _preprocessor_lock:
             if _preprocessor is None:
-                from core.unigaze_personalization.preprocess import MediaPipeUniGazePreprocessor
+                from core.unigaze_personalization.preprocess import (
+                    MediaPipeUniGazePreprocessor,
+                )
+
                 _preprocessor = MediaPipeUniGazePreprocessor()
     return _preprocessor
 
@@ -32,10 +40,14 @@ def get_base_model():
         base_model = _model_cache.get("base_model")
         if base_model is None:
             import torch
-            from core.unigaze_personalization.model import UniGazeFeatureWrapper, load_unigaze_b16
+
+            from core.unigaze_personalization.model import (
+                UniGazeFeatureWrapper,
+                load_unigaze_b16,
+            )
 
             device = "cpu"
-            if torch.cuda.is_available():
+            if cuda_runtime_available(torch):
                 try:
                     t = torch.zeros((1, 3, 224, 224), device="cuda")
                     conv = torch.nn.Conv2d(3, 16, kernel_size=16, stride=16).to("cuda")
@@ -44,9 +56,11 @@ def get_base_model():
                 except Exception:
                     device = "cpu"
 
+            previous_matmul_precision = enable_process_wide_cuda_tf32(torch, device)
             try:
                 base_model = UniGazeFeatureWrapper(load_unigaze_b16(device)).to(device).eval()
             except Exception:
+                restore_matmul_precision(torch, previous_matmul_precision)
                 device = "cpu"
                 base_model = UniGazeFeatureWrapper(load_unigaze_b16(device)).to(device).eval()
 
@@ -86,6 +100,7 @@ def predict(root: Path, payload: dict) -> tuple[dict, int]:
     # 3. Extract baseline prediction using UniGaze neural network
     try:
         import torch
+
         from core.unigaze_personalization.transforms import to_unigaze_tensor
 
         # Run MediaPipe face detection and facial normalization
