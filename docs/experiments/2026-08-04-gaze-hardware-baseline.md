@@ -78,10 +78,11 @@ This violates the planned 5% utilization and 2,048 MiB existing-memory limits. N
 
 - The real GPU preflight observed a 63% utilization peak, 4,059 MiB already allocated, and 79 °C across three samples. It returned `status=refused` before starting a Torch worker, as intended.
 - After the background workload ended, a five-sample preflight passed at 0% utilization, 88 MiB, and 52 °C. The first CUDA worker then stopped before model loading because PyTorch 2.13 requires an explicit index in `torch.cuda.set_device`; benchmark device strings are now normalized from `cuda` to `cuda:0` and covered by a regression test.
+- The first TF32 run exposed that the eager parity reference inherited the candidate's global matmul precision. Its JSON was discarded; parity now runs the reference under `highest`, restores the candidate precision for the observed output, and restores the prior setting afterward.
 - The first isolated CPU smoke run exposed a native crash while collecting cuDNN metadata with CUDA hidden. The model inference had completed; the fault came from calling `torch.backends.cudnn.version()` in a CPU-only worker. Environment collection now queries cuDNN only for CUDA runs.
 - The corrected CPU smoke run passed with `CUDA_VISIBLE_DEVICES=-1`, eager FP32 parity at zero maximum absolute error, and no system-GPU telemetry access from the worker.
 - A one-second timeout probe returned exit 124 after 1.3 seconds, terminated the worker process tree, and left no LexiGaze benchmark process behind.
-- The latest offline CPU quality gate passed 26/26 tests in 0.77 seconds. It imported no Torch, attempted no network or subprocess access in the test worker, and left GPU memory unchanged.
+- The latest offline CPU quality gate passed 27/27 tests in 0.91 seconds. It imported no Torch, attempted no network or subprocess access in the test worker, and left GPU memory unchanged.
 
 ### Phase A smoke measurement
 

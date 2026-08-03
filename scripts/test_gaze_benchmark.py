@@ -9,6 +9,7 @@ from unittest import mock
 
 from scripts.benchmark_gaze_inference import (
     _parse_args,
+    _temporary_matmul_precision,
     _validate_args,
     atomic_write_json,
     gpu_preflight,
@@ -139,6 +140,21 @@ class GazeBenchmarkUnitTests(unittest.TestCase):
         args = _parse_args(["--workload", "video-direct"])
         with self.assertRaisesRegex(ValueError, "non-model workloads"):
             _validate_args(args)
+
+    def test_temporary_matmul_precision_restores_previous_value(self):
+        class FakeTorch:
+            precision = "high"
+
+            def get_float32_matmul_precision(self):
+                return self.precision
+
+            def set_float32_matmul_precision(self, value):
+                self.precision = value
+
+        fake_torch = FakeTorch()
+        with _temporary_matmul_precision(fake_torch, "highest"):
+            self.assertEqual(fake_torch.precision, "highest")
+        self.assertEqual(fake_torch.precision, "high")
 
     def test_triton_preflight_is_torch_free(self):
         with mock.patch(

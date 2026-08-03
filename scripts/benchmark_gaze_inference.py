@@ -518,6 +518,16 @@ def _execution_context(torch: Any, variant: str) -> Iterator[None]:
             yield
 
 
+@contextlib.contextmanager
+def _temporary_matmul_precision(torch: Any, precision: str) -> Iterator[None]:
+    previous = torch.get_float32_matmul_precision()
+    torch.set_float32_matmul_precision(precision)
+    try:
+        yield
+    finally:
+        torch.set_float32_matmul_precision(previous)
+
+
 def _configure_variant(torch: Any, model: Any, variant: str) -> tuple[Any, float]:
     started = time.perf_counter()
     if variant == "compile-default":
@@ -706,10 +716,12 @@ def _measure_parity(
     tensor_transform: Callable[[Any], Any],
 ) -> dict[str, Any]:
     tensor = tensor_transform(rgb).unsqueeze(0).to(device)
-    with torch.no_grad():
-        reference = base_model(tensor)
-    with _execution_context(torch, args.variant):
-        observed = candidate(tensor)
+    with _temporary_matmul_precision(torch, "highest"):
+        with torch.no_grad():
+            reference = base_model(tensor)
+    with _temporary_matmul_precision(torch, args.matmul_precision):
+        with _execution_context(torch, args.variant):
+            observed = candidate(tensor)
     if device.type == "cuda":
         torch.cuda.synchronize(device)
     reference_cpu = reference.detach().float().cpu()
