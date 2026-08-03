@@ -37,3 +37,7 @@ The workflow installs only `requirements-quality-gate.txt`, then compiles and li
 Hardware/model experiments remain opt-in. Examples include `scripts/test_all_features_gpu.py`, gaze-model training, cognitive model inference, and `TestFusionRoutes.test_cross_attention_method`. Run them only with an explicit experiment plan, GPU budget, held-out evaluation, and a recorded result. Do not add them to the offline gate.
 
 The offline gate validates application contracts and deterministic algorithms. It is not evidence of model accuracy, dataset generalization, or GPU correctness.
+
+## Opt-in hardware benchmark
+
+`scripts/benchmark_gaze_inference.py` is intentionally excluded from routine hardware execution. Its pure statistics, GPU guard, telemetry parser, and atomic-output tests run inside the offline gate without importing Torch. Actual CPU/CUDA inference is opt-in and follows the methodology in `docs/performance/gaze-inference-benchmark.md`.
