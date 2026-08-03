@@ -1,7 +1,9 @@
 import sys
 import unittest
 import json
+import os
 from pathlib import Path
+from unittest.mock import patch
 
 # Setup root path for import
 ROOT = Path(__file__).resolve().parent.parent
@@ -12,9 +14,16 @@ from web.routes.inspector import _clean_json_response
 
 class TestAdaptiveStepper(unittest.TestCase):
     def setUp(self):
+        # Keep this unit test hermetic: endpoint helpers call load_dotenv(), so an
+        # empty explicit value prevents a developer's real API key from being used.
+        self._environment = patch.dict(os.environ, {"GEMINI_API_KEY": ""})
+        self._environment.start()
         self.app = create_app()
         self.app.config["TESTING"] = True
         self.client = self.app.test_client()
+
+    def tearDown(self):
+        self._environment.stop()
 
     def test_clean_json_response_helper(self):
         """測試 _clean_json_response 能否安全剝離 <thought> 標籤與 markdown 語法。"""
@@ -78,7 +87,6 @@ class TestAdaptiveStepper(unittest.TestCase):
         self.assertEqual(r2_data["round"], 2)
         # 由於 Round 1 答對且回看低，Round 2 難度應升為 medium
         self.assertEqual(r2_data["difficulty"], "medium")
-        import os
         api_key = os.environ.get("GEMINI_API_KEY")
         if api_key:
             self.assertTrue(12 <= r2_data["font_size"] <= 24)
@@ -112,7 +120,6 @@ class TestAdaptiveStepper(unittest.TestCase):
         self.assertEqual(r3_data["round"], 3)
         # 由於 Round 2 答對，Round 3 難度應升為 hard
         self.assertEqual(r3_data["difficulty"], "hard")
-        import os
         api_key = os.environ.get("GEMINI_API_KEY")
         if api_key:
             self.assertTrue(12 <= r3_data["font_size"] <= 24)

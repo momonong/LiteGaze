@@ -1,6 +1,6 @@
-import math
-from dataclasses import dataclass, asdict
-from typing import List, Dict, Any, Tuple
+from dataclasses import dataclass
+from typing import Any, Dict, List
+
 from wordfreq import zipf_frequency
 
 @dataclass
@@ -143,11 +143,19 @@ class CognitiveInspector:
         # ── 評估維度 2：英語水準 (English Proficiency) ───────────────────────────
         # 交叉比對「受阻單字」(長注視或回看) 與詞頻 (Zipf frequency)
         struggled_words = []
+        struggle_seen_indices = set()
+        previous_index = None
         for f in fixations:
-            # 長注視或觸發回看（此單字低於前一個，或被重讀）
-            is_struggle = f.duration_ms > 350 or f.index in visited_indices
+            # 長注視、向前回看，或再次造訪先前讀過的單字，才視為受阻。
+            # `visited_indices` 在上方已包含所有讀過的 index，不能直接拿來判斷，
+            # 否則每個 fixation 都會被誤標成 struggle。
+            is_regression = previous_index is not None and f.index < previous_index
+            is_reread = f.index in struggle_seen_indices and f.index != previous_index
+            is_struggle = f.duration_ms > 350 or is_regression or is_reread
             if is_struggle:
                 struggled_words.append(f.word)
+            struggle_seen_indices.add(f.index)
+            previous_index = f.index
 
         if struggled_words:
             zipfs = []
