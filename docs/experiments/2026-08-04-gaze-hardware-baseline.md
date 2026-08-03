@@ -185,3 +185,23 @@ BF16 ran from clean commit `6b15957` under a clean guard. The machine-readable r
 Decision: reject BF16 autocast. Like FP16, it passes numerical parity but adds latency at batch one. Neither mixed-precision mode should be enabled in production based on these results.
 
 Next, attempt `torch.compile` default and reduce-overhead modes. Compilation remains isolated by process and bounded by the five-minute supervisor timeout.
+
+### Phase C4: `torch.compile` default
+
+The first attempt stopped after 37.5 seconds because the Windows environment lacked Triton. PyTorch documents Triton as the GPU code-generation backend for `torch.compile`, and the current [Triton Windows support matrix](https://github.com/triton-lang/triton-windows) maps PyTorch 2.13 to Triton 3.7 and supports Blackwell. `triton-windows==3.7.1.post27` was therefore installed only in the ignored project virtual environment for this experiment; it has not been promoted to a project dependency.
+
+The successful run used clean commit `d5a31fa`, a brand-new TorchInductor cache, a clean GPU guard, 10 warm-up iterations, and 30 measured iterations. The machine-readable result is [`results/2026-08-04-cuda-compile-default-model.json`](results/2026-08-04-cuda-compile-default-model.json).
+
+| Metric | Eager FP32 | Compile default | Outcome |
+| --- | ---: | ---: | --- |
+| First iteration | 215.723 ms | 16,067.939 ms | 15.85 s compile penalty |
+| End-to-end p50 | 7.439 ms | 6.390 ms | 14.11% faster |
+| End-to-end p95 | 8.136 ms | 6.700 ms | 17.66% faster |
+| Model-forward p50 | 6.578 ms | 5.547 ms | 15.68% faster |
+| Model-forward p95 | 7.283 ms | 5.673 ms | 22.10% faster |
+| Peak allocated VRAM | 369.965 MiB | 441.054 MiB | +71.089 MiB |
+| Max absolute error | 0.0 | 0.000000238 | within 0.00001 tolerance |
+
+Decision: provisionally accept the steady-state result because it clears latency, parity, and VRAM gates. It is not yet a production decision: a 16-second first inference is unacceptable on the request path unless compilation is completed during controlled startup/pre-warm, and the full MediaPipe pipeline may dilute the model-only gain.
+
+Next, compare reduce-overhead mode and explicit TF32 matmul precision, then re-test the best combination on the full fixed-frame pipeline.
