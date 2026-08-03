@@ -55,6 +55,7 @@ To avoid mixed purposes, our documentation is structured as follows:
 | **[ARCHITECTURE.md](file://D:/projects/lexigaze/ARCHITECTURE.md)** | Technical Architecture | Subsystems, detailed perception/cognition data flows, JSON schemas. |
 | **[INSTRUCTION.md](file://D:/projects/lexigaze/INSTRUCTION.md)** | Operations & Walkthrough | Setup, step-by-step testing workflow, performance diagnostic guide. |
 | **[INSTRUCTION_DATA.md](file://D:/projects/lexigaze/INSTRUCTION_DATA.md)** | Distributed Setup | Setup guide for Ubuntu server and Windows laptop client. |
+| **[docs/tunnel_security.md](docs/tunnel_security.md)** | Secure Remote Access | Authenticated ngrok startup, access links, API auth, and resource budgets. |
 | **[AGENT.md](file://D:/projects/lexigaze/AGENT.md)** | Developer Rules | Code quality standards, imports, relative API rules. |
 | **[CONTRIBUTING.md](file://D:/projects/lexigaze/CONTRIBUTING.md)** | Git Guidelines | Branch names, commit messages, and collaborative pull requests. |
 
@@ -90,3 +91,13 @@ Launch the Flask backend:
 .venv/bin/python -X utf8 run.py
 ```
 Open **`http://localhost:8080`** in your browser.
+
+For temporary remote collection, use the authenticated tunnel entry point:
+
+```bash
+uv run python -X utf8 run.py --tunnel
+```
+
+Do not run `scripts/setup_remote_collection.py` directly. See
+[docs/tunnel_security.md](docs/tunnel_security.md) for the access-link and
+resource-limit model.

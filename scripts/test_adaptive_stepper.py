@@ -1,7 +1,9 @@
+import json
+import os
 import sys
 import unittest
-import json
 from pathlib import Path
+from unittest.mock import patch
 
 # Setup root path for import
 ROOT = Path(__file__).resolve().parent.parent
@@ -10,8 +12,14 @@ sys.path.insert(0, str(ROOT))
 from web import create_app
 from web.routes.inspector import _clean_json_response
 
+
 class TestAdaptiveStepper(unittest.TestCase):
     def setUp(self):
+        # This is an offline regression suite. Never consume a developer's
+        # configured Gemini quota merely because their .env is present.
+        self._env_patcher = patch.dict(os.environ, {"GEMINI_API_KEY": ""})
+        self._env_patcher.start()
+        self.addCleanup(self._env_patcher.stop)
         self.app = create_app()
         self.app.config["TESTING"] = True
         self.client = self.app.test_client()
