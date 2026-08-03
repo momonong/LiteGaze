@@ -49,6 +49,19 @@ The statistically positive Ridge result is modest and does not beat the simple w
 
 `cognitive_mass` is not eligible for a generalization claim because its extraction path can use XGBoost/Ridge models trained on GECO total reading time. Its near-zero double-holdout correlation is reported rather than hidden.
 
+### Post-hoc heterogeneity check
+
+This subsection was computed after the frozen primary result and is interpretive only; it was not used to select or refit a model.
+
+- Ridge macro rho by population: L1 `0.1082`, L2 `0.1343`.
+- Ridge was negative for 6/37 participants; word length was negative for 5/37.
+- Word length exceeded Ridge for 24/37 participants. Mean participant-level Ridge minus word-length difference was `-0.0009` (range `-0.0067` to `0.0026`).
+- Across the 25 double-holdout cells, Ridge rho ranged from `0.0286` to `0.3614`, showing substantial passage/reader-fold heterogeneity despite the positive macro result.
+- Known-passage duration prior: L1 `0.2903`, L2 `0.3296`.
+- Known-passage fixation prior AUC: L1 `0.7607`, L2 `0.7917`.
+
+The subgroup results do not reverse the main interpretation: simple orthographic length accounts for nearly all of the current text-only Ridge rank signal, while population priors are more useful when the item has already been observed.
+
 ## Secondary known-passage/new-reader result
 
 The held-out reader's own outcome was subtracted from every population prior.
