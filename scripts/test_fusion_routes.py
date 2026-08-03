@@ -5,24 +5,22 @@ Unit tests to verify that the newly added neural cross-attention and fatigue-ada
 fusion methods work correctly in the Flask API.
 """
 
-import sys
-import unittest
 import json
-from pathlib import Path
-
-# Setup root path for import
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+import unittest
 
 from web import create_app
 
+
 class TestFusionRoutes(unittest.TestCase):
     def setUp(self):
-        self.app = create_app()
+        self.app = create_app({
+            "TESTING": True,
+            "LEXIGAZE_BLUEPRINTS": ("fusion",),
+        })
         self.client = self.app.test_client()
-        
-    def test_fusion_methods(self):
+
+    @staticmethod
+    def _request_payload(method):
         cognitive_result = {
             "model": "gpt2",
             "lang": "en",
@@ -40,15 +38,20 @@ class TestFusionRoutes(unittest.TestCase):
             {"word": "fusion", "confidence": "medium", "dwell_count": 5, "fixation_count": 1, "timestamp_ms": 1220},
             {"word": "works", "confidence": "low", "dwell_count": 1, "fixation_count": 0, "timestamp_ms": 1400}
         ]
-        
-        # Test cross_attention method
-        res_cross = self.client.post("/api/fuse/", json={
+        return {
             "session_id": "test_cross_attn_session",
             "persist": False,
             "cognitive_result": cognitive_result,
             "gaze_events": gaze_events,
-            "method": "cross_attention"
-        })
+            "method": method,
+        }
+
+    def test_cross_attention_method(self):
+        """Heavy regression: preserved, but excluded from the no-Torch gate."""
+        res_cross = self.client.post(
+            "/api/fuse/",
+            json=self._request_payload("cross_attention"),
+        )
         self.assertEqual(res_cross.status_code, 200)
         data_cross = json.loads(res_cross.data)
         self.assertTrue(data_cross["ok"])
@@ -58,19 +61,16 @@ class TestFusionRoutes(unittest.TestCase):
         for item in data_cross["rds"]:
             self.assertIn("rds", item)
             self.assertIn("rds_level", item)
-            
-        # Test fatigue_adaptive method
-        res_fatigue = self.client.post("/api/fuse/", json={
-            "session_id": "test_fatigue_session",
-            "persist": False,
-            "cognitive_result": cognitive_result,
-            "gaze_events": gaze_events,
-            "method": "fatigue_adaptive"
-        })
+
+    def test_fatigue_adaptive_method(self):
+        """Fast deterministic fusion regression used by the offline CPU gate."""
+        payload = self._request_payload("fatigue_adaptive")
+        payload["session_id"] = "test_fatigue_session"
+        res_fatigue = self.client.post("/api/fuse/", json=payload)
         self.assertEqual(res_fatigue.status_code, 200)
         data_fatigue = json.loads(res_fatigue.data)
         self.assertTrue(data_fatigue["ok"])
         self.assertEqual(len(data_fatigue["rds"]), 4)
-        
+
 if __name__ == "__main__":
     unittest.main()
