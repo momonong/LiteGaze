@@ -205,3 +205,21 @@ The successful run used clean commit `d5a31fa`, a brand-new TorchInductor cache,
 Decision: provisionally accept the steady-state result because it clears latency, parity, and VRAM gates. It is not yet a production decision: a 16-second first inference is unacceptable on the request path unless compilation is completed during controlled startup/pre-warm, and the full MediaPipe pipeline may dilute the model-only gain.
 
 Next, compare reduce-overhead mode and explicit TF32 matmul precision, then re-test the best combination on the full fixed-frame pipeline.
+
+### Phase C5: `torch.compile` reduce-overhead
+
+Reduce-overhead ran from clean commit `4e54b7f` with another brand-new TorchInductor cache. The machine-readable result is [`results/2026-08-04-cuda-compile-reduce-overhead-model.json`](results/2026-08-04-cuda-compile-reduce-overhead-model.json).
+
+| Metric | Eager FP32 | Compile default | Reduce overhead |
+| --- | ---: | ---: | ---: |
+| First iteration | 215.723 ms | 16,067.939 ms | 14,495.361 ms |
+| End-to-end p50 | 7.439 ms | 6.390 ms | 7.587 ms |
+| End-to-end p95 | 8.136 ms | 6.700 ms | 10.091 ms |
+| Model-forward p50 | 6.578 ms | 5.547 ms | 5.590 ms |
+| Tensor-transform p50 | 0.467 ms | 0.473 ms | 1.193 ms |
+| Peak allocated / reserved VRAM | 369.965 / 418 MiB | 441.054 / 482 MiB | 441.054 / 550 MiB |
+| Max absolute error | 0.0 | 0.000000238 | 0.000000238 |
+
+Decision: reject reduce-overhead. Although its compiled model stage is faster than eager, end-to-end p50 is 1.99% slower than eager and 18.74% slower than compile-default; p95 is also worse, and reserved VRAM is higher. Compile-default remains the leading compiled candidate.
+
+Next, add explicit TF32 matmul precision to the benchmark and test it both without compilation and, only if useful, with the winning compiler mode.
