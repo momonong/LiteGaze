@@ -39,7 +39,9 @@
    - [6.1 GECO Benchmark System Performance Evaluation](#61-geco-benchmark-system-performance-evaluation)
    - [6.2 Comparative Accuracy Breakdown under Extreme Drift](#62-comparative-accuracy-breakdown-under-extreme-drift)
    - [6.3 Multimodal Fusion Evaluation on Human Reading Time (TRT)](#63-multimodal-fusion-evaluation-on-human-reading-time-trt)
-   - [6.4 Identification and Qualitative Analysis of High-Cognitive-Load Words](#64-identification-and-qualitative-analysis-of-high-cognitive-load-words)
+   - [6.4 Preregistered Cross-Subject and Cross-Trial Generalization](#64-preregistered-cross-subject-and-cross-trial-generalization)
+   - [6.5 Frozen GECO-to-PROVO Cross-Corpus Transfer](#65-frozen-geco-to-provo-cross-corpus-transfer)
+   - [6.6 Identification and Qualitative Analysis of High-Cognitive-Load Words](#66-identification-and-qualitative-analysis-of-high-cognitive-load-words)
 7. [Complete REST API Reference](#7-complete-rest-api-reference)
 8. [Codebase Organization & File Map](#8-codebase-organization--file-map)
 9. [Deployment, Environment Setup & Troubleshooting](#9-deployment-environment-setup--troubleshooting)
@@ -627,7 +629,24 @@ See `docs/GECO_GENERALIZATION_EXECUTION_LOG_2026-08-03.md` and `output/geco_gene
 
 ---
 
-### 6.5 Identification and Qualitative Analysis of High-Cognitive-Load Words
+### 6.5 Frozen GECO-to-PROVO Cross-Corpus Transfer
+
+The independent CPU-only PROVO v1.1 evaluation trains fixed lexical Ridge and logistic models on all 18 GECO L1 participants, then evaluates all 84 PROVO participants without fitting feature scales, coefficients, offsets, filters, or thresholds on PROVO. The protocol was committed before full-file outcomes; its sole amendment corrected EyeLink interest-area field semantics before any model was fitted.
+
+| Frozen score | PROVO macro participant result | 95% participant-bootstrap CI | Interpretation |
+| :--- | :---: | :---: | :--- |
+| GECO lexical Ridge | Spearman $\rho=0.2205$ | $[0.2035, 0.2377]$ | Positive basic transfer. |
+| Word length only | Spearman $\rho=0.2951$ | $[0.2758, 0.3144]$ | Strongest prespecified duration baseline. |
+| Lexical rarity only | Spearman $\rho=0.2811$ | $[0.2623, 0.2996]$ | Strong simple cross-corpus baseline. |
+| GECO fixation logistic | ROC AUC $0.6486$ | $[0.6410, 0.6561]$ | Modest secondary any-fixation transfer. |
+
+Ridge minus word length is $-0.0746$, 95% CI $[-0.0853,-0.0634]$, with paired sign-flip $p=0.000010$. The frozen decision is `basic_lexical_transfer_only`: the GECO model transfers some lexical ranking signal but is reliably worse than raw word length. This rules out presenting the unconstrained Ridge combination as a corpus-independent improvement.
+
+See `docs/PROVO_ZERO_SHOT_EXECUTION_LOG_2026-08-03.md` and `output/provo_zero_shot_manifest.json`. Both GECO and PROVO results are frozen tests. Any richer candidate must be developed on another corpus and confirmed once on a separate untouched corpus.
+
+---
+
+### 6.6 Identification and Qualitative Analysis of High-Cognitive-Load Words
 Top 10 cognitive bottleneck words identified by the optimal fusion model (`output/fusion_experiment_report.md`):
 
 | Rank | Word ID | Word | Human TRT (ms) | BERT Surprisal (bits) | Linear RDS | Primary Cognitive Driver |

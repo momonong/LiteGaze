@@ -25,6 +25,7 @@ LexiGaze 已具備完整的端到端雛形：Webcam gaze、個人化校正、語
 - 將 fusion 與整體系統比較改為固定 seed、區域 RNG、絕對路徑與原子化 manifest 輸出。
 - 修正 GECO pp01 / Trial 5 報告硬編碼為 157 筆的偏差；目前兩份輸入與 merge 結果均為 156 筆。
 - 先 commit 鎖定 GECO 跨受試者 protocol，再以 37 人、5,892 participant-trials 完成不使用測試折調參的 CPU-only 雙重 holdout。
+- 先 commit 鎖定 PROVO 跨 corpus protocol，再以 18 位 GECO L1 讀者訓練、84 位 PROVO 讀者純測試，完成不載入 Torch/CUDA 的 zero-shot 驗證；Ridge 有正向訊號但明確落後 word length。
 - 識別兩條關鍵洩漏風險：單一 trial fusion 的 gaze dwell 由評估目標 TRT 建構；`cognitive_mass` 的現行 extraction path 可包含以 GECO TRT 訓練的 XGBoost/Ridge。
 
 ## 本輪成果與驗證紀錄
@@ -35,13 +36,14 @@ LexiGaze 已具備完整的端到端雛形：Webcam gaze、個人化校正、語
 
 | 項目 | 結果 | 可追溯產物 |
 | --- | --- | --- |
-| CPU-safe 單元與 API 測試 | 22/22 通過 | `scripts/test_device_policy.py`、`scripts/test_cognitive_inspector.py`、`scripts/test_fusion_routes.py`、`scripts/test_adaptive_stepper.py`、`scripts/test_experiment_manifest.py` |
+| CPU-safe 單元、API 與研究測試 | 34/34 通過 | `scripts/test_device_policy.py`、`scripts/test_cognitive_inspector.py`、`scripts/test_fusion_routes.py`、`scripts/test_adaptive_stepper.py`、`scripts/test_experiment_manifest.py`、`scripts/test_geco_generalization.py`、`scripts/test_provo_zero_shot.py` |
 | 靜態驗證 | `compileall` 通過；Ruff `E9,F63,F7,F82` 通過 | 本分支 Python 變更 |
 | 依賴解析 | `uv lock --check` 通過；`uv sync --locked --offline --dry-run` 無變更 | `uv.lock` |
 | Fusion benchmark | 156 筆；最佳 Spearman 為 RRF，$\rho=0.6569$；最佳 Pearson 為 Sigmoid，$r=0.7503$ | `output/fusion_experiment_manifest.json`、`output/fusion_experiment_report.md` |
 | Joint system benchmark | 156 筆；Viterbi + EM gaze accuracy 96.79%；STOCK-T v3 + CogMass + Bayesian 的 RDS $\rho=0.4267$ | `output/demo_system_comparison_manifest.json`、`output/demo_system_comparison.csv` |
 | New-reader + new-trial double holdout | 37 人、5,892 participant-trials；text-only Ridge macro $\rho=0.1216$，95% CI $[0.0926, 0.1513]$；未勝過 word length $\rho=0.1225$ | `output/geco_generalization_manifest.json`、`docs/GECO_GENERALIZATION_EXECUTION_LOG_2026-08-03.md` |
 | New-reader + known-passage LOSO | other-reader duration prior $\rho=0.3105$；fixation-rate prior AUC $0.7766$ | `output/geco_generalization_summary.json` |
+| GECO L1 → PROVO zero-shot | 18 人訓練、84 人獨立測試；lexical Ridge $\rho=0.2205$，word length $\rho=0.2951$，差值 $-0.0746$；fixation AUC $0.6486$ | `output/provo_zero_shot_manifest.json`、`docs/PROVO_ZERO_SHOT_EXECUTION_LOG_2026-08-03.md` |
 
 Manifest schema 版本為 1。每份 manifest 都包含 benchmark entry point 與 manifest helper 的 SHA-256、資料集與產物 SHA-256、seed、參數、套件版本、device policy、Git branch/HEAD/dirty 狀態，以及 tracked diff SHA-256。這讓尚未 commit 的研究執行也能回溯到實際程式內容。
 
@@ -50,7 +52,7 @@ Manifest schema 版本為 1。每份 manifest 都包含 benchmark entry point �
 | 優先級 | 面向 | 現況與證據 | 建議動作 | GPU 成本 |
 | --- | --- | --- | --- | --- |
 | P0 | 實驗可追溯性 | 新 benchmark 已有 manifest；但 `PROJECT_OVERVIEW.md` 的 78.21% 與 `docs/NeurIPS/RESULT.md` 的 92.31% 仍缺少原始版本資訊 | 替歷史結果補版本標籤；之後所有實驗沿用 manifest schema | 無 |
-| P0 | 泛化效度 | 37 人雙重 holdout 已完成；text-only Ridge 僅 $\rho=0.1216$ 且未超越 word length，證明單一 trial 高相關不可代表泛化 | 凍結 GECO v1.1 測試；新特徵只在獨立 development data 開發，下一次 confirmatory test 改用預註冊的跨 corpus zero-shot | 低至中 |
+| P0 | 泛化效度 | GECO 雙重 holdout 與獨立 PROVO zero-shot 均已完成；PROVO Ridge $\rho=0.2205$，但可靠地落後 word length $\rho=0.2951$ | 同時凍結 GECO 與 PROVO；新候選只在第三個 development corpus 開發，保留另一個未碰觸 corpus 作一次確認 | 低至中 |
 | P0 | 公開 tunnel | `run.py --tunnel` 可公開 Flask API；目前包含刪除、訓練、報告及最高 500 MB 上傳端點，沒有一致的存取控制 | tunnel 模式要求 bearer token；對推論、訓練與上傳加入 rate limit、併發上限及可設定的大小限制 | 無 |
 | P0 | 指標效度 | Inspector 的 WPM 以 fixation dwell 總和估算，疲勞以文章前後半 fixation 比值估算，容易混入 gaze loss 與後半內容難度 | 前端傳入 session wall-clock、coverage 與 lost-sample rate；疲勞實驗採 counterbalanced passages | 無至低 |
 | P1 | GPU 背壓 | 模型採 lazy cache，但同時請求仍可能並行佔用 VRAM；研究腳本也有獨立的自動 CUDA 判斷 | 每種模型設 semaphore/queue；記錄 allocated/reserved VRAM、batch size、latency；研究腳本增加 `--device` | 低 |
@@ -65,7 +67,7 @@ Manifest schema 版本為 1。每份 manifest 都包含 benchmark entry point �
 ### A. 完全不使用 GPU
 
 1. 對齊 78.21%、88.63%、90.49%、92.31% 各自的資料範圍與演算法版本。
-2. 建立與 GECO v1.1 隔離的 development split；禁止根據凍結 test 結果調權重。
+2. 建立與 GECO、PROVO 隔離的第三方 development corpus；禁止根據兩份凍結 test 結果調權重或挑模型。
 3. 補齊 Inspector 的 gaze loss 與稀疏取樣邊界測試，並加入 coverage 指標。
 4. 加上 tunnel authentication、request validation 與資源上限。
 
@@ -77,7 +79,7 @@ Manifest schema 版本為 1。每份 manifest 都包含 benchmark entry point �
 
 ### C. 需排程的高 GPU 工作
 
-1. 預註冊跨 corpus zero-shot Cognition 評估；優先採用未參與訓練的 PROVO 或其他閱讀語料。
+1. 只有當第三方 development corpus 顯示模型容量而非特徵方向是瓶頸時，才預註冊另一份未碰觸 corpus 的 GPU 特徵驗證。
 2. 真實 webcam drift 條件的多輪個人化校正，而非只使用 synthetic jitter。
 3. 只有當誤差分析顯示模型容量是瓶頸時，才進行重新訓練或大型超參數搜尋。
 
@@ -88,3 +90,4 @@ Manifest schema 版本為 1。每份 manifest 都包含 benchmark entry point �
 - tunnel 模式未帶 token 時，無法觸發寫入、刪除、訓練或昂貴推論。
 - health/benchmark 能同時回報 latency、實際 device 與 VRAM 峰值。
 - Inspector 的 reading ability、proficiency、fatigue 至少有 held-out participant 的效度結果，不只依賴手工 threshold。
+- 語言難度模型不能只勝過零相關；必須在未碰觸 corpus 上勝過 word length 與 lexical rarity，才可宣稱有增量價值。

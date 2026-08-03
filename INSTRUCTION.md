@@ -194,11 +194,22 @@ LEXIGAZE_DEVICE=cpu CUDA_VISIBLE_DEVICES="" uv run python scripts/evaluate_geco_
 
 Read `docs/GECO_GENERALIZATION_PROTOCOL_V1_1_2026-08-03.md` before running. Do not change folds, features, Ridge alpha, exclusions, or the primary endpoint based on `output/geco_generalization_*` results. Future feature development must use separate development data.
 
+### Diagnostic 5.4: Frozen GECO-to-PROVO Zero-Shot Protocol
+
+Acquire or verify the official OSF file, then reproduce the CPU-only independent-corpus evaluation:
+
+```bash
+uv run python scripts/download_provo.py
+LEXIGAZE_DEVICE=cpu CUDA_VISIBLE_DEVICES="" uv run python scripts/evaluate_provo_zero_shot.py
+```
+
+Read `docs/PROVO_ZERO_SHOT_PROTOCOL_V1_1_2026-08-03.md` before running. The frozen result uses 18 GECO L1 participants for training and all 84 PROVO participants for test-only inference. GECO lexical Ridge reaches macro participant Spearman $\rho=0.2205$, but word length is stronger at $\rho=0.2951$; PROVO v1.1 must not be used to retune the model.
+
 ### 📈 Directions for Future Improvement
 1. **Gaze Correction Accuracy**: Raw webcam tracking suffers from vertical drift (~45px). The current seeded diagnostic shows Auto-Calibrating EM reaching 96.79% on one simulated trial; this must be verified on held-out real webcam sessions before a production claim.
 2. **Computational Latency**: Running Viterbi and EM decoding sequentially adds ~200ms processing delay per page. Next-step optimizations should focus on compiling the transition matrix operations using **Cython/Numba** or vectorizing loops via **NumPy**.
 3. **Adaptive Snapping & Layout Constraints**: Using **Proficiency-Adaptive OVP Anchor Tuning (PAOAT)** and **Oculomotor Spatio-Temporal Monotonicity Constraints (OSTMC)** dynamically corrects coordinates to match human reading layouts, boosting subject tracking accuracy and preventing vertical line-skipping.
-4. **Cognitive Feature Generalization**: Under the frozen double holdout, text-only Ridge reaches $\rho=0.1216$ and does not beat word length ($\rho=0.1225$). Do not tune fusion priors on the frozen GECO result; develop on separate data and confirm on another corpus.
+4. **Cognitive Feature Generalization**: GECO double holdout and the independent PROVO zero-shot test both show that richer fixed Ridge combinations do not beat word length. Keep word length and lexical rarity as mandatory baselines; develop any constrained replacement on a third corpus and confirm it once on another untouched corpus. GECO and PROVO are frozen tests, not tuning data.
 
 ---
 

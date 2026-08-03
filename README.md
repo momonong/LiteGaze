@@ -58,6 +58,8 @@ To avoid mixed purposes, our documentation is structured as follows:
 | **[Project Health Audit](docs/PROJECT_HEALTH_AUDIT_2026-08-03.md)** | Dated Engineering Record | Implemented guardrails, CPU benchmark results, validation evidence, and prioritized follow-up research. |
 | **[GECO Generalization Protocol v1.1](docs/GECO_GENERALIZATION_PROTOCOL_V1_1_2026-08-03.md)** | Preregistered Research Protocol | Subject/trial double holdout, leakage controls, fixed analysis, and stopping rules. |
 | **[GECO Generalization Execution Log](docs/GECO_GENERALIZATION_EXECUTION_LOG_2026-08-03.md)** | Research Result Record | Full-population outcomes, hashes, deviations, interpretation limits, and follow-up decisions. |
+| **[PROVO Zero-Shot Protocol v1.1](docs/PROVO_ZERO_SHOT_PROTOCOL_V1_1_2026-08-03.md)** | Preregistered Cross-Corpus Protocol | GECO-only training, independent PROVO testing, EyeLink schema amendment, and frozen decision rules. |
+| **[PROVO Zero-Shot Execution Log](docs/PROVO_ZERO_SHOT_EXECUTION_LOG_2026-08-03.md)** | Cross-Corpus Result Record | Official data hashes, outcome isolation, participant inference, reproducibility evidence, and development boundary. |
 | **[AGENT.md](AGENT.md)** | Developer Rules | Code quality standards, imports, relative API rules. |
 | **[CONTRIBUTING.md](CONTRIBUTING.md)** | Git Guidelines | Branch names, commit messages, and collaborative pull requests. |
 
