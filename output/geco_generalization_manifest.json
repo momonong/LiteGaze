@@ -1,0 +1,148 @@
+{
+  "artifacts": [
+    {
+      "exists": true,
+      "path": "output/geco_population_fingerprint.json",
+      "sha256": "18a3c5134b90ae144ede3dc0e4a023a022cd856d2d5ca2f8fd0fa54d8c6e5971",
+      "size_bytes": 4889
+    },
+    {
+      "exists": true,
+      "path": "output/geco_generalization_fold_metrics.csv",
+      "sha256": "939422a18455c852c9107abcfdf961cdd660c1b0c3ed15066bea9ae7fff71646",
+      "size_bytes": 1500
+    },
+    {
+      "exists": true,
+      "path": "output/geco_generalization_subject_metrics.csv",
+      "sha256": "95c49576d73abb91b20deef165df8dbd5f02212df4731cdefa327d40e5b60ab7",
+      "size_bytes": 34278
+    },
+    {
+      "exists": true,
+      "path": "output/geco_generalization_summary.json",
+      "sha256": "732d47fc3f326ff283cd7d839de5df9a1b53502f2648859f3ef1387ecdb454fc",
+      "size_bytes": 9324
+    },
+    {
+      "exists": true,
+      "path": "output/geco_generalization_report.md",
+      "sha256": "db1fda2e6350f8908ccfd9a9b6258ef6f05e07981b85e919d429f069d517b261",
+      "size_bytes": 2427
+    },
+    {
+      "exists": true,
+      "path": "output/geco_generalization.png",
+      "sha256": "14666dd9422366deb9b5c3f08301cca30715bbc99440f48d159ca7bb51018df0",
+      "size_bytes": 87158
+    }
+  ],
+  "config": {
+    "bootstrap_samples": 10000,
+    "primary_features": [
+      "log_surprisal",
+      "log_attention",
+      "word_length",
+      "is_l2"
+    ],
+    "protocol_path": "docs/GECO_GENERALIZATION_PROTOCOL_V1_1_2026-08-03.md",
+    "ridge_alpha": 1.0,
+    "seed": 20260803,
+    "sign_flip_samples": 100000,
+    "subject_folds": 5,
+    "trial_folds": 5
+  },
+  "datasets": [
+    {
+      "exists": true,
+      "path": "output/geco_population_fingerprint.json",
+      "sha256": "18a3c5134b90ae144ede3dc0e4a023a022cd856d2d5ca2f8fd0fa54d8c6e5971",
+      "size_bytes": 4889
+    }
+  ],
+  "experiment": {
+    "command": [
+      "scripts\\evaluate_geco_generalization.py"
+    ],
+    "created_at": "2026-08-03T07:56:58.766137+00:00",
+    "duration_seconds": 44.39345370000228,
+    "name": "geco_cross_subject_generalization_v1",
+    "seed": 20260803,
+    "status": "completed"
+  },
+  "metrics": {
+    "participant_trial_count": 5892,
+    "primary_model": "ridge_text_only",
+    "primary_summary": {
+      "bootstrap_ci_95": [
+        0.09258261773300873,
+        0.15127136927031568
+      ],
+      "macro_mean_spearman_rho": 0.12158758298329293,
+      "mean_mae_log": 0.5040267198635416,
+      "model": "ridge_text_only",
+      "outcome": "conditional_log_reading_time",
+      "primary_eligible": true,
+      "protocol": "new_reader_new_trial_double_holdout",
+      "subject_count": 37
+    },
+    "primary_tests": {
+      "ridge_minus_surprisal_macro_rho": 0.11222691406873765,
+      "ridge_vs_surprisal_paired_two_sided_p": 9.99990000099999e-06,
+      "ridge_vs_zero_two_sided_p": 9.99990000099999e-06
+    },
+    "row_count": 638408,
+    "subject_count": 37
+  },
+  "runtime": {
+    "device_policy": "cpu",
+    "gpus": [
+      {
+        "driver_version": "581.57",
+        "memory_total_mib": "24463",
+        "name": "NVIDIA GeForce RTX 5090 Laptop GPU"
+      }
+    ],
+    "implementation": "CPython",
+    "machine": "AMD64",
+    "packages": {
+      "matplotlib": "3.10.9",
+      "numpy": "2.4.4",
+      "pandas": "3.0.2",
+      "scipy": "1.17.1",
+      "seaborn": "0.13.2",
+      "torch": "2.13.0+cu130",
+      "transformers": "5.7.0"
+    },
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9"
+  },
+  "schema_version": 1,
+  "source": {
+    "branch": "codex/feat/runtime-resource-guardrails",
+    "commit": "eb3795dba39493c1c552dcaa0120fa8d1bd097c7",
+    "dirty": false,
+    "files": [
+      {
+        "exists": true,
+        "path": "scripts/experiment_manifest.py",
+        "sha256": "a09488d0f874f25e1be5f4bf7d27b214a3b1743b5d2bd26f5b06036942dee71a",
+        "size_bytes": 8192
+      },
+      {
+        "exists": true,
+        "path": "scripts/evaluate_geco_generalization.py",
+        "sha256": "26d109f6db17eb0da1100ff802831a9380eb9991db6b19caa8963406478f2156",
+        "size_bytes": 34777
+      },
+      {
+        "exists": true,
+        "path": "docs/GECO_GENERALIZATION_PROTOCOL_V1_1_2026-08-03.md",
+        "sha256": "a8bcd735168c23219f410a39d3812b626e8adf981cfc6d89610ce16a509bc2b8",
+        "size_bytes": 1940
+      }
+    ],
+    "tracked_changes": false,
+    "tracked_diff_from_head_sha256": null
+  }
+}

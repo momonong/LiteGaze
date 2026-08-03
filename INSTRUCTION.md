@@ -165,13 +165,16 @@ This simulates webcam drift (+45px vertical drift, 30-40px jitter) on a 156-word
 
 | Configuration | Gaze Accuracy (%) | RDS Correlation ($\rho$) | Latency (ms) | Target Optimization Direction |
 | :--- | :---: | :---: | :---: | :--- |
-| **Raw Gaze + No Cog + Linear** | 18.59% | 0.0636 | ~1.5 ms | **Baseline**: Heavily impacted by calibration drift. |
-| **Viterbi + No Cog + Linear** | 48.72% | 0.0910 | ~140 ms | **Spatio-Temporal Prior**: Corrects drift but lacks online tuning. |
-| **Viterbi + EM Calib + No Cog** | 73.72% | 0.2050 | ~210 ms | **EM Self-Calibration**: Re-calibrates offsets during reading. |
-| **STOCK-T v3 + surprisal + Bayesian** | **78.21%** | **0.2258** | ~210 ms | **Optimal Joint System**: Max accuracy & difficulty correlation. |
+| **Raw Gaze + No Cog + Linear** | 18.59% | 0.0636 | ~2 ms | **Baseline**: Heavily impacted by calibration drift. |
+| **Viterbi + No Cog + Linear** | 54.49% | 0.0561 | ~192 ms | **Spatio-Temporal Prior**: Corrects some drift but lacks online tuning. |
+| **Viterbi + EM Calib + No Cog** | **96.79%** | 0.1342 | ~289 ms | **EM Self-Calibration**: Highest gaze accuracy in this seeded simulation. |
+| **STOCK-T v3 + surprisal + Bayesian** | 93.59% | 0.3864 | ~305 ms | **Joint Diagnostic**: High simulated recovery without CogMass. |
+| **STOCK-T v3 + CogMass + Bayesian** | 93.59% | **0.4267** | ~293 ms | **Provenance-risk diagnostic**: not eligible for predictive claims. |
+
+These are single-participant simulation diagnostics. Do not interpret them as cross-subject prediction or tune production thresholds from this table.
 
 ### Diagnostic 5.2: Multimodal Fusion Calibration
-To compare the six mathematical fusion methods on GECO:
+To compare the eleven mathematical fusion methods on GECO:
 ```bash
 uv run python scripts/experiment_fusion.py
 ```
@@ -179,11 +182,23 @@ This generates evaluation summaries and plots under `output/`:
 * `fusion_correlation_comparison.png` - Compares Spearman $\rho$ and Pearson $r$.
 * `rds_distributions.png` - Plots score distributions across algorithms.
 
+This script constructs simulated dwell from the same TRT used as its evaluation target. Use it for descriptive calibration and implementation comparison, not out-of-sample predictive claims.
+
+### Diagnostic 5.3: Frozen GECO Generalization Protocol
+
+To reproduce the preregistered 37-participant new-reader/new-trial evaluation without GPU use:
+
+```bash
+LEXIGAZE_DEVICE=cpu CUDA_VISIBLE_DEVICES="" uv run python scripts/evaluate_geco_generalization.py
+```
+
+Read `docs/GECO_GENERALIZATION_PROTOCOL_V1_1_2026-08-03.md` before running. Do not change folds, features, Ridge alpha, exclusions, or the primary endpoint based on `output/geco_generalization_*` results. Future feature development must use separate development data.
+
 ### 📈 Directions for Future Improvement
-1. **Gaze Correction Accuracy**: Raw webcam tracking suffers from vertical drift (~45px). Implementing **Auto-Calibrating EM Decoders** (`AutoCalibratingDecoder`) or **Psycholinguistic Transition Matrices** (`PsycholinguisticTransitionMatrix`) corrects this, increasing coordinate mapping accuracy from 18.5% to 78.2%.
+1. **Gaze Correction Accuracy**: Raw webcam tracking suffers from vertical drift (~45px). The current seeded diagnostic shows Auto-Calibrating EM reaching 96.79% on one simulated trial; this must be verified on held-out real webcam sessions before a production claim.
 2. **Computational Latency**: Running Viterbi and EM decoding sequentially adds ~200ms processing delay per page. Next-step optimizations should focus on compiling the transition matrix operations using **Cython/Numba** or vectorizing loops via **NumPy**.
 3. **Adaptive Snapping & Layout Constraints**: Using **Proficiency-Adaptive OVP Anchor Tuning (PAOAT)** and **Oculomotor Spatio-Temporal Monotonicity Constraints (OSTMC)** dynamically corrects coordinates to match human reading layouts, boosting subject tracking accuracy and preventing vertical line-skipping.
-4. **Cognitive Weight Calibration**: Currently, Bayesian and Multiplicative fusion yield higher correlation values ($\rho > 0.80$) on human reading times than simple Linear summation by modeling interaction effects (skipped words vs high surprisal). Tuning the prior boundaries in `scripts/fusion_module.py` will further improve prediction fidelity.
+4. **Cognitive Feature Generalization**: Under the frozen double holdout, text-only Ridge reaches $\rho=0.1216$ and does not beat word length ($\rho=0.1225$). Do not tune fusion priors on the frozen GECO result; develop on separate data and confirm on another corpus.
 
 ---
 

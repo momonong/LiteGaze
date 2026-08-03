@@ -16,10 +16,10 @@ import seaborn as sns
 from scipy.stats import spearmanr, pearsonr
 
 if __package__:
-    from .experiment_manifest import write_experiment_manifest
+    from .experiment_manifest import capture_source_snapshot, write_experiment_manifest
     from .fusion_module import LexiGazeFusion
 else:
-    from experiment_manifest import write_experiment_manifest
+    from experiment_manifest import capture_source_snapshot, write_experiment_manifest
     from fusion_module import LexiGazeFusion
 
 # Define paths
@@ -37,6 +37,7 @@ GATED_THRESHOLD = 0.25
 
 def main():
     experiment_started = time.perf_counter()
+    source_snapshot = capture_source_snapshot(PROJECT_ROOT)
     print("Starting Multimodal Fusion Experiment...")
     
     # 1. Check directories
@@ -56,6 +57,7 @@ def main():
             seed=RANDOM_SEED,
             status="failed",
             duration_seconds=round(time.perf_counter() - experiment_started, 6),
+            source_snapshot=source_snapshot,
         )
         return 1
         
@@ -233,6 +235,7 @@ def main():
         },
         seed=RANDOM_SEED,
         duration_seconds=round(time.perf_counter() - experiment_started, 6),
+        source_snapshot=source_snapshot,
     )
     print(f"Saved experiment report to {OUTPUT_DIR}/fusion_experiment_report.md")
     print(f"Saved reproducibility manifest to {manifest_path}")
@@ -250,6 +253,9 @@ def _manifest_config():
         "fixation_jitter_sigma": FIXATION_JITTER_SIGMA,
         "fixation_scale": FIXATION_SCALE,
         "gated_threshold": GATED_THRESHOLD,
+        "evaluation_scope": "single_participant_descriptive_calibration",
+        "same_event_gaze_derived_from_target_trt": True,
+        "predictive_generalization_eligible": False,
     }
 
 def df_to_markdown(df):
@@ -274,6 +280,12 @@ def write_report(df_eval, best_method, df_top10, row_count):
 This report summarizes the comparative evaluation of eleven fusion algorithms designed to combine eye-gaze tracking metrics (total reading time / dwell duration) with cognitive load metrics (information surprisal from BERT) into a unified **Reading Difficulty Score (RDS)**.
 
 The algorithms were tested on **{row_count} merged word records** from the **GECO Corpus (pp01, Trial 5)**. The ground-truth reading difficulty is represented by the actual human **Total Reading Time (TRT)**.
+
+---
+
+## Validity Scope
+
+This is a **descriptive calibration diagnostic**, not an out-of-sample prediction benchmark. The simulated dwell and fixation inputs are constructed from the same TRT used as the evaluation target, and the current cognitive-mass extraction path can include GECO-supervised XGBoost/Ridge scores. Use `output/geco_generalization_report.md` for preregistered new-reader/new-trial evidence.
 
 ---
 

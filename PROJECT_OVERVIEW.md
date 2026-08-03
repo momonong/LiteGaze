@@ -575,14 +575,14 @@ Generated under `output/fused_rds_dataset.csv`:
 ### 6.1 GECO Benchmark System Performance Evaluation
 Evaluated on the **Ghent Eye-Tracking Corpus (GECO)** under simulated extreme webcam drift ($+45\text{px}$ vertical offset, $\sigma_x=40\text{px}, \sigma_y=30\text{px}$ gaussian jitter) across 156 word records:
 
+> **Validity scope:** Sections 6.1-6.3 are single-participant simulation/calibration diagnostics. They are useful for pipeline debugging but are not cross-subject predictive evidence. In particular, the fusion benchmark constructs simulated dwell from the same TRT used as its evaluation target.
+
 ```
                                GAZE WORD-MAPPING ACCURACY (%)
 Raw Gaze Baseline ─── 18.59%
-Viterbi Base      ─────────────── 48.72%
-Viterbi + EM      ───────────────────────────────── 73.72%
-STOCK-T v3 (POM)  ────────────────────────────────────── 78.21%
-                  └──────┬───────┴───────┬───────┴───────┬───────┘
-                         20%             40%             60%             80%
+Viterbi Base      ───────────────── 54.49%
+Viterbi + EM      ───────────────────────────────── 96.79%
+STOCK-T v3 (POM)  ──────────────────────────────── 93.59%
 ```
 
 ---
@@ -592,30 +592,40 @@ Data extracted from `output/demo_system_comparison.csv`:
 
 | Pipeline Configuration | Gaze Decoder | Cognitive Pipeline | Fusion Method | Gaze Accuracy (%) | RDS Correlation ($\rho$) | Latency (ms) | Academic Significance |
 | :--- | :--- | :--- | :--- | :---: | :---: | :---: | :--- |
-| **1. Raw Baseline** | Nearest Box (`nearest_box`) | None (`none`) | Linear | **18.59%** | 0.0636 | **1.55 ms** | Vulnerable to vertical drift (+45px). |
-| **2. Viterbi Base** | Standard HMM (`viterbi_base`) | None (`none`) | Linear | **48.72%** | 0.0910 | 140.07 ms | Saccade priors filter high-frequency noise. |
-| **3. Viterbi + EM** | Auto-Calibrating (`viterbi_em`) | None (`none`) | Linear | **73.72%** | 0.2050 | 210.74 ms | Dynamic EM window offsets +45px drift. |
-| **4. STOCK-T v1** | POM Gravitational Field | Surprisal (`surprisal`) | Linear | **75.00%** | 0.2110 | 208.50 ms | Incorporates cognitive mass attraction. |
-| **5. STOCK-T v2** | POM + EM | Surprisal (`surprisal`) | Multiplicative | **78.21%** | 0.2185 | 211.20 ms | Multiplicative fusion filters skipped words. |
-| **6. STOCK-T v3** | POM + EM (Optimal) | Surprisal (`surprisal`) | Bayesian | **78.21%** | **0.2258** | 209.78 ms | Peak accuracy & difficulty correlation. |
+| **1. Raw Baseline** | Nearest Box (`nearest_box`) | None (`none`) | Linear | **18.59%** | 0.0636 | **2.34 ms** | Vulnerable to vertical drift (+45px). |
+| **2. Viterbi Base** | Standard HMM (`viterbi_base`) | None (`none`) | Linear | **54.49%** | 0.0561 | 192.06 ms | Saccade priors filter high-frequency noise. |
+| **3. Viterbi + EM** | Auto-Calibrating (`viterbi_em`) | None (`none`) | Linear | **96.79%** | 0.1342 | 289.29 ms | Highest gaze accuracy in this seeded simulation. |
+| **4. STOCK-T v1** | Attention-guided transition | Surprisal (`surprisal`) | Linear | **38.46%** | 0.2519 | 189.97 ms | Cognitive transition diagnostic. |
+| **5. STOCK-T v2** | Cognitive transition | Surprisal (`surprisal`) | Multiplicative | **44.87%** | 0.2428 | 232.85 ms | Multiplicative fusion diagnostic. |
+| **6. STOCK-T v3** | POM + EM | Surprisal (`surprisal`) | Bayesian | **93.59%** | 0.3864 | 305.19 ms | High simulated gaze recovery. |
+| **7. STOCK-T v3 + CogMass** | POM + EM | Cognitive mass | Bayesian | **93.59%** | **0.4267** | 292.67 ms | Best single-trial RDS correlation; provenance-risk for predictive claims. |
 
 ---
 
-### 6.3 Multimodal Fusion Evaluation on Human Reading Time (TRT)
-Evaluated against human Total Reading Time (TRT) ground truth (`output/fusion_evaluation_summary.csv`):
+### 6.3 Single-Trial Multimodal Fusion Calibration
 
-| Fusion Method | Pearson $r$ | Pearson $p$-value | Spearman $\rho$ | Spearman $p$-value | Strategic Recommendation |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| **Linear** | **0.8880** | $7.91 \times 10^{-54}$ | **0.8816** | $4.40 \times 10^{-52}$ | Highest ground truth correlation on clean data. |
-| **Sigmoid** | 0.8490 | $1.65 \times 10^{-44}$ | **0.8816** | $4.40 \times 10^{-52}$ | Effective for binary difficulty classification. |
-| **Multiplicative** | 0.6812 | $1.30 \times 10^{-22}$ | 0.8007 | $4.28 \times 10^{-36}$ | Best noise robustness for webcam tracking. |
-| **Bayesian** | 0.7556 | $4.34 \times 10^{-30}$ | 0.7993 | $6.95 \times 10^{-36}$ | Optimal probabilistic interpretation. |
-| **Reciprocal Rank (RRF)** | 0.7742 | $2.13 \times 10^{-32}$ | 0.7819 | $2.05 \times 10^{-33}$ | Parameter-free ensemble baseline. |
-| **Attention-Gated** | 0.5742 | $4.63 \times 10^{-15}$ | 0.7507 | $1.59 \times 10^{-29}$ | Strict fixation thresholding. |
+The current seeded 156-row run (`output/fusion_experiment_manifest.json`) compares eleven fusion functions. RRF has the highest Spearman correlation ($\rho=0.6569$); Sigmoid has the highest Pearson correlation ($r=0.7503$). These numbers describe how the functions combine a target-derived simulated dwell signal with cognitive features. They must not be reported as out-of-sample reading-time prediction.
+
+The complete method table, parameters, data hashes, source hashes, and plots are recorded in `output/fusion_experiment_report.md` and `output/fusion_experiment_manifest.json`.
 
 ---
 
-### 6.4 Identification and Qualitative Analysis of High-Cognitive-Load Words
+### 6.4 Preregistered Cross-Subject and Cross-Trial Generalization
+
+The CPU-only v1.1 protocol was committed before the full result, uses 37 participants and 5,892 participant-trials, and holds out both reader folds and trial folds. Feature scaling is trained only on the remaining folds; no question-answer set, held-out target, same-event gaze, or test-driven hyperparameter selection is used.
+
+| Protocol / Model | Primary metric | 95% participant-bootstrap CI | Interpretation |
+| :--- | :---: | :---: | :--- |
+| New reader + new trial, text-only Ridge | Macro Spearman $\rho=0.1216$ | $[0.0926, 0.1513]$ | Positive but modest; does not beat word length. |
+| New reader + new trial, word length | Macro Spearman $\rho=0.1225$ | $[0.0932, 0.1522]$ | Mandatory simple baseline. |
+| New reader + known passage, other-reader duration prior | Macro Spearman $\rho=0.3105$ | $[0.3002, 0.3212]$ | Useful only when the passage has population history. |
+| New reader + known passage, other-reader fixation prior | Macro ROC AUC $0.7766$ | $[0.7647, 0.7888]$ | Strong secondary known-passage signal. |
+
+See `docs/GECO_GENERALIZATION_EXECUTION_LOG_2026-08-03.md` and `output/geco_generalization_manifest.json`. GECO v1.1 is now frozen as a test protocol; future feature development must use separate development data, followed by a preregistered cross-corpus evaluation.
+
+---
+
+### 6.5 Identification and Qualitative Analysis of High-Cognitive-Load Words
 Top 10 cognitive bottleneck words identified by the optimal fusion model (`output/fusion_experiment_report.md`):
 
 | Rank | Word ID | Word | Human TRT (ms) | BERT Surprisal (bits) | Linear RDS | Primary Cognitive Driver |

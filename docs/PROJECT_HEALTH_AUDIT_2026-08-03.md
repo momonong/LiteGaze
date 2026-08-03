@@ -24,6 +24,8 @@ LexiGaze 已具備完整的端到端雛形：Webcam gaze、個人化校正、語
 - 建立共用實驗 manifest，記錄 Git、執行腳本、資料集、設定、套件、硬體、指標與輸出檔 SHA-256。
 - 將 fusion 與整體系統比較改為固定 seed、區域 RNG、絕對路徑與原子化 manifest 輸出。
 - 修正 GECO pp01 / Trial 5 報告硬編碼為 157 筆的偏差；目前兩份輸入與 merge 結果均為 156 筆。
+- 先 commit 鎖定 GECO 跨受試者 protocol，再以 37 人、5,892 participant-trials 完成不使用測試折調參的 CPU-only 雙重 holdout。
+- 識別兩條關鍵洩漏風險：單一 trial fusion 的 gaze dwell 由評估目標 TRT 建構；`cognitive_mass` 的現行 extraction path 可包含以 GECO TRT 訓練的 XGBoost/Ridge。
 
 ## 本輪成果與驗證紀錄
 
@@ -38,6 +40,8 @@ LexiGaze 已具備完整的端到端雛形：Webcam gaze、個人化校正、語
 | 依賴解析 | `uv lock --check` 通過；`uv sync --locked --offline --dry-run` 無變更 | `uv.lock` |
 | Fusion benchmark | 156 筆；最佳 Spearman 為 RRF，$\rho=0.6569$；最佳 Pearson 為 Sigmoid，$r=0.7503$ | `output/fusion_experiment_manifest.json`、`output/fusion_experiment_report.md` |
 | Joint system benchmark | 156 筆；Viterbi + EM gaze accuracy 96.79%；STOCK-T v3 + CogMass + Bayesian 的 RDS $\rho=0.4267$ | `output/demo_system_comparison_manifest.json`、`output/demo_system_comparison.csv` |
+| New-reader + new-trial double holdout | 37 人、5,892 participant-trials；text-only Ridge macro $\rho=0.1216$，95% CI $[0.0926, 0.1513]$；未勝過 word length $\rho=0.1225$ | `output/geco_generalization_manifest.json`、`docs/GECO_GENERALIZATION_EXECUTION_LOG_2026-08-03.md` |
+| New-reader + known-passage LOSO | other-reader duration prior $\rho=0.3105$；fixation-rate prior AUC $0.7766$ | `output/geco_generalization_summary.json` |
 
 Manifest schema 版本為 1。每份 manifest 都包含 benchmark entry point 與 manifest helper 的 SHA-256、資料集與產物 SHA-256、seed、參數、套件版本、device policy、Git branch/HEAD/dirty 狀態，以及 tracked diff SHA-256。這讓尚未 commit 的研究執行也能回溯到實際程式內容。
 
@@ -46,7 +50,7 @@ Manifest schema 版本為 1。每份 manifest 都包含 benchmark entry point �
 | 優先級 | 面向 | 現況與證據 | 建議動作 | GPU 成本 |
 | --- | --- | --- | --- | --- |
 | P0 | 實驗可追溯性 | 新 benchmark 已有 manifest；但 `PROJECT_OVERVIEW.md` 的 78.21% 與 `docs/NeurIPS/RESULT.md` 的 92.31% 仍缺少原始版本資訊 | 替歷史結果補版本標籤；之後所有實驗沿用 manifest schema | 無 |
-| P0 | 泛化效度 | `scripts/experiment_fusion.py` 的高相關結果來自 pp01 / Trial 5 / 156 word records；不應直接代表跨受試者泛化 | 以 subject 為切分單位做 held-out/LOSO，報告 bootstrap CI；調參資料與最終測試資料分離 | 中至高，可排程 |
+| P0 | 泛化效度 | 37 人雙重 holdout 已完成；text-only Ridge 僅 $\rho=0.1216$ 且未超越 word length，證明單一 trial 高相關不可代表泛化 | 凍結 GECO v1.1 測試；新特徵只在獨立 development data 開發，下一次 confirmatory test 改用預註冊的跨 corpus zero-shot | 低至中 |
 | P0 | 公開 tunnel | `run.py --tunnel` 可公開 Flask API；目前包含刪除、訓練、報告及最高 500 MB 上傳端點，沒有一致的存取控制 | tunnel 模式要求 bearer token；對推論、訓練與上傳加入 rate limit、併發上限及可設定的大小限制 | 無 |
 | P0 | 指標效度 | Inspector 的 WPM 以 fixation dwell 總和估算，疲勞以文章前後半 fixation 比值估算，容易混入 gaze loss 與後半內容難度 | 前端傳入 session wall-clock、coverage 與 lost-sample rate；疲勞實驗採 counterbalanced passages | 無至低 |
 | P1 | GPU 背壓 | 模型採 lazy cache，但同時請求仍可能並行佔用 VRAM；研究腳本也有獨立的自動 CUDA 判斷 | 每種模型設 semaphore/queue；記錄 allocated/reserved VRAM、batch size、latency；研究腳本增加 `--device` | 低 |
@@ -61,7 +65,7 @@ Manifest schema 版本為 1。每份 manifest 都包含 benchmark entry point �
 ### A. 完全不使用 GPU
 
 1. 對齊 78.21%、88.63%、90.49%、92.31% 各自的資料範圍與演算法版本。
-2. 將 fusion evaluation 改為 subject-level split，先以既有特徵 cache 驗證統計流程。
+2. 建立與 GECO v1.1 隔離的 development split；禁止根據凍結 test 結果調權重。
 3. 補齊 Inspector 的 gaze loss 與稀疏取樣邊界測試，並加入 coverage 指標。
 4. 加上 tunnel authentication、request validation 與資源上限。
 
@@ -73,7 +77,7 @@ Manifest schema 版本為 1。每份 manifest 都包含 benchmark entry point �
 
 ### C. 需排程的高 GPU 工作
 
-1. 跨受試者 LOSO/held-out 的完整 Cognition 與 Fusion 評估。
+1. 預註冊跨 corpus zero-shot Cognition 評估；優先採用未參與訓練的 PROVO 或其他閱讀語料。
 2. 真實 webcam drift 條件的多輪個人化校正，而非只使用 synthetic jitter。
 3. 只有當誤差分析顯示模型容量是瓶頸時，才進行重新訓練或大型超參數搜尋。
 

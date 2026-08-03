@@ -56,6 +56,8 @@ To avoid mixed purposes, our documentation is structured as follows:
 | **[INSTRUCTION.md](INSTRUCTION.md)** | Operations & Walkthrough | Setup, step-by-step testing workflow, performance diagnostic guide. |
 | **[INSTRUCTION_DATA.md](INSTRUCTION_DATA.md)** | Distributed Setup | Setup guide for Ubuntu server and Windows laptop client. |
 | **[Project Health Audit](docs/PROJECT_HEALTH_AUDIT_2026-08-03.md)** | Dated Engineering Record | Implemented guardrails, CPU benchmark results, validation evidence, and prioritized follow-up research. |
+| **[GECO Generalization Protocol v1.1](docs/GECO_GENERALIZATION_PROTOCOL_V1_1_2026-08-03.md)** | Preregistered Research Protocol | Subject/trial double holdout, leakage controls, fixed analysis, and stopping rules. |
+| **[GECO Generalization Execution Log](docs/GECO_GENERALIZATION_EXECUTION_LOG_2026-08-03.md)** | Research Result Record | Full-population outcomes, hashes, deviations, interpretation limits, and follow-up decisions. |
 | **[AGENT.md](AGENT.md)** | Developer Rules | Code quality standards, imports, relative API rules. |
 | **[CONTRIBUTING.md](CONTRIBUTING.md)** | Git Guidelines | Branch names, commit messages, and collaborative pull requests. |
 

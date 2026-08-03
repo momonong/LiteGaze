@@ -17,7 +17,7 @@ import seaborn as sns
 from scipy.stats import spearmanr
 
 if __package__:
-    from .experiment_manifest import write_experiment_manifest
+    from .experiment_manifest import capture_source_snapshot, write_experiment_manifest
     from .fusion_module import LexiGazeFusion
     from .geco.core.attention_transition import AttentionGuidedMatrix
     from .geco.core.baseline_decoders import NearestBoundingBoxDecoder
@@ -28,7 +28,7 @@ if __package__:
     )
     from .geco.core.viterbi_decoder import viterbi_gaze_decode
 else:
-    from experiment_manifest import write_experiment_manifest
+    from experiment_manifest import capture_source_snapshot, write_experiment_manifest
     from fusion_module import LexiGazeFusion
     from geco.core.attention_transition import AttentionGuidedMatrix
     from geco.core.baseline_decoders import NearestBoundingBoxDecoder
@@ -67,6 +67,7 @@ def calculate_accuracy(target_indices, predicted_indices):
 
 def main():
     experiment_started = time.perf_counter()
+    source_snapshot = capture_source_snapshot(PROJECT_ROOT)
     print("=========================================================")
     print("      LexiGaze Module Performance Inspection Demo         ")
     print("=========================================================")
@@ -85,6 +86,7 @@ def main():
             seed=RANDOM_SEED,
             status="failed",
             duration_seconds=round(time.perf_counter() - experiment_started, 6),
+            source_snapshot=source_snapshot,
         )
         return 1
         
@@ -272,6 +274,7 @@ def main():
         },
         seed=RANDOM_SEED,
         duration_seconds=round(time.perf_counter() - experiment_started, 6),
+        source_snapshot=source_snapshot,
     )
     
     print(f"\nSaved comparison statistics to: {OUTPUT_DIR}/demo_system_comparison.csv")
@@ -290,6 +293,8 @@ def _base_manifest_config():
         "sigma_x_px": SIGMA_X,
         "sigma_y_px": SIGMA_Y,
         "calibration_window_size": CALIBRATION_WINDOW_SIZE,
+        "evaluation_scope": "single_participant_seeded_simulation",
+        "cognitive_mass_predictive_generalization_eligible": False,
     }
 
 def plot_comparison(df):
