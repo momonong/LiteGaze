@@ -250,3 +250,9 @@ After correcting parity isolation, TF32 `high` ran from clean commit `c283f20` u
 | Max absolute error | 0.0 | 0.000356 | within 0.005 tolerance |
 
 Decision: TF32 provisionally clears latency, parity, and memory gates without a compile-time penalty. However, the discarded pre-fix run had slower performance despite the same precision setting, so clean eager and TF32 replicates are required before promotion. If the gain persists, TF32 is preferable to compilation because it avoids the 16-second first-run cost.
+
+### Model-workload replication
+
+A clean eager `highest` replicate ran from commit `1b732dd`; its result is [`results/2026-08-04-cuda-eager-model-r2.json`](results/2026-08-04-cuda-eager-model-r2.json). End-to-end p50/p95 was 7.525/7.878 ms and model-forward p50/p95 was 6.608/6.828 ms. This is within 1.16% at p50 and 3.18% at p95 of the original eager baseline, supporting a stable FP32 reference.
+
+Next, collect the matching clean TF32 replicate before any production change.
