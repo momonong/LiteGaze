@@ -57,6 +57,7 @@ This work does not train or tune a model and does not read a question-answer ben
 | 03:57 | Final local gate | 16/16 passed in 2.289 s total; socket and process probes blocked; Torch absent from `sys.modules`; no artifact changes; GPU memory 5069 MiB before and after | Validate the same dependency boundary in an isolated environment |
 | 03:57 | Final isolated-dependency gate | Installed only 27 pinned packages; 16/16 passed in 4.497 s total; `find_spec('torch')` returned `None`; all safeguards passed | Finalize documentation and delivery checks |
 | 03:58 | Final repeat under concurrent CI-command simulation | 16/16 passed again; compile, YAML, and isolated Ruff checks also passed; all safeguards passed and GPU memory stayed at 5069 MiB | Ready for commit and Draft PR |
+| 04:02 | Draft PR #8 remote validation | GitHub Ubuntu/Python 3.12 quality-gate job passed every step in 22 s; GitGuardian passed; PR reported mergeable | Exact CI platform criterion satisfied |
 
 ## Completed experiments
 
@@ -83,7 +84,7 @@ This work does not train or tune a model and does not read a question-answer ben
 | Generated artifacts | Reports could briefly enter repository directories | No changes across sessions, reports, models, or output scopes |
 | Torch / GPU dependency | Full app import pulled Torch into unrelated tests | Torch not installed in isolated env and not imported by worker |
 | GPU memory | Shared external workload at 5069 MiB | 5069 MiB before and after every final run |
-| CI | No workflow | Python 3.12 offline CPU workflow with `contents: read` only |
+| CI | No workflow | Ubuntu/Python 3.12 offline CPU workflow passed in 22 s with `contents: read` only |
 
 The final lane never loaded a model, trained parameters, or read a Q&A benchmark. Its assertions cover application contracts and deterministic cognitive/fusion logic, so the work adds no benchmark-specific optimization pressure.
 
@@ -106,7 +107,7 @@ Sources: [actions/checkout v7.0.1](https://github.com/actions/checkout/releases/
 
 ## Remaining risks
 
-1. The local host does not have Python 3.12, so the exact Ubuntu/Python 3.12 workflow runtime is validated only after the branch is pushed and GitHub Actions runs. Python 3.11 passed both project and isolated environments.
+1. Ubuntu/Python 3.12 and Windows/Python 3.11 are validated. macOS and Python 3.13 are not currently included in the fast-lane matrix.
 2. The network guard covers Python DNS/socket APIs and disables worker subprocesses; it is not an operating-system firewall against a native extension that opens its own socket. The minimal lane intentionally excludes such model/runtime packages and receives no secrets in CI.
 3. Heavy gaze, cognitive-model, and cross-attention tests remain opt-in. This gate does not claim model accuracy, GPU correctness, or dataset generalization.
 4. Shared GPU utilization is noisy because an unrelated training process remained active. Stable VRAM plus `torch_imported=false`/`find_spec('torch') is None` is the attribution evidence for this lane.
