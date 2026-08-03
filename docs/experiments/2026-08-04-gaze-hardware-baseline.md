@@ -314,6 +314,12 @@ This is deliberately smaller than adopting `torch.compile`: it needs no new runt
 
 Status: implementation candidate only. Commit it before performance validation so every post-change benchmark records a clean revision; the previously requested longer pair remains blocked while an unrelated GPU workload exceeds the quiet-device budget.
 
+### Phase E2: explicitly hidden CUDA regression
+
+A production-loader smoke with `CUDA_VISIBLE_DEVICES=-1` exposed a pre-existing Windows failure before model selection: PyTorch terminated with native access-violation exit code `-1073741819` inside `torch.cuda.is_available()`. The TF32 policy had not run yet. The runtime policy now treats an empty CUDA visibility list or `-1` as an explicit CPU selection and does not initialize the hidden CUDA runtime.
+
+The identical smoke now loads UniGaze on CPU, keeps float32 matmul precision at `highest`, and exits normally. Two additional Torch-free tests verify that explicit hiding bypasses the CUDA probe while a visible device still uses it. The complete offline gate passes 35/35 tests with credentials cleared, network/process spawning blocked, no artifacts changed, and no Torch import.
+
 ### Phase F research: MediaPipe acceleration boundary
 
 The fixed-frame stage breakdown makes MediaPipe face normalization the largest median stage after TF32. The installed Python API exposes `BaseOptions.Delegate.GPU`, but the current official [MediaPipe BaseOptions documentation](https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/BaseOptions) limits Python GPU delegate support to Ubuntu. This project is currently running on Windows, and the GPU guard also observed an unrelated active workload, so forcing the delegate here would be unsupported and would compete for the same device.

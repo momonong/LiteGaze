@@ -9,7 +9,11 @@ import cv2
 import numpy as np
 
 from .model_registry import model_path
-from .torch_runtime import enable_cuda_tf32, restore_matmul_precision
+from .torch_runtime import (
+    cuda_runtime_available,
+    enable_cuda_tf32,
+    restore_matmul_precision,
+)
 
 # Thread-safe caching structures
 _preprocessor_lock = threading.Lock()
@@ -43,7 +47,7 @@ def get_base_model():
             )
 
             device = "cpu"
-            if torch.cuda.is_available():
+            if cuda_runtime_available(torch):
                 try:
                     t = torch.zeros((1, 3, 224, 224), device="cuda")
                     conv = torch.nn.Conv2d(3, 16, kernel_size=16, stride=16).to("cuda")

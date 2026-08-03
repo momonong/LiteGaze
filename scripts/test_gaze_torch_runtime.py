@@ -4,6 +4,7 @@ import sys
 import unittest
 
 from core.gaze_core.torch_runtime import (
+    cuda_runtime_available,
     enable_cuda_tf32,
     restore_matmul_precision,
 )
@@ -14,6 +15,11 @@ class _FakeCuda:
         self.capability = capability
         self.error = error
         self.queries: list[str] = []
+        self.availability_queries = 0
+
+    def is_available(self):
+        self.availability_queries += 1
+        return True
 
     def get_device_capability(self, device: str):
         self.queries.append(device)
@@ -37,6 +43,34 @@ class _FakeTorch:
 
 
 class GazeTorchRuntimeTests(unittest.TestCase):
+    def test_explicitly_hidden_cuda_skips_runtime_probe(self):
+        torch_module = _FakeTorch()
+
+        self.assertFalse(
+            cuda_runtime_available(
+                torch_module,
+                {"CUDA_VISIBLE_DEVICES": "-1"},
+            )
+        )
+        self.assertFalse(
+            cuda_runtime_available(
+                torch_module,
+                {"CUDA_VISIBLE_DEVICES": "  "},
+            )
+        )
+        self.assertEqual(torch_module.cuda.availability_queries, 0)
+
+    def test_visible_cuda_uses_runtime_probe(self):
+        torch_module = _FakeTorch()
+
+        self.assertTrue(
+            cuda_runtime_available(
+                torch_module,
+                {"CUDA_VISIBLE_DEVICES": "0"},
+            )
+        )
+        self.assertEqual(torch_module.cuda.availability_queries, 1)
+
     def test_supported_cuda_device_enables_high_precision_policy(self):
         torch_module = _FakeTorch(capability=(12, 0))
 

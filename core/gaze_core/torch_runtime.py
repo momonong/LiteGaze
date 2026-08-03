@@ -2,10 +2,25 @@
 
 from __future__ import annotations
 
+import os
+from collections.abc import Mapping
 from typing import Any
 
 CUDA_MATMUL_PRECISION = "high"
 TF32_MINIMUM_COMPUTE_CAPABILITY = 8
+
+
+def cuda_runtime_available(
+    torch_module: Any,
+    environment: Mapping[str, str] | None = None,
+) -> bool:
+    """Check CUDA availability without probing an explicitly hidden runtime."""
+
+    current_environment = os.environ if environment is None else environment
+    visible_devices = current_environment.get("CUDA_VISIBLE_DEVICES")
+    if visible_devices is not None and visible_devices.strip() in {"", "-1"}:
+        return False
+    return bool(torch_module.cuda.is_available())
 
 
 def enable_cuda_tf32(torch_module: Any, device: str) -> str | None:
