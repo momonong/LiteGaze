@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 
 from .model_registry import model_path
+from .torch_runtime import enable_cuda_tf32, restore_matmul_precision
 
 # Thread-safe caching structures
 _preprocessor_lock = threading.Lock()
@@ -44,9 +45,11 @@ def get_base_model():
                 except Exception:
                     device = "cpu"
 
+            previous_matmul_precision = enable_cuda_tf32(torch, device)
             try:
                 base_model = UniGazeFeatureWrapper(load_unigaze_b16(device)).to(device).eval()
             except Exception:
+                restore_matmul_precision(torch, previous_matmul_precision)
                 device = "cpu"
                 base_model = UniGazeFeatureWrapper(load_unigaze_b16(device)).to(device).eval()
 

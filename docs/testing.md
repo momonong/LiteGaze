@@ -40,4 +40,4 @@ The offline gate validates application contracts and deterministic algorithms. I
 
 ## Opt-in hardware benchmark
 
-`scripts/benchmark_gaze_inference.py` is intentionally excluded from routine hardware execution. Its pure statistics, GPU guard, telemetry parser, and atomic-output tests run inside the offline gate without importing Torch. Actual CPU/CUDA inference is opt-in and follows the methodology in `docs/performance/gaze-inference-benchmark.md`.
+`scripts/benchmark_gaze_inference.py` is intentionally excluded from routine hardware execution. Its pure statistics, GPU guard, telemetry parser, atomic-output tests, and CUDA runtime-policy tests run inside the offline gate without importing Torch. Actual CPU/CUDA inference is opt-in and follows the methodology in `docs/performance/gaze-inference-benchmark.md`.

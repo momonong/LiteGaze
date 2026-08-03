@@ -29,6 +29,7 @@ DEFAULT_TIMEOUT_SECONDS = 180
 TEST_TARGETS = (
     "scripts.test_app_factory",
     "scripts.test_gaze_benchmark",
+    "scripts.test_gaze_torch_runtime",
     "scripts.test_adaptive_stepper",
     "scripts.test_cognitive_inspector",
     "scripts.test_fusion_routes.TestFusionRoutes.test_fatigue_adaptive_method",

@@ -305,3 +305,11 @@ TF32 ran from clean commit `ce029c7` with the same input hash, 10 warm-up iterat
 The end-to-end p95 clears the numeric gate, but it is not yet trustworthy evidence: the eager and TF32 runs both contain simultaneous CPU-side stalls, and TF32's model-forward p95 is actually worse in this short sample. The uncontended medians show the expected model-stage improvement while MediaPipe now caps the user-visible median gain.
 
 Decision: keep TF32 as the production candidate because it improves the full-path median, preserves output tolerance, and adds neither VRAM nor compilation cost. Before implementation, run longer paired fixed-frame samples so the acceptance decision does not depend on one noisy 30-iteration tail.
+
+### Phase E1: hardware-aware production candidate
+
+The production loader now selects PyTorch's `high` float32-matmul policy only after CUDA kernel probing succeeds and only for devices with compute capability 8.0 or newer. CPU and older CUDA devices keep their existing policy. If CUDA model initialization fails, the loader restores the previous process-wide precision before falling back to CPU.
+
+This is deliberately smaller than adopting `torch.compile`: it needs no new runtime package, has no compilation cold start, and does not change model/input/output dtypes. Six Torch-free unit tests cover supported CUDA, CPU, older CUDA, capability-query failure, precision restoration, and import isolation. The full offline CPU gate passes 33/33 tests without importing Torch or changing GPU use.
+
+Status: implementation candidate only. Commit it before performance validation so every post-change benchmark records a clean revision; the previously requested longer pair remains blocked while an unrelated GPU workload exceeds the quiet-device budget.
