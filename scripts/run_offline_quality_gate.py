@@ -28,6 +28,7 @@ DEFAULT_TIMEOUT_SECONDS = 180
 # suite; fatigue-adaptive fusion exercises the same Flask route without it.
 TEST_TARGETS = (
     "scripts.test_app_factory",
+    "scripts.test_session_store",
     "scripts.test_adaptive_stepper",
     "scripts.test_cognitive_inspector",
     "scripts.test_fusion_routes.TestFusionRoutes.test_fatigue_adaptive_method",

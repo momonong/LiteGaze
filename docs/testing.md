@@ -24,6 +24,8 @@ The command supervises a disposable worker and enforces a 180-second timeout. It
 - clears common AI-provider credentials and prevents `.env` from restoring them;
 - blocks DNS, socket access, and child-process spawning, including attempts caught by application fallback code;
 - uses temporary report storage and checks that data, report, model, and output files are unchanged;
+- runs session persistence and API tests in disposable directories, including invalid input,
+  corrupt data, failed atomic publication, and concurrent CRUD coverage;
 - prints a final `QUALITY_GATE_RESULT=<json>` record.
 
 Use `--json-output <path>` to persist the same summary or `--timeout-seconds <n>` to adjust the supervisor limit.
@@ -37,3 +39,6 @@ The workflow installs only `requirements-quality-gate.txt`, then compiles and li
 Hardware/model experiments remain opt-in. Examples include `scripts/test_all_features_gpu.py`, gaze-model training, cognitive model inference, and `TestFusionRoutes.test_cross_attention_method`. Run them only with an explicit experiment plan, GPU budget, held-out evaluation, and a recorded result. Do not add them to the offline gate.
 
 The offline gate validates application contracts and deterministic algorithms. It is not evidence of model accuracy, dataset generalization, or GPU correctness.
+
+Session persistence behavior, limits, and recovery guidance are documented in
+[`docs/session-storage.md`](session-storage.md).
