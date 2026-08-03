@@ -2,37 +2,62 @@
 experiment_fusion.py - Run and evaluate gaze-cognitive fusion methods on GECO data
 ==================================================================================
 This script loads GECO trial 5 clean reading data and its corresponding BERT
-cognitive mass features, applies six different fusion algorithms, correlates the
+cognitive mass features, applies eleven fusion algorithms, correlates the
 results with actual human reading times, and saves the output plots and report.
 """
 
-import os
-import sys
+import time
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import spearmanr, pearsonr
 
-# Add scripts directory to path to load fusion_module
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from fusion_module import LexiGazeFusion, normalize
+if __package__:
+    from .experiment_manifest import write_experiment_manifest
+    from .fusion_module import LexiGazeFusion
+else:
+    from experiment_manifest import write_experiment_manifest
+    from fusion_module import LexiGazeFusion
 
 # Define paths
-GECO_CLEAN_PATH = "archive/data/geco/geco_pp01_trial5_clean.csv"
-GECO_COG_PATH = "archive/data/geco/geco_pp01_cognitive_mass.csv"
-OUTPUT_DIR = "output"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+GECO_CLEAN_PATH = PROJECT_ROOT / "archive/data/geco/geco_pp01_trial5_clean.csv"
+GECO_COG_PATH = PROJECT_ROOT / "archive/data/geco/geco_pp01_cognitive_mass.csv"
+OUTPUT_DIR = PROJECT_ROOT / "output"
+
+RANDOM_SEED = 42
+SKIP_RATE = 0.30
+DWELL_JITTER_SIGMA = 40.0
+FIXATION_JITTER_SIGMA = 10.0
+FIXATION_SCALE = 0.85
+GATED_THRESHOLD = 0.25
 
 def main():
+    experiment_started = time.perf_counter()
     print("Starting Multimodal Fusion Experiment...")
     
     # 1. Check directories
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     print(f"Created output directory: {OUTPUT_DIR}")
     
-    if not os.path.exists(GECO_CLEAN_PATH) or not os.path.exists(GECO_COG_PATH):
-        print(f"Error: Required data files not found in archive/data/geco/")
-        return
+    if not GECO_CLEAN_PATH.exists() or not GECO_COG_PATH.exists():
+        error = "Required data files not found in archive/data/geco/"
+        print(f"Error: {error}")
+        write_experiment_manifest(
+            OUTPUT_DIR / "fusion_experiment_manifest.json",
+            "fusion_comparison_geco_pp01_trial5",
+            root=PROJECT_ROOT,
+            datasets=[GECO_CLEAN_PATH, GECO_COG_PATH],
+            config=_manifest_config(),
+            metrics={"error": error},
+            seed=RANDOM_SEED,
+            status="failed",
+            duration_seconds=round(time.perf_counter() - experiment_started, 6),
+        )
+        return 1
         
     # 2. Load and merge datasets
     df_clean = pd.read_csv(GECO_CLEAN_PATH)
@@ -51,12 +76,14 @@ def main():
     
     # Simulate realistic webcam gaze tracking with skips and noise
     # (30% word skip rate, plus Gaussian measurement jitter)
-    np.random.seed(42)
-    mask = np.random.choice([0, 1], size=len(trt), p=[0.3, 0.7])
-    g_dwell = trt * mask + np.random.normal(0, 40, len(trt)) * mask
+    # Local legacy RNG preserves the historical seed-42 sequence without
+    # mutating NumPy's process-wide random state.
+    rng = np.random.RandomState(RANDOM_SEED)
+    mask = rng.choice([0, 1], size=len(trt), p=[SKIP_RATE, 1.0 - SKIP_RATE])
+    g_dwell = trt * mask + rng.normal(0, DWELL_JITTER_SIGMA, len(trt)) * mask
     g_dwell = np.clip(g_dwell, 0, None)
     
-    g_fix = (trt * 0.85 + np.random.normal(0, 10, len(trt))) * mask
+    g_fix = (trt * FIXATION_SCALE + rng.normal(0, FIXATION_JITTER_SIGMA, len(trt))) * mask
     g_fix = np.clip(g_fix, 0, None)
     
     # Cognitive variable: full cognitive mass (ensemble combination of all linguistic features)
@@ -67,7 +94,7 @@ def main():
     
     df_merged["RDS_linear"] = fusion.fuse_linear(g_dwell, g_fix, c_load)
     df_merged["RDS_multiplicative"] = fusion.fuse_multiplicative(g_dwell, g_fix, c_load)
-    df_merged["RDS_gated"] = fusion.fuse_gated(g_dwell, g_fix, c_load, threshold=0.25)
+    df_merged["RDS_gated"] = fusion.fuse_gated(g_dwell, g_fix, c_load, threshold=GATED_THRESHOLD)
     df_merged["RDS_sigmoid"] = fusion.fuse_sigmoid(g_dwell, g_fix, c_load)
     df_merged["RDS_bayesian"] = fusion.fuse_bayesian(g_dwell, c_load)
     df_merged["RDS_rrf"] = fusion.fuse_rrf(g_dwell, c_load)
@@ -104,10 +131,10 @@ def main():
     print(df_eval.to_string(index=False))
     
     # Save evaluation summary to CSV
-    df_eval.to_csv(os.path.join(OUTPUT_DIR, "fusion_evaluation_summary.csv"), index=False)
+    df_eval.to_csv(OUTPUT_DIR / "fusion_evaluation_summary.csv", index=False)
     
     # Save detailed merged output
-    df_merged.to_csv(os.path.join(OUTPUT_DIR, "fused_rds_dataset.csv"), index=False)
+    df_merged.to_csv(OUTPUT_DIR / "fused_rds_dataset.csv", index=False)
     print(f"Saved fused dataset and evaluation summary to {OUTPUT_DIR}/")
     
     # 6. Generate Visualizations
@@ -132,7 +159,7 @@ def main():
                         textcoords='offset points')
             
     plt.tight_layout()
-    plt.savefig(os.path.join(OUTPUT_DIR, "fusion_correlation_comparison.png"), dpi=300)
+    plt.savefig(OUTPUT_DIR / "fusion_correlation_comparison.png", dpi=300)
     plt.close()
     
     # B. Distribution Plot of RDS
@@ -144,7 +171,7 @@ def main():
     plt.ylabel("Density")
     plt.legend()
     plt.tight_layout()
-    plt.savefig(os.path.join(OUTPUT_DIR, "rds_distributions.png"), dpi=300)
+    plt.savefig(OUTPUT_DIR / "rds_distributions.png", dpi=300)
     plt.close()
     
     # C. Scatter Plot of Best Method (Multiplicative or Bayesian)
@@ -161,7 +188,7 @@ def main():
     plt.ylabel("Actual Human Reading Time (ms)")
     plt.title(f"Gaze-Cognitive Space colored by Fused RDS ({best_method} Method)", fontsize=14)
     plt.tight_layout()
-    plt.savefig(os.path.join(OUTPUT_DIR, "gaze_cognitive_space_rds.png"), dpi=300)
+    plt.savefig(OUTPUT_DIR / "gaze_cognitive_space_rds.png", dpi=300)
     plt.close()
     
     # D. Top 10 Difficult Words Table & Barplot
@@ -172,13 +199,58 @@ def main():
     plt.xlabel(f"Fused RDS ({best_method})")
     plt.ylabel("Word")
     plt.tight_layout()
-    plt.savefig(os.path.join(OUTPUT_DIR, "top_difficult_words.png"), dpi=300)
+    plt.savefig(OUTPUT_DIR / "top_difficult_words.png", dpi=300)
     plt.close()
     
     # 7. Write Experiment Report
-    write_report(df_eval, best_method, df_sorted)
+    write_report(df_eval, best_method, df_sorted, len(df_merged))
+    best_spearman_row = df_eval.loc[df_eval["Method"] == best_method].iloc[0]
+    best_pearson_row = df_eval.loc[df_eval["Pearson r"].idxmax()]
+    artifacts = [
+        OUTPUT_DIR / "fusion_evaluation_summary.csv",
+        OUTPUT_DIR / "fused_rds_dataset.csv",
+        OUTPUT_DIR / "fusion_correlation_comparison.png",
+        OUTPUT_DIR / "rds_distributions.png",
+        OUTPUT_DIR / "gaze_cognitive_space_rds.png",
+        OUTPUT_DIR / "top_difficult_words.png",
+        OUTPUT_DIR / "fusion_experiment_report.md",
+    ]
+    manifest_path = write_experiment_manifest(
+        OUTPUT_DIR / "fusion_experiment_manifest.json",
+        "fusion_comparison_geco_pp01_trial5",
+        root=PROJECT_ROOT,
+        datasets=[GECO_CLEAN_PATH, GECO_COG_PATH],
+        artifacts=artifacts,
+        config=_manifest_config(),
+        metrics={
+            "row_count": len(df_merged),
+            "best_spearman_method": best_method,
+            "best_spearman_rho": best_spearman_row["Spearman rho"],
+            "pearson_r_for_best_spearman": best_spearman_row["Pearson r"],
+            "best_pearson_method": best_pearson_row["Method"],
+            "best_pearson_r": best_pearson_row["Pearson r"],
+            "method_results": df_eval.to_dict(orient="records"),
+        },
+        seed=RANDOM_SEED,
+        duration_seconds=round(time.perf_counter() - experiment_started, 6),
+    )
     print(f"Saved experiment report to {OUTPUT_DIR}/fusion_experiment_report.md")
+    print(f"Saved reproducibility manifest to {manifest_path}")
     print("Fusion Experiment Completed successfully!")
+    return 0
+
+
+def _manifest_config():
+    return {
+        "corpus": "GECO",
+        "participant": "pp01",
+        "trial": 5,
+        "skip_rate": SKIP_RATE,
+        "dwell_jitter_sigma": DWELL_JITTER_SIGMA,
+        "fixation_jitter_sigma": FIXATION_JITTER_SIGMA,
+        "fixation_scale": FIXATION_SCALE,
+        "gated_threshold": GATED_THRESHOLD,
+    }
 
 def df_to_markdown(df):
     headers = list(df.columns)
@@ -190,8 +262,8 @@ def df_to_markdown(df):
         lines.append("| " + " | ".join(row_strs) + " |")
     return "\n".join(lines)
 
-def write_report(df_eval, best_method, df_top10):
-    report_path = os.path.join(OUTPUT_DIR, "fusion_experiment_report.md")
+def write_report(df_eval, best_method, df_top10, row_count):
+    report_path = OUTPUT_DIR / "fusion_experiment_report.md"
     
     table_eval = df_to_markdown(df_eval)
     top10_cols = ["WORD_ID", "WORD", "WORD_TOTAL_READING_TIME", "surprisal_score", f"RDS_{best_method.lower()}"]
@@ -199,9 +271,9 @@ def write_report(df_eval, best_method, df_top10):
     
     report_content = f"""# LexiGaze Multimodal Gaze-Cognitive Fusion Report
 
-This report summarizes the comparative evaluation of six different fusion algorithms designed to combine eye-gaze tracking metrics (total reading time / dwell duration) with cognitive load metrics (information surprisal from BERT) into a unified **Reading Difficulty Score (RDS)**.
+This report summarizes the comparative evaluation of eleven fusion algorithms designed to combine eye-gaze tracking metrics (total reading time / dwell duration) with cognitive load metrics (information surprisal from BERT) into a unified **Reading Difficulty Score (RDS)**.
 
-The algorithms were tested on the **GECO Corpus (pp01, Trial 5)** dataset consisting of 157 words read by a human subject. The ground-truth reading difficulty is represented by the actual human **Total Reading Time (TRT)**.
+The algorithms were tested on **{row_count} merged word records** from the **GECO Corpus (pp01, Trial 5)**. The ground-truth reading difficulty is represented by the actual human **Total Reading Time (TRT)**.
 
 ---
 
@@ -231,7 +303,7 @@ Below are the top 10 words identified as having the highest reading difficulty u
 
 ## Visualizations Generated in `output/`
 
-1. **`fusion_correlation_comparison.png`**: Bar chart comparing Pearson and Spearman correlation coefficients across all 6 methods.
+1. **`fusion_correlation_comparison.png`**: Bar chart comparing Pearson and Spearman correlation coefficients across all 11 methods.
 2. **`rds_distributions.png`**: Density plot showing the RDS score distributions.
 3. **`gaze_cognitive_space_rds.png`**: Scatter plot of the 2D gaze-cognitive space (Surprisal vs. Dwell time) colored by fused RDS.
 4. **`top_difficult_words.png`**: Horizontal bar plot of the top 10 most difficult words.
@@ -240,5 +312,5 @@ Below are the top 10 words identified as having the highest reading difficulty u
         f.write(report_content)
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
 

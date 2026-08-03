@@ -1,0 +1,190 @@
+{
+  "artifacts": [
+    {
+      "exists": true,
+      "path": "output/demo_system_comparison.csv",
+      "sha256": "df95d0ac8aee37e5a106ef6a78f95e06e91103f326d1e2fc1c8a76d8e2439711",
+      "size_bytes": 462
+    },
+    {
+      "exists": true,
+      "path": "output/demo_performance_comparison.png",
+      "sha256": "f87fe7f87c206d9671129d3736236152c9c8addff673d444d4213bc44181c995",
+      "size_bytes": 262882
+    }
+  ],
+  "config": {
+    "attention_matrix_available": true,
+    "calibration_window_size": 30,
+    "corpus": "GECO",
+    "drift_y_px": 45.0,
+    "participant": "pp01",
+    "reading_time_source": "geco_clean_trial",
+    "sigma_x_px": 40.0,
+    "sigma_y_px": 30.0,
+    "system_configurations": {
+      "1. Raw Gaze + No Cog + Linear": {
+        "cog_load": "none",
+        "fusion": "linear",
+        "gaze_decoder": "nearest_box"
+      },
+      "2. Viterbi + No Cog + Linear": {
+        "cog_load": "none",
+        "fusion": "linear",
+        "gaze_decoder": "viterbi_base"
+      },
+      "3. Viterbi + EM Calib + No Cog + Linear": {
+        "cog_load": "none",
+        "fusion": "linear",
+        "gaze_decoder": "viterbi_em"
+      },
+      "4. STOCK-T v1 + surprisal + Linear": {
+        "cog_load": "surprisal",
+        "fusion": "linear",
+        "gaze_decoder": "stock_t_v1"
+      },
+      "5. STOCK-T v2 + surprisal + Multiplicative": {
+        "cog_load": "surprisal",
+        "fusion": "multiplicative",
+        "gaze_decoder": "stock_t_v2"
+      },
+      "6. STOCK-T v3 + surprisal + Bayesian": {
+        "cog_load": "surprisal",
+        "fusion": "bayesian",
+        "gaze_decoder": "stock_t_v3_pom"
+      },
+      "7. STOCK-T v3 + CogMass + Bayesian": {
+        "cog_load": "cognitive_mass",
+        "fusion": "bayesian",
+        "gaze_decoder": "stock_t_v3_pom"
+      }
+    },
+    "trial": 5
+  },
+  "datasets": [
+    {
+      "exists": true,
+      "path": "archive/data/geco/geco_pp01_cognitive_mass.csv",
+      "sha256": "9b83248ee7d91044c6f87142f3999407483ebd028f2b27351bc6e77db9503609",
+      "size_bytes": 7207
+    },
+    {
+      "exists": true,
+      "path": "archive/data/geco/geco_pp01_cognitive_mass_attention.npy",
+      "sha256": "e94902a0e707fb8a0d5ed5c53ba16e3549b32753f8bebb72154f397bc43d86e9",
+      "size_bytes": 194816
+    },
+    {
+      "exists": true,
+      "path": "archive/data/geco/geco_pp01_trial5_clean.csv",
+      "sha256": "824aab36d5478666f9f20672abf9b352e8e768da458ce84e7a76a5e0d0471a25",
+      "size_bytes": 4853
+    }
+  ],
+  "experiment": {
+    "command": [
+      "scripts\\inspect_performance_demo.py"
+    ],
+    "created_at": "2026-08-03T07:14:08.669506+00:00",
+    "duration_seconds": 1.992162,
+    "name": "joint_system_performance_geco_pp01_trial5",
+    "seed": 42,
+    "status": "completed"
+  },
+  "metrics": {
+    "best_gaze_accuracy_configuration": "3. Viterbi + EM Calib + No Cog + Linear",
+    "best_gaze_accuracy_percent": 96.79,
+    "best_rds_configuration": "7. STOCK-T v3 + CogMass + Bayesian",
+    "best_spearman_rho": 0.4267,
+    "configuration_results": [
+      {
+        "Configuration": "1. Raw Gaze + No Cog + Linear",
+        "Gaze Accuracy (%)": 18.59,
+        "Latency (ms)": 2.34,
+        "RDS Correlation (rho)": 0.0636
+      },
+      {
+        "Configuration": "2. Viterbi + No Cog + Linear",
+        "Gaze Accuracy (%)": 54.49,
+        "Latency (ms)": 192.06,
+        "RDS Correlation (rho)": 0.0561
+      },
+      {
+        "Configuration": "3. Viterbi + EM Calib + No Cog + Linear",
+        "Gaze Accuracy (%)": 96.79,
+        "Latency (ms)": 289.29,
+        "RDS Correlation (rho)": 0.1342
+      },
+      {
+        "Configuration": "4. STOCK-T v1 + surprisal + Linear",
+        "Gaze Accuracy (%)": 38.46,
+        "Latency (ms)": 189.97,
+        "RDS Correlation (rho)": 0.2519
+      },
+      {
+        "Configuration": "5. STOCK-T v2 + surprisal + Multiplicative",
+        "Gaze Accuracy (%)": 44.87,
+        "Latency (ms)": 232.85,
+        "RDS Correlation (rho)": 0.2428
+      },
+      {
+        "Configuration": "6. STOCK-T v3 + surprisal + Bayesian",
+        "Gaze Accuracy (%)": 93.59,
+        "Latency (ms)": 305.19,
+        "RDS Correlation (rho)": 0.3864
+      },
+      {
+        "Configuration": "7. STOCK-T v3 + CogMass + Bayesian",
+        "Gaze Accuracy (%)": 93.59,
+        "Latency (ms)": 292.67,
+        "RDS Correlation (rho)": 0.4267
+      }
+    ],
+    "row_count": 156
+  },
+  "runtime": {
+    "device_policy": "cpu",
+    "gpus": [
+      {
+        "driver_version": "581.57",
+        "memory_total_mib": "24463",
+        "name": "NVIDIA GeForce RTX 5090 Laptop GPU"
+      }
+    ],
+    "implementation": "CPython",
+    "machine": "AMD64",
+    "packages": {
+      "matplotlib": "3.10.9",
+      "numpy": "2.4.4",
+      "pandas": "3.0.2",
+      "scipy": "1.17.1",
+      "seaborn": "0.13.2",
+      "torch": "2.13.0+cu130",
+      "transformers": "5.7.0"
+    },
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9"
+  },
+  "schema_version": 1,
+  "source": {
+    "branch": "codex/feat/runtime-resource-guardrails",
+    "commit": "b22b63728e79cdbf68d2b85385f33089aac4ac30",
+    "dirty": true,
+    "files": [
+      {
+        "exists": true,
+        "path": "scripts/experiment_manifest.py",
+        "sha256": "071b0d69d8eb59d81f6daaeb1cd8aa6b911deda1d731b001cc2329f423ab753d",
+        "size_bytes": 7586
+      },
+      {
+        "exists": true,
+        "path": "scripts/inspect_performance_demo.py",
+        "sha256": "6c80a7fd998a7ce5ddba4a80383a271d4c6746a4286fc2bca7f8fe2da315a005",
+        "size_bytes": 15016
+      }
+    ],
+    "tracked_changes": true,
+    "tracked_diff_from_head_sha256": "f7de6224a6ddf28514d6eec933ca29a664eb31100af478c91b1106d9039fdd96"
+  }
+}

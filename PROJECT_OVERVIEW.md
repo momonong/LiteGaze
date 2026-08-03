@@ -82,7 +82,7 @@ graph TD
 
     subgraph PERC["👁️ Perception Subsystem (core/gaze_core & core/unigaze_personalization)"]
         MP["MediaPipe 3D Face Landmarker"]
-        VIT["UniGaze ViT ONNX Model"]
+        VIT["UniGaze ViT PyTorch Model"]
         POLY["9-Point Polynomial Regression"]
         FILT["OneEuro & Corridor Filter"]
     end
@@ -146,7 +146,7 @@ flowchart LR
     A["Webcam Frame (640x480)"] --> B["MediaPipe 3D Landmarker"]
     B --> C["Extract 468 Landmarks & Head Pose"]
     C --> D["Crop & Normalize Face Region"]
-    D --> E["UniGaze ViT (ONNX Runtime)"]
+    D --> E["UniGaze ViT (PyTorch / unigaze)"]
     E --> F["Raw Gaze Pitch / Yaw Vector"]
     F --> G["2nd-Degree Polynomial Model"]
     G --> H["Raw Screen Coordinates (X, Y)"]
@@ -155,7 +155,7 @@ flowchart LR
 ```
 
 - **MediaPipe Landmark Extractor**: Detects 468 3D facial landmarks, isolates eye region bounding boxes, and calculates head pose angles (pitch, yaw, roll).
-- **UniGaze ViT Neural Network**: An ONNX Runtime execution engine (`unigaze_b16.onnx`) executing Vision Transformer inference to generate raw gaze direction vectors.
+- **UniGaze ViT Neural Network**: A PyTorch model loaded by the `unigaze` package to generate raw gaze direction vectors.
 - **Polynomial Personalization Adapter**: A 2nd-degree polynomial regression model mapping raw gaze vectors to screen pixel coordinates $[X, Y]$, fitted against a 9-point calibration manifest.
 - **Signal Filtering**: Incorporates a `OneEuroFilter` for jitter reduction and horizontal corridor constraints for line tracking.
 
@@ -361,7 +361,7 @@ sequenceDiagram
     participant Browser as Web Browser (JavaScript)
     participant Flask as Flask Backend (/api/gaze/predict)
     participant MP as MediaPipe Landmarker
-    participant ViT as UniGaze ONNX ViT
+    participant ViT as UniGaze PyTorch ViT
     participant Poly as Polynomial Model
 
     Browser->>Flask: POST /api/gaze/predict (Base64 JPEG Frame)
@@ -573,7 +573,7 @@ Generated under `output/fused_rds_dataset.csv`:
 ## 6. Empirical Benchmarks & Experimental Results
 
 ### 6.1 GECO Benchmark System Performance Evaluation
-Evaluated on the **Ghent Eye-Tracking Corpus (GECO)** under simulated extreme webcam drift ($+45\text{px}$ vertical offset, $\sigma_x=40\text{px}, \sigma_y=30\text{px}$ gaussian jitter) across 157 words:
+Evaluated on the **Ghent Eye-Tracking Corpus (GECO)** under simulated extreme webcam drift ($+45\text{px}$ vertical offset, $\sigma_x=40\text{px}, \sigma_y=30\text{px}$ gaussian jitter) across 156 word records:
 
 ```
                                GAZE WORD-MAPPING ACCURACY (%)
@@ -637,7 +637,7 @@ Top 10 cognitive bottleneck words identified by the optimal fusion model (`outpu
 
 ### 7.1 System & Module Health Diagnostics
 - `GET /api/ping` — Core backend health and active layout session count.
-- `GET /api/gaze/health` — Gaze tracking module and ONNX model status.
+- `GET /api/gaze/health` — Gaze tracking module and configured runtime device policy.
 - `GET /api/cognitive/health` — Cognition engine status and loaded HuggingFace models list.
 - `GET /api/fuse/health` — Fusion engine status and available algorithms list.
 
@@ -690,7 +690,7 @@ lexigaze/
 │   │   └── training.py                     # 2nd-degree polynomial regression trainer
 │   └── unigaze_personalization/            # Neural ViT Model Infrastructure
 │       ├── preprocess.py                   # Facial landmarker, cropping & normalization
-│       ├── model.py                        # ONNX Runtime UniGaze ViT execution wrapper
+│       ├── model.py                        # PyTorch UniGaze ViT loading and feature wrapper
 │       └── server.py                       # Standalone personalization service endpoints
 │
 ├── web/                                    # 🌐 FLASK WEB APPLICATION PACKAGE
@@ -753,7 +753,7 @@ lexigaze/
 uv sync
 
 # Download spaCy English model
-.venv/bin/python -m spacy download en_core_web_sm
+uv run python -m spacy download en_core_web_sm
 ```
 
 #### Option B — Conda Environment
@@ -782,6 +782,9 @@ Create a `.env` file in the project root:
 # Optional: Path where Hugging Face weights are cached
 HF_HOME="/home/ubuntu/.cache/huggingface"
 
+# Runtime accelerator policy (auto, cpu, cuda, or cuda:N)
+LEXIGAZE_DEVICE=auto
+
 # Google AI Studio API Key for Cognitive Inspector Markdown reports
 GEMINI_API_KEY=your_gemini_api_key_here
 
@@ -795,10 +798,10 @@ MODEL_NAME="gemma-4-26b-a4b-it"
 
 ```bash
 # Standard local mode (Access via http://localhost:8080)
-.venv/bin/python -X utf8 run.py
+uv run python -X utf8 run.py
 
 # Remote cross-platform mode (Spawns ngrok HTTPS tunnel & QR Code)
-.venv/bin/python -X utf8 run.py --tunnel
+uv run python -X utf8 run.py --tunnel
 ```
 
 ---
@@ -807,7 +810,7 @@ MODEL_NAME="gemma-4-26b-a4b-it"
 
 1. **`UnicodeEncodeError` on Startup**:
    - **Cause**: Windows terminal encoding mismatch (CP950/Big5).
-   - **Solution**: Always launch using `.venv/bin/python -X utf8 run.py`.
+   - **Solution**: Always launch using `uv run python -X utf8 run.py`.
 
 2. **`ModuleNotFoundError: No module named 'web'`**:
    - **Cause**: Script executed from a subdirectory.

@@ -25,7 +25,7 @@ The repository contains a `uv.lock` file. If you have [uv](https://github.com/as
 uv sync
 
 # Download the English dependency parser model for spaCy
-.venv/bin/python -m spacy download en_core_web_sm
+uv run python -m spacy download en_core_web_sm
 ```
 
 ### Option B — Conda Setup
@@ -66,6 +66,10 @@ Configure `.env` with the following variables:
 # Path where Hugging Face weights are cached
 HF_HOME="/home/ubuntu/.cache/huggingface"
 
+# Runtime accelerator policy (auto, cpu, cuda, or cuda:N)
+# Use cpu to keep VRAM free and prevent CUDA probing in the main runtime paths.
+LEXIGAZE_DEVICE=auto
+
 # Required for Google AI Studio API (Inspector analyses, summaries)
 GEMINI_API_KEY=your_gemini_api_key_here
 
@@ -80,10 +84,10 @@ MODEL_NAME="gemma-4-26b-a4b-it"
 To run the Flask application locally:
 ```bash
 # Standard local mode
-.venv/bin/python -X utf8 run.py
+uv run python -X utf8 run.py
 
 # Integrated remote collection mode (spawns an ngrok tunnel automatically)
-.venv/bin/python -X utf8 run.py --tunnel
+uv run python -X utf8 run.py --tunnel
 ```
 
 Upon starting standard local mode successfully, you should see:
@@ -155,7 +159,7 @@ LexiGaze includes sandbox scripts to test and evaluate gaze correction, NLP mode
 ### Diagnostic 5.1: Comparative Module Sandbox
 To evaluate the combined performance of gaze decoders, NLP metrics, and fusion methods:
 ```bash
-.venv/bin/python scripts/inspect_performance_demo.py
+uv run python scripts/inspect_performance_demo.py
 ```
 This simulates webcam drift (+45px vertical drift, 30-40px jitter) on a 156-word GECO reading trial, printing accuracy, Spearman correlation, and processing latency:
 
@@ -169,7 +173,7 @@ This simulates webcam drift (+45px vertical drift, 30-40px jitter) on a 156-word
 ### Diagnostic 5.2: Multimodal Fusion Calibration
 To compare the six mathematical fusion methods on GECO:
 ```bash
-.venv/bin/python scripts/experiment_fusion.py
+uv run python scripts/experiment_fusion.py
 ```
 This generates evaluation summaries and plots under `output/`:
 * `fusion_correlation_comparison.png` - Compares Spearman $\rho$ and Pearson $r$.
