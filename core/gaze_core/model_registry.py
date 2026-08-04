@@ -25,12 +25,29 @@ def list_models(root: Path) -> list[dict]:
             meta = {}
         name = file.stem
         mean_px_error = float(meta.get("mean_px_error", 0.0) or 0.0)
+        has_held_out_metric = "validation_px_error" in meta
+        validation_px_error = float(
+            meta.get("validation_px_error", mean_px_error) or 0.0
+        )
+        metric_label = "held-out" if has_held_out_metric else "legacy train"
         train_samples = int(meta.get("train_samples", 0) or 0)
         models.append(
             {
                 "name": name,
-                "display_name": f"{name} ({train_samples} samples, {mean_px_error:.1f} px)",
+                "display_name": (
+                    f"{name} ({train_samples} samples, "
+                    f"{metric_label} {validation_px_error:.1f} px)"
+                ),
                 "mean_px_error": mean_px_error,
+                "validation_px_error": validation_px_error,
+                "validation_scheme": meta.get(
+                    "validation_scheme",
+                    (
+                        "held_out_unspecified"
+                        if has_held_out_metric
+                        else "legacy_train_error"
+                    ),
+                ),
                 "num_stages": int(meta.get("num_stages", 1) or 1),
                 "noise_level": float(meta.get("noise_level", 0.0) or 0.0),
                 "train_samples": train_samples,

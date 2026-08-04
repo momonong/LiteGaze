@@ -6,6 +6,39 @@ const calibrationPoints = [
   [0.29, 0.70], [0.71, 0.70],
 ];
 
+const motionCalibrationBlocks = [
+  {
+    id: "neutral",
+    posture: "neutral",
+    distance: "nominal",
+    instruction: "維持平常坐姿與距離，臉朝向螢幕中央。",
+  },
+  {
+    id: "left",
+    posture: "left",
+    distance: "nominal",
+    instruction: "頭部向左轉約 15 度，眼睛仍依序看校正點。",
+  },
+  {
+    id: "right",
+    posture: "right",
+    distance: "nominal",
+    instruction: "頭部向右轉約 15 度，眼睛仍依序看校正點。",
+  },
+  {
+    id: "near",
+    posture: "neutral",
+    distance: "near",
+    instruction: "身體靠近鏡頭約 15–20 公分，臉朝向螢幕中央。",
+  },
+  {
+    id: "far",
+    posture: "neutral",
+    distance: "far",
+    instruction: "身體遠離鏡頭約 15–20 公分，臉朝向螢幕中央。",
+  },
+];
+
 class LowPassFilter {
   constructor(alpha) { this.alpha = alpha; this.value = null; }
   filter(value) {
@@ -144,6 +177,32 @@ function captureFrame() {
   return els.canvas.toDataURL("image/jpeg", 0.8);
 }
 
+function captureDeviceMetadata() {
+  const videoTrack = els.video.srcObject?.getVideoTracks?.()[0];
+  const settings = videoTrack?.getSettings?.() || {};
+  const userAgent = navigator.userAgent.toLowerCase();
+  let deviceClass = "desktop";
+  if (/ipad|tablet/.test(userAgent) || (/android/.test(userAgent) && !/mobile/.test(userAgent))) deviceClass = "tablet";
+  else if (/iphone|android|mobile/.test(userAgent)) deviceClass = "phone";
+
+  return {
+    // Store a role label rather than the browser's persistent device ID.
+    camera_id: settings.facingMode ? `primary-${settings.facingMode}` : "primary-webcam",
+    camera_width: Number(settings.width || els.video.videoWidth || 0),
+    camera_height: Number(settings.height || els.video.videoHeight || 0),
+    camera_frame_rate: Number(settings.frameRate || 0),
+    device_class: deviceClass,
+  };
+}
+
+function calibrationPointEntries(mode) {
+  const indices = mode === "four_corners" ? [0, 2, 6, 8] : calibrationPoints.map((_, index) => index);
+  return indices.map((pointIndex) => ({
+    point: calibrationPoints[pointIndex],
+    pointIndex,
+  }));
+}
+
 function pointToStage(point) {
   const rect = els.stage.getBoundingClientRect();
   return {
@@ -185,6 +244,24 @@ async function refreshDatasets() {
     option.textContent = dataset.display_name;
     els.selectDataset.appendChild(option);
   });
+}
+
+async function reportMotionAudit(sessionId) {
+  try {
+    const res = await fetch(`/api/gaze/datasets/${encodeURIComponent(sessionId)}/motion-audit`);
+    const audit = await res.json();
+    if (!res.ok || audit.ok === false) throw new Error(audit.error || `HTTP ${res.status}`);
+    if (audit.status === "ready") {
+      log("動作覆蓋稽核通過：資料可進入 grouped validation 訓練。");
+      return audit;
+    }
+    const issueCodes = audit.issues.map((issue) => issue.code).join(", ");
+    log(`動作覆蓋尚未通過：${issueCodes}`);
+    return audit;
+  } catch (err) {
+    log(`動作覆蓋稽核失敗：${err.message}`);
+    return null;
+  }
 }
 
 async function refreshModels() {
@@ -246,7 +323,9 @@ async function refreshModelsList() {
   data.models.forEach((model) => {
     const div = document.createElement("div");
     div.className = "model-item";
-    const meta = '誤差: ' + model.mean_px_error.toFixed(1) + ' px &middot; ' + model.train_samples + ' samples';
+    const validationError = model.validation_px_error ?? model.mean_px_error;
+    const metricLabel = model.validation_scheme === "legacy_train_error" ? "Legacy 訓練誤差" : "Held-out 誤差";
+    const meta = metricLabel + ': ' + validationError.toFixed(1) + ' px &middot; ' + model.train_samples + ' samples';
     div.innerHTML =
       '<div class="model-info">' +
         '<div class="model-info-name">' + escHtml(model.name) + '</div>' +
@@ -279,9 +358,9 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
-async function saveSample(point, pointIndex, repeatIndex) {
+async function saveSample(point, pointIndex, repeatIndex, captureContext, settleDelayMs) {
   const pos = moveTarget(point);
-  await sleep(650);
+  await sleep(settleDelayMs);
   els.target.classList.add("capturing");
   const rect = els.stage.getBoundingClientRect();
   const targetXNorm = (pos.pageX / window.innerWidth) * 2 - 1;
@@ -299,7 +378,8 @@ async function saveSample(point, pointIndex, repeatIndex) {
       repeat_index: repeatIndex,
       phase: "calibration",
       screen_width: window.innerWidth,
-      screen_height: window.innerHeight
+      screen_height: window.innerHeight,
+      ...captureContext,
     });
   }
 
@@ -321,6 +401,7 @@ async function saveSample(point, pointIndex, repeatIndex) {
         phase: "calibration",
         point_index: pointIndex,
         repeat_index: repeatIndex,
+        ...captureContext,
       }),
     });
     const data = await res.json();
@@ -371,17 +452,48 @@ async function collect() {
   }
 
   const repeats = Math.max(1, Math.min(5, Number.parseInt(els.repeatCount.value, 10) || 1));
-  const total = calibrationPoints.length * repeats;
+  const settleDelayMs = Math.max(300, Math.min(5000, Number.parseInt(els.delayTime.value, 10) || 900));
+  const collectMode = els.collectMode.value;
+  const pointEntries = calibrationPointEntries(collectMode);
+  const blocks = collectMode === "motion_robust"
+    ? motionCalibrationBlocks
+    : [{
+        id: `${collectMode}-neutral`,
+        posture: "neutral",
+        distance: "nominal",
+        instruction: null,
+      }];
+  const deviceMetadata = captureDeviceMetadata();
+  const total = pointEntries.length * repeats * blocks.length;
   let done = 0;
   try {
-    for (let repeat = 0; repeat < repeats; repeat += 1) {
-      for (let pointIndex = 0; pointIndex < calibrationPoints.length; pointIndex += 1) {
+    for (const block of blocks) {
+      if (!state.collecting) break;
+      if (block.instruction) {
+        els.phase.textContent = `準備：${block.id}`;
+        window.alert(`動作校正區塊：${block.id}\n\n${block.instruction}\n\n準備好後按「確定」開始。`);
+      }
+      for (let repeat = 0; repeat < repeats; repeat += 1) {
         if (!state.collecting) break;
-        await saveSample(calibrationPoints[pointIndex], pointIndex, repeat);
-        done += 1;
-        els.progress.textContent = `${done} / ${total}`;
-        log(`收集 ${done}/${total}`);
-        await sleep(140);
+        const captureContext = {
+          ...deviceMetadata,
+          collect_mode: collectMode,
+          collection_protocol: collectMode === "motion_robust" ? "motion-diverse-v1" : "standard-v1",
+          motion_block_id: block.id,
+          capture_burst_id: `${state.sessionId}:${block.id}:r${repeat}`,
+          posture_condition: block.posture,
+          distance_condition: block.distance,
+          lighting_condition: "ambient",
+        };
+        els.phase.textContent = `收集中：${block.id}`;
+        for (const { point, pointIndex } of pointEntries) {
+          if (!state.collecting) break;
+          await saveSample(point, pointIndex, repeat, captureContext, settleDelayMs);
+          done += 1;
+          els.progress.textContent = `${done} / ${total}`;
+          log(`收集 ${done}/${total} · ${block.id}`);
+          await sleep(140);
+        }
       }
     }
     
@@ -413,7 +525,17 @@ async function collect() {
           if (result.ok) {
             log(`影片校正完成！Session ID: ${result.session_id}`);
             log(`已擷取 ${result.processed_samples} 幀，失敗 ${result.failed_samples} 幀`);
-            log(`已自動訓練個人化影片模型: ${result.model_name}`);
+            if (result.training?.ok) {
+              log(`已自動訓練個人化影片模型: ${result.model_name}`);
+            } else {
+              log(`模型尚未訓練：${result.training?.error || "資料覆蓋未通過"}`);
+            }
+            if (collectMode === "motion_robust" && result.motion_audit?.status === "ready") {
+              log("影片動作覆蓋稽核通過。");
+            } else if (collectMode === "motion_robust" && result.motion_audit) {
+              const issueCodes = result.motion_audit.issues.map((issue) => issue.code).join(", ");
+              log(`影片動作覆蓋尚未通過：${issueCodes}`);
+            }
             
             // Backup download
             downloadBlob(videoBlob, `${participantId}_calibration.webm`);
@@ -423,7 +545,7 @@ async function collect() {
             els.phase.textContent = "影片校正成功";
             await refreshDatasets();
             await refreshModels();
-            els.selectBaseModel.value = result.model_name;
+            if (result.training?.ok) els.selectBaseModel.value = result.model_name;
           } else {
             log(`影片校正失敗: ${result.error}`);
             els.phase.textContent = "影片校正失敗";
@@ -437,6 +559,7 @@ async function collect() {
       log("收集完成，可以訓練模型");
       els.phase.textContent = "收集完成";
       await refreshDatasets();
+      if (collectMode === "motion_robust") await reportMotionAudit(state.sessionId);
     }
   } catch (err) {
     log(`收集失敗: ${err.message}`);

@@ -11,6 +11,11 @@ import cv2
 import numpy as np
 
 from core.gaze_core.model_registry import ensure_runs_dir, model_path
+from core.gaze_core.motion_robustness import (
+    audit_payload,
+    capture_metadata,
+    load_motion_samples,
+)
 from core.gaze_core.sample_store import ensure_sessions_dir, create_session
 from core.gaze_core.training import train_placeholder
 
@@ -203,6 +208,7 @@ def upload_video():
                 "extracted_from_video": True,
                 "extracted_timestamp_ms": timestamp_ms
             }
+            record.update(capture_metadata(target))
             
             with manifest_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -226,6 +232,11 @@ def upload_video():
     }
     
     train_res, train_status = train_placeholder(ROOT, train_payload)
+    motion_samples, motion_diagnostics = load_motion_samples(
+        sessions_dir,
+        session_ids=(session_id,),
+    )
+    motion_audit = audit_payload(motion_samples, motion_diagnostics)
 
     try:
         return jsonify({
@@ -235,6 +246,8 @@ def upload_video():
             "failed_samples": failed_count,
             "model_name": output_model_name,
             "training": train_res,
+            "training_status": train_status,
+            "motion_audit": motion_audit,
             "video_saved_path": video_path.name
         })
     except Exception as exc:

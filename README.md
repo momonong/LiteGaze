@@ -8,7 +8,7 @@ By mapping gaze coordinates directly to pixel-level bounding boxes of words, res
 
 ## 🚀 Key Features
 
-* **Gaze Tracking & Personalization**: Real-time webcam gaze prediction utilizing MediaPipe face detection and a UniGaze-B16 ViT neural network, calibrated via a 9-point grid and customized regression model to eliminate user bias.
+* **Gaze Tracking & Personalization**: Real-time webcam gaze prediction using MediaPipe and UniGaze-B16, with 13-target standard calibration or a five-block motion-diverse protocol and leakage-resistant grouped validation.
 * **Cognitive Load Analysis**: NLP analysis utilizing GPT-2 (English) and BERT (Chinese) to calculate word surprisal, contextual entropy, lexical frequency, and syntactic complexity.
 * **Multimodal Data Fusion**: Joint algorithms (Linear, Multiplicative, Attention-Gated, Sigmoid, Bayesian, and Reciprocal Rank Fusion) that combine gaze attention and cognitive features into a unified **Reading Difficulty Score (RDS)**.
 * **Cognitive Inspector**: Diagnoses user reading proficiency, words-per-minute (WPM), regression trends, English capability levels, and cognitive fatigue.
@@ -60,6 +60,8 @@ To avoid mixed purposes, our documentation is structured as follows:
 | **[docs/testing.md](docs/testing.md)** | Safe Validation | Offline CPU gate, CI boundary, and heavy-test policy. |
 | **[Gaze benchmark contract](docs/performance/gaze-inference-benchmark.md)** | Hardware Validation | Guarded workloads, parity, telemetry, and production TF32 scope. |
 | **[Hardware methodology ADR](docs/adr/0001-hardware-performance-methodology.md)** | Performance Decisions | Acceptance gates, data isolation, and reproducibility requirements. |
+| **[Motion-diverse calibration ADR](docs/adr/0003-motion-diverse-gaze-calibration.md)** | Gaze Robustness Decision | Five-block capture protocol, grouped validation, and promotion rules. |
+| **[Motion robustness experiment](docs/experiments/2026-08-05-gaze-motion-robustness.md)** | Experiment Record | Historical-data audit, implementation, tests, GPU gates, and next capture. |
 
 ---
 

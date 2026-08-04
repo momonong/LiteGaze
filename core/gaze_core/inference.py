@@ -8,6 +8,11 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from .calibration_regression import (
+    face_geometry_from_bbox,
+    motion_conditioned_features,
+    standardized_design,
+)
 from .model_registry import model_path
 from .torch_runtime import (
     cuda_runtime_available,
@@ -145,12 +150,38 @@ def predict(root: Path, payload: dict) -> tuple[dict, int]:
             p_curr, y_curr = gaze[0], gaze[1]
             for stage_meta in stages:
                 W_stage = np.array(stage_meta["W"])
-                deg = stage_meta.get("poly_degree", 2)
+                calibrator_type = stage_meta.get(
+                    "calibrator_type",
+                    "gaze_polynomial",
+                )
 
-                if deg == 1:
-                    feat = np.array([y_curr, p_curr, 1.0])
+                if calibrator_type == "motion_conditioned_ridge_v1":
+                    face_geometry = np.array(
+                        [face_geometry_from_bbox(processed.face_bbox)]
+                    )
+                    motion_features = motion_conditioned_features(
+                        np.array([gaze]),
+                        np.array([processed.head_pose_pitch_yaw]),
+                        face_geometry,
+                    )
+                    feat = standardized_design(
+                        motion_features,
+                        np.array(stage_meta["feature_mean"]),
+                        np.array(stage_meta["feature_scale"]),
+                    )[0]
                 else:
-                    feat = np.array([y_curr, p_curr, y_curr * y_curr, p_curr * p_curr, y_curr * p_curr, 1.0])
+                    deg = stage_meta.get("poly_degree", 2)
+                    if deg == 1:
+                        feat = np.array([y_curr, p_curr, 1.0])
+                    else:
+                        feat = np.array([
+                            y_curr,
+                            p_curr,
+                            y_curr * y_curr,
+                            p_curr * p_curr,
+                            y_curr * p_curr,
+                            1.0,
+                        ])
 
                 pred = feat @ W_stage
                 y_curr = float(pred[0])

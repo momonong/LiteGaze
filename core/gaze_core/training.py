@@ -8,88 +8,19 @@ import cv2
 import numpy as np
 import torch
 
+from .calibration_regression import (
+    MOTION_FEATURE_NAMES,
+    face_geometry_from_bbox,
+    fit_best_stage,
+    fit_standardized_ridge,
+    motion_challenger_decision,
+    motion_conditioned_features,
+    standardized_design,
+)
 from .model_registry import clean_model_name, model_path
+from .motion_robustness import audit_payload, load_motion_samples
 from .sample_store import ensure_sessions_dir
-
-
-def fit_best_stage(inputs: np.ndarray, Y: np.ndarray, viewport_list: list[list[float]], unique_targets: int, is_stage_1: bool = True) -> tuple[np.ndarray, int, float]:
-    """
-    Fits the best Ridge regression model using LOOCV (Leave-One-Out Cross Validation)
-    to select the optimal polynomial degree (1 or 2) and regularization parameter alpha.
-    """
-    N = len(inputs)
-    if is_stage_1:
-        # Stage 1: inputs is [pitch, yaw], we want yaw first, pitch second
-        val1 = inputs[:, 1]  # yaw
-        val2 = inputs[:, 0]  # pitch
-    else:
-        # Stage 2+: inputs is [x, y], we want x first, y second
-        val1 = inputs[:, 0]  # x
-        val2 = inputs[:, 1]  # y
-
-    candidate_degrees = [1]
-    if unique_targets > 5 and N >= 6:
-        candidate_degrees.append(2)
-
-    candidate_alphas = [1e-4, 1e-3, 1e-2, 0.1]
-
-    best_degree = 1
-    best_alpha = 1e-3
-    best_cv_error = float('inf')
-
-    for degree in candidate_degrees:
-        if degree == 1:
-            X = np.column_stack([val1, val2, np.ones(N)])
-        else:
-            X = np.column_stack([val1, val2, val1 * val1, val2 * val2, val1 * val2, np.ones(N)])
-
-        for alpha in candidate_alphas:
-            errors = []
-            for i in range(N):
-                X_train = np.delete(X, i, axis=0)
-                Y_train = np.delete(Y, i, axis=0)
-                X_test = X[i, :].reshape(1, -1)
-                Y_test = Y[i, :].reshape(1, -1)
-
-                w_w, h_h = viewport_list[i]
-
-                try:
-                    XT_X = X_train.T @ X_train
-                    I = np.eye(X_train.shape[1])
-                    I[-1, -1] = 0.0  # Do not regularize bias
-                    W = np.linalg.solve(XT_X + alpha * I, X_train.T @ Y_train)
-                    pred = X_test @ W
-
-                    pred_x_px = (pred[0, 0] + 1.0) * 0.5 * w_w
-                    pred_y_px = (pred[0, 1] + 1.0) * 0.5 * h_h
-                    target_x_px = (Y_test[0, 0] + 1.0) * 0.5 * w_w
-                    target_y_px = (Y_test[0, 1] + 1.0) * 0.5 * h_h
-
-                    err = np.sqrt((pred_x_px - target_x_px)**2 + (pred_y_px - target_y_px)**2)
-                    errors.append(err)
-                except np.linalg.LinAlgError:
-                    continue
-
-            if errors:
-                mean_cv = np.mean(errors)
-                if mean_cv < best_cv_error:
-                    best_cv_error = mean_cv
-                    best_degree = degree
-                    best_alpha = alpha
-
-    # Train final model on all data
-    if best_degree == 1:
-        X_all = np.column_stack([val1, val2, np.ones(N)])
-    else:
-        X_all = np.column_stack([val1, val2, val1 * val1, val2 * val2, val1 * val2, np.ones(N)])
-
-    XT_X = X_all.T @ X_all
-    I = np.eye(X_all.shape[1])
-    I[-1, -1] = 0.0
-    W_final = np.linalg.solve(XT_X + best_alpha * I, X_all.T @ Y)
-
-    return W_final, best_degree, best_alpha
-
+from .torch_runtime import cuda_runtime_available
 
 def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
     dataset_id = payload.get("data_session_id", "")
@@ -101,6 +32,34 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
     
     if not dataset_id or not manifest_path.exists():
         return {"ok": False, "error": "dataset session or manifest not found"}, 404
+
+    motion_samples, motion_diagnostics = load_motion_samples(
+        ensure_sessions_dir(root),
+        session_ids=(dataset_id,),
+    )
+    uses_motion_protocol = any(
+        sample.collection_protocol == "motion-diverse-v1"
+        for sample in motion_samples
+    )
+    if uses_motion_protocol:
+        motion_audit = audit_payload(motion_samples, motion_diagnostics)
+        if motion_audit["status"] != "ready":
+            return {
+                "ok": False,
+                "error": (
+                    "motion-diverse calibration failed its frozen coverage gates; "
+                    "collect the missing conditions before training"
+                ),
+                "motion_audit": motion_audit,
+            }, 400
+        if base_model_name != "0":
+            return {
+                "ok": False,
+                "error": (
+                    "motion-diverse calibration must start from the frozen base "
+                    "model; staged recalibration is not leakage-audited"
+                ),
+            }, 400
 
     try:
         from core.unigaze_personalization.dataset import read_manifest
@@ -114,7 +73,13 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
 
         # Load baseline UniGaze-B model (CPU or GPU with safe fallback)
         device = "cpu"
-        if torch.cuda.is_available():
+        allow_cuda_value = payload.get("allow_cuda")
+        allow_cuda = (
+            not uses_motion_protocol
+            if allow_cuda_value is None
+            else allow_cuda_value is True
+        )
+        if allow_cuda and cuda_runtime_available(torch):
             try:
                 t = torch.zeros((1, 3, 224, 224), device="cuda")
                 conv = torch.nn.Conv2d(3, 16, kernel_size=16, stride=16).to("cuda")
@@ -132,11 +97,23 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
         gaze_list = []
         target_list = []
         viewport_list = []
+        validation_groups = []
+        head_pose_list = []
+        face_geometry_list = []
 
         # 2. Extract baseline predictions
         for record in records:
             if not record.get("normalized_face_path"):
                 continue
+            if uses_motion_protocol:
+                try:
+                    head_pose = [
+                        float(record["head_pose_pitch_yaw"][0]),
+                        float(record["head_pose_pitch_yaw"][1]),
+                    ]
+                    face_geometry = face_geometry_from_bbox(record["face_bbox"])
+                except (KeyError, TypeError, ValueError):
+                    continue
             image_path = session_dir / record["normalized_face_path"]
             if not image_path.exists():
                 continue
@@ -156,6 +133,10 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                 float(record.get("viewport_width", 1920.0)),
                 float(record.get("viewport_height", 1080.0))
             ])
+            validation_groups.append(record.get("motion_block_id", ""))
+            if uses_motion_protocol:
+                head_pose_list.append(head_pose)
+                face_geometry_list.append(face_geometry)
 
         N = len(gaze_list)
         if N == 0:
@@ -179,16 +160,43 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                             "poly_degree": old_data.get("poly_degree", 2),
                             "mean_px_error": old_data.get("mean_px_error", 0.0)
                         }]
+                    if any(
+                        stage.get("calibrator_type")
+                        == "motion_conditioned_ridge_v1"
+                        for stage in stages
+                    ):
+                        return {
+                            "ok": False,
+                            "error": (
+                                "motion-conditioned models cannot be used as a "
+                                "cascaded calibration base"
+                            ),
+                        }, 400
             except Exception as exc:
                 return {"ok": False, "error": f"failed to read base model: {exc}"}, 500
 
         unique_targets = len(set(tuple(t) for t in target_list))
+        grouped_validation = validation_groups if uses_motion_protocol else None
+        validation_scheme = (
+            "leave_one_motion_block_out"
+            if grouped_validation is not None
+            else "leave_one_sample_out"
+        )
+        candidate_comparison = None
 
         if len(stages) == 0:
-            # Stage 1: Fit fresh Stage 1 model using self-tuning LOOCV
+            # Motion-diverse sessions hold out a complete posture block. Legacy
+            # sessions retain sample-level LOOCV for backward compatibility.
             X_raw = np.array(gaze_list)
             Y = np.array(target_list)
-            W, poly_degree, best_alpha = fit_best_stage(X_raw, Y, viewport_list, unique_targets, is_stage_1=True)
+            W, poly_degree, best_alpha, baseline_validation_error = fit_best_stage(
+                X_raw,
+                Y,
+                viewport_list,
+                unique_targets,
+                is_stage_1=True,
+                validation_groups=grouped_validation,
+            )
 
             # Recompute predictions on train set for metrics
             yaw = X_raw[:, 1]
@@ -198,15 +206,83 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
             else:
                 X = np.column_stack([yaw, pitch, yaw * yaw, pitch * pitch, yaw * pitch, np.ones(N)])
 
-            pred_Y = X @ W
-            
-            stages = [{
-                "stage": 1,
-                "W": W.tolist(),
-                "poly_degree": poly_degree,
-                "alpha": best_alpha,
-                "mean_px_error": 0.0
-            }]
+            baseline_predictions = X @ W
+            best_validation_error = baseline_validation_error
+
+            if uses_motion_protocol:
+                motion_features = motion_conditioned_features(
+                    X_raw,
+                    np.array(head_pose_list),
+                    np.array(face_geometry_list),
+                )
+                (
+                    conditioned_weights,
+                    feature_mean,
+                    feature_scale,
+                    conditioned_alpha,
+                    conditioned_validation_error,
+                ) = fit_standardized_ridge(
+                    motion_features,
+                    Y,
+                    viewport_list,
+                    validation_groups=validation_groups,
+                )
+                (
+                    select_conditioned,
+                    required_improvement,
+                    observed_improvement,
+                ) = motion_challenger_decision(
+                    baseline_validation_error,
+                    conditioned_validation_error,
+                )
+                candidate_comparison = {
+                    "baseline_gaze_only_px": baseline_validation_error,
+                    "motion_conditioned_px": conditioned_validation_error,
+                    "required_improvement_px": required_improvement,
+                    "observed_improvement_px": observed_improvement,
+                    "selected": (
+                        "motion_conditioned_ridge_v1"
+                        if select_conditioned
+                        else "gaze_polynomial"
+                    ),
+                }
+            else:
+                select_conditioned = False
+
+            if select_conditioned:
+                pred_Y = (
+                    standardized_design(
+                        motion_features,
+                        feature_mean,
+                        feature_scale,
+                    )
+                    @ conditioned_weights
+                )
+                best_validation_error = conditioned_validation_error
+                stages = [{
+                    "stage": 1,
+                    "calibrator_type": "motion_conditioned_ridge_v1",
+                    "feature_names": list(MOTION_FEATURE_NAMES),
+                    "feature_mean": feature_mean.tolist(),
+                    "feature_scale": feature_scale.tolist(),
+                    "W": conditioned_weights.tolist(),
+                    "alpha": conditioned_alpha,
+                    "validation_px_error": conditioned_validation_error,
+                    "validation_scheme": validation_scheme,
+                    "mean_px_error": 0.0,
+                }]
+            else:
+                pred_Y = baseline_predictions
+                stages = [{
+                    "stage": 1,
+                    "calibrator_type": "gaze_polynomial",
+                    "W": W.tolist(),
+                    "poly_degree": poly_degree,
+                    "alpha": best_alpha,
+                    "validation_px_error": baseline_validation_error,
+                    "validation_scheme": validation_scheme,
+                    "mean_px_error": 0.0,
+                }]
         else:
             # Stage 2+: Secondary Calibration using self-tuning LOOCV
             current_inputs = gaze_list
@@ -232,7 +308,14 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
 
             s1_arr = np.array(current_inputs)
             Y = np.array(target_list)
-            W2, poly_degree, best_alpha = fit_best_stage(s1_arr, Y, viewport_list, unique_targets, is_stage_1=False)
+            W2, poly_degree, best_alpha, best_validation_error = fit_best_stage(
+                s1_arr,
+                Y,
+                viewport_list,
+                unique_targets,
+                is_stage_1=False,
+                validation_groups=grouped_validation,
+            )
 
             # Recompute predictions on train set for metrics
             s1_x = s1_arr[:, 0]
@@ -249,6 +332,8 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                 "W": W2.tolist(),
                 "poly_degree": poly_degree,
                 "alpha": best_alpha,
+                "validation_px_error": best_validation_error,
+                "validation_scheme": validation_scheme,
                 "mean_px_error": 0.0
             }]
 
@@ -292,7 +377,12 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
             "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "data_session_id": dataset_id,
             "stages": stages,
+            "num_stages": len(stages),
             "mean_px_error": mean_px_error,
+            "validation_px_error": best_validation_error,
+            "validation_scheme": validation_scheme,
+            "candidate_comparison": candidate_comparison,
+            "training_device": device,
             "noise_level": noise_level,
             "train_samples": N
         }
@@ -306,7 +396,10 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
             "ok": True,
             "model_name": output_name,
             "train_samples": N,
-            "best_val_px_error": mean_px_error,
+            "best_val_px_error": best_validation_error,
+            "train_px_error": mean_px_error,
+            "validation_scheme": validation_scheme,
+            "training_device": device,
             "noise_level": noise_level
         }, 200
 
