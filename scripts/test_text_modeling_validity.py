@@ -103,6 +103,30 @@ class TextModelingValidityTests(unittest.TestCase):
         ):
             self.assertEqual(LanguageModelCalculator._resolve_device("cpu"), "cpu")
 
+    def test_gpt_initialization_pins_eager_attention_on_cpu(self) -> None:
+        tokenizer = mock.MagicMock()
+        model = mock.MagicMock()
+        model.to.return_value = model
+        model.eval.return_value = model
+        with mock.patch(
+            "transformers.AutoTokenizer.from_pretrained",
+            return_value=tokenizer,
+        ), mock.patch(
+            "transformers.AutoModelForCausalLM.from_pretrained",
+            return_value=model,
+        ) as causal_loader:
+            calculator = LanguageModelCalculator(
+                model_type="gpt2",
+                lang="en",
+                device="cpu",
+            )
+
+        causal_loader.assert_called_once_with(
+            "gpt2",
+            attn_implementation="eager",
+        )
+        self.assertEqual(calculator.device, "cpu")
+
     def test_compute_uses_resolved_device_not_global_cuda_availability(self) -> None:
         calculator = self._calculator()
         expected = _fake_window_metrics(calculator, ["w0", "w1"])
@@ -141,15 +165,22 @@ class TextModelingValidityTests(unittest.TestCase):
         calculator.model = mock.MagicMock(
             return_value=types.SimpleNamespace(logits=torch.zeros(1, 3, 4))
         )
+        calculator.model.get_input_embeddings.return_value = (
+            lambda input_ids: input_ids.float().unsqueeze(-1)
+        )
 
         result = LanguageModelCalculator._compute_gpt(
             calculator,
             ["one", "two", "three"],
         )
 
-        input_ids = calculator.model.call_args.args[0]
+        self.assertEqual(calculator.model.call_args.args, ())
+        input_embeddings = calculator.model.call_args.kwargs["inputs_embeds"]
         attention_mask = calculator.model.call_args.kwargs["attention_mask"]
-        torch.testing.assert_close(input_ids, torch.tensor([[1, 2, 3]]))
+        torch.testing.assert_close(
+            input_embeddings,
+            torch.tensor([[[1.0], [2.0], [3.0]]]),
+        )
         torch.testing.assert_close(attention_mask, torch.tensor([[1, 1, 1]]))
         self.assertEqual(len(result["surprisals"]), 3)
 

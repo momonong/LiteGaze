@@ -390,6 +390,9 @@ def _model_revision(calculator: LanguageModelCalculator) -> dict[str, Any]:
         "model_class": type(calculator.model).__name__,
         "device": calculator.device,
         "dtype": str(next(calculator.model.parameters()).dtype),
+        "attention_implementation": getattr(
+            calculator.model.config, "_attn_implementation", None
+        ),
         "metric_contract": calculator.metric_contract(),
     }
 

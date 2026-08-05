@@ -114,7 +114,13 @@ class LanguageModelCalculator:
         tokenizer_kwargs = {"add_prefix_space": True} if model_type.startswith('gpt2') else {}
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, **tokenizer_kwargs)
         if model_type.startswith('gpt2'):
-            self.model = AutoModelForCausalLM.from_pretrained(model_name)
+            # Pin the CPU-reproducible path. Transformers may otherwise select
+            # SDPA, whose causal-mask helper probes CUDA tracing even when the
+            # requested model device is explicitly CPU.
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                attn_implementation="eager",
+            )
         else:
             self.model = AutoModelForMaskedLM.from_pretrained(model_name, attn_implementation="eager")
 
@@ -269,13 +275,14 @@ class LanguageModelCalculator:
 
         word_ids = encoding.word_ids()
 
-        # Pass the tokenizer mask even for an unpadded single sequence. Recent
-        # Transformers releases otherwise enter a padding-warning helper that
-        # probes CUDA stream state despite this calculator being explicitly on
-        # CPU. Besides avoiding that unrelated accelerator side effect, keeping
-        # the mask is the correct forward contract if batching is added later.
+        # Recent Transformers calls its CUDA tracing helper before checking the
+        # supplied attention mask in the raw-input padding warning. Entering via
+        # the model's own token embeddings is mathematically equivalent for
+        # GPT-2, while bypassing that input-ID-only warning and its unrelated
+        # accelerator probe during an explicit CPU run.
+        input_embeddings = self.model.get_input_embeddings()(input_ids)
         outputs = self.model(
-            input_ids,
+            inputs_embeds=input_embeddings,
             attention_mask=encoding.get("attention_mask"),
         )
         shift_logits = outputs.logits[..., :-1, :].contiguous()
