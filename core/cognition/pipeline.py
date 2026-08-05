@@ -26,7 +26,7 @@ if os.name != 'nt' and os.environ.get("HF_HOME"):
         del os.environ["HF_HOME"]
 import time
 from dataclasses import dataclass, asdict
-from typing import List, Optional, Dict, Tuple
+from typing import List, Optional, Dict, Tuple, Any
 
 import torch
 import torch.nn.functional as F
@@ -35,10 +35,6 @@ from wordfreq import zipf_frequency
 from opencc import OpenCC
 import jieba
 import jieba.posseg as pseg
-
-# 硬體效能優化配置
-if torch.cuda.is_available():
-    torch.backends.cudnn.benchmark = True
 
 try:
     import spacy
@@ -96,7 +92,13 @@ class LanguageModelCalculator:
         'bert': {'zh': "bert-base-chinese", 'en': "bert-base-uncased", 'nl': "bert-base-multilingual-cased"}
     }
 
-    def __init__(self, model_type: str = 'bert', lang: str = 'zh', batch_size: int = 32):
+    def __init__(
+        self,
+        model_type: str = 'bert',
+        lang: str = 'zh',
+        batch_size: int = 32,
+        device: Optional[str] = None,
+    ):
         from transformers import AutoModelForCausalLM, AutoModelForMaskedLM, AutoTokenizer
         self.model_type = model_type
         self.lang = lang
@@ -104,21 +106,20 @@ class LanguageModelCalculator:
         model_name = self.MODELS[model_type][lang]
 
         print(f"[系統] 正在初始化 {model_name}...")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        tokenizer_kwargs = {"add_prefix_space": True} if model_type.startswith('gpt2') else {}
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, **tokenizer_kwargs)
         if model_type.startswith('gpt2'):
             self.model = AutoModelForCausalLM.from_pretrained(model_name)
         else:
             self.model = AutoModelForMaskedLM.from_pretrained(model_name, attn_implementation="eager")
 
-        self.device = "cpu"
-        if torch.cuda.is_available():
-            try:
-                t = torch.zeros((1, 3, 224, 224), device="cuda")
-                conv = torch.nn.Conv2d(3, 16, kernel_size=16, stride=16).to("cuda")
-                _ = conv(t)
-                self.device = "cuda"
-            except Exception:
-                self.device = "cpu"
+        requested_device = (
+            device
+            or os.environ.get("LEXIGAZE_COGNITION_DEVICE")
+            or os.environ.get("LEXIGAZE_DEVICE")
+            or "auto"
+        )
+        self.device = self._resolve_device(requested_device)
 
         try:
             self.model.to(self.device).eval()
@@ -126,19 +127,62 @@ class LanguageModelCalculator:
             self.device = "cpu"
             self.model.to("cpu").eval()
 
-        self.use_fp16 = (self.device == "cuda")
+        self.use_fp16 = (torch.device(self.device).type == "cuda")
+
+    @staticmethod
+    def _resolve_device(requested_device: str) -> str:
+        """Resolve an explicit cognition device without touching CUDA for CPU runs."""
+        requested = str(requested_device).strip().lower()
+        if requested == "cpu":
+            return "cpu"
+        if requested == "auto":
+            if not torch.cuda.is_available():
+                return "cpu"
+            requested = "cuda"
+        if requested == "cuda" or requested.startswith("cuda:"):
+            if not torch.cuda.is_available():
+                raise RuntimeError(f"requested cognition device {requested!r}, but CUDA is unavailable")
+            try:
+                torch.empty(1, device=requested)
+            except Exception as exc:
+                raise RuntimeError(f"cognition device {requested!r} is unusable") from exc
+            return requested
+        raise ValueError("cognition device must be 'auto', 'cpu', 'cuda', or 'cuda:<index>'")
+
+    def metric_contract(self) -> Dict[str, Any]:
+        """Describe what the backward-compatible ``surprisal`` field represents."""
+        is_causal = self.model_type.startswith('gpt2')
+        return {
+            "schema_version": 1,
+            "surprisal_field": "surprisal",
+            "surprisal_kind": "causal" if is_causal else "masked_pseudo",
+            "surprisal_unit": "nats",
+            "context_direction": "left_only" if is_causal else "bidirectional",
+            "word_surprisal_aggregation": "subtoken_sum",
+            "entropy_unit": "nats",
+            "word_entropy_aggregation": "subtoken_sum" if is_causal else "subtoken_mean",
+        }
 
     @torch.inference_mode()
-    def compute(self, words: List[str]) -> Dict[str, List[float]]:
-        if not words: return {"surprisals": [], "attentions": [], "entropies": []}
+    def compute(self, words: List[str]) -> Dict[str, Any]:
+        if not words:
+            return {
+                "surprisals": [],
+                "attentions": [],
+                "entropies": [],
+                "renyi_entropies": [],
+                "metric_contract": self.metric_contract(),
+            }
 
         # 根據顯存自動調整
-        device_type = 'cuda' if torch.cuda.is_available() else 'cpu'
+        device_type = torch.device(self.device).type
         with torch.amp.autocast(device_type=device_type, enabled=self.use_fp16):
             if self.model_type.startswith('gpt2'):
-                return self._compute_gpt(words)
+                metrics = self._compute_gpt(words)
             else:
-                return self._compute_bert(words)
+                metrics = self._compute_bert(words)
+        metrics["metric_contract"] = self.metric_contract()
+        return metrics
 
     def _compute_bert(self, words: List[str]) -> Dict[str, List[float]]:
         encoding = self.tokenizer(words, is_split_into_words=True, return_tensors="pt").to(self.device)
@@ -245,30 +289,69 @@ class LanguageModelCalculator:
         return {"surprisals": surprisals, "entropies": entropies,
                 "attentions": [0.5] * len(words), "renyi_entropies": renyi_entropies}
 
-    def _compute_gpt_chunked(self, words: List[str], max_tokens: int) -> Dict[str, List[float]]:
-        """將過長詞列切成多段 GPT 推理，surprisal/entropy 加總回對應詞索引。"""
+    def _compute_gpt_chunked(
+        self,
+        words: List[str],
+        max_tokens: int,
+        context_words: int = 64,
+    ) -> Dict[str, List[float]]:
+        """Score long inputs with left-context overlap and preserve all metrics.
+
+        Only newly introduced words are copied from each window.  The overlap is
+        therefore context, not duplicated evidence, and prevents every chunk from
+        behaving like a new document.
+        """
         surprisals = [0.0] * len(words)
         entropies = [0.0] * len(words)
+        renyi_entropies = [0.0] * len(words)
+
+        def token_count(window_words: List[str]) -> int:
+            encoded = self.tokenizer(window_words, is_split_into_words=True)
+            input_ids = encoded["input_ids"]
+            if input_ids and isinstance(input_ids[0], list):
+                input_ids = input_ids[0]
+            return len(input_ids)
+
         start = 0
         while start < len(words):
-            # 二分搜尋每段可塞進多少詞（token 數非線性，保守從 200 試起）
+            context_start = max(0, start - max(0, context_words))
+            while (
+                context_start < start
+                and token_count(words[context_start:start + 1]) > max_tokens
+            ):
+                context_start += 1
+
+            if token_count(words[start:start + 1]) > max_tokens:
+                raise ValueError(
+                    f"word at index {start} exceeds the GPT context limit of {max_tokens} tokens"
+                )
+
+            # 二分搜尋每段可塞進多少新詞；左側 overlap 只提供上下文。
             lo, hi = 1, min(len(words) - start, 350)
             best = 1
             while lo <= hi:
                 mid = (lo + hi) // 2
-                n_tok = self.tokenizer(words[start:start + mid], is_split_into_words=True)["input_ids"]
-                if len(n_tok) <= max_tokens:
+                n_tok = token_count(words[context_start:start + mid])
+                if n_tok <= max_tokens:
                     best = mid
                     lo = mid + 1
                 else:
                     hi = mid - 1
-            chunk_words = words[start:start + best]
+            chunk_words = words[context_start:start + best]
             sub = self._compute_gpt(chunk_words)
-            for i, (s, e) in enumerate(zip(sub["surprisals"], sub["entropies"])):
-                surprisals[start + i] += s
-                entropies[start + i] += e
+            context_size = start - context_start
+            for local_idx in range(context_size, len(chunk_words)):
+                global_idx = context_start + local_idx
+                surprisals[global_idx] = sub["surprisals"][local_idx]
+                entropies[global_idx] = sub["entropies"][local_idx]
+                renyi_entropies[global_idx] = sub["renyi_entropies"][local_idx]
             start += best
-        return {"surprisals": surprisals, "entropies": entropies, "attentions": [0.5] * len(words)}
+        return {
+            "surprisals": surprisals,
+            "entropies": entropies,
+            "attentions": [0.5] * len(words),
+            "renyi_entropies": renyi_entropies,
+        }
 
 class CognitiveLoadPipeline:
     # 根據語言學研究調整的詞性權重
@@ -282,10 +365,15 @@ class CognitiveLoadPipeline:
     _AOA_RANGE = 13.0
     _AOA_DEFAULT = 10.0  # OOV（技術術語、專有名詞）預設中高難度
 
-    def __init__(self, model_type: str = 'bert', lang: str = 'zh'):
+    def __init__(
+        self,
+        model_type: str = 'bert',
+        lang: str = 'zh',
+        device: Optional[str] = None,
+    ):
         self.lang = lang
         self.model_type = model_type
-        self.calculator = LanguageModelCalculator(model_type, lang)
+        self.calculator = LanguageModelCalculator(model_type, lang, device=device)
         self.nlp = None
         if lang == 'en' and spacy:
             try:
@@ -632,6 +720,7 @@ class CognitiveLoadPipeline:
             "model": self.model_type,
             "lang": self.lang,
             "domain": active_domain,
+            "metric_contract": self.calculator.metric_contract(),
             "process_time_ms": int(process_time * 1000),
             "high_load_words": [
                 r.word for r in results
@@ -712,6 +801,7 @@ class CognitiveLoadPipeline:
             "model": self.model_type,
             "lang": self.lang,
             "domain": active_domain,
+            "metric_contract": self.calculator.metric_contract(),
             "high_load_words": [
                 r.word for r in all_results
                 if r.load_level == 'high'
