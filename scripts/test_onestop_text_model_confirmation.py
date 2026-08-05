@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import unittest
 
 import pandas as pd
@@ -49,6 +50,10 @@ def _bootstrap(low: float) -> dict[str, float]:
 
 
 class OneStopTextModelConfirmationTests(unittest.TestCase):
+    def test_lightweight_runner_import_does_not_load_spacy_or_thinc(self) -> None:
+        self.assertNotIn("spacy", sys.modules)
+        self.assertNotIn("thinc", sys.modules)
+
     def test_runner_exactly_matches_machine_protocol(self) -> None:
         protocol = _assert_protocol_contract()
         self.assertEqual(protocol["protocol_id"], "onestop-ordinary-advanced-confirmation-v1")

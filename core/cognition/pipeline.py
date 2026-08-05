@@ -37,10 +37,14 @@ import jieba.posseg as pseg
 
 from .calibration import calibrate_reading_time_prediction
 
-try:
-    import spacy
-except ImportError:
-    spacy = None
+
+def _load_spacy_module():
+    """Import spaCy only for the full linguistic pipeline that actually uses it."""
+    try:
+        import spacy
+    except ImportError:
+        return None
+    return spacy
 
 t2s = OpenCC('t2s')
 
@@ -376,16 +380,17 @@ class CognitiveLoadPipeline:
         self.model_type = model_type
         self.calculator = LanguageModelCalculator(model_type, lang, device=device)
         self.nlp = None
-        if lang == 'en' and spacy:
+        spacy_module = _load_spacy_module() if lang in {'en', 'nl'} else None
+        if lang == 'en' and spacy_module:
             try:
                 # 啟用 NER 以過濾人名/地名/組織等專有實體（避免被誤判為高認知負荷詞）
                 # 仍停用 lemmatizer（pipeline 用不到，省時）
-                self.nlp = spacy.load("en_core_web_sm", disable=["lemmatizer"])
+                self.nlp = spacy_module.load("en_core_web_sm", disable=["lemmatizer"])
             except:
                 print("[警告] 未找到 en_core_web_sm，改用基本分詞")
-        elif lang == 'nl' and spacy:
+        elif lang == 'nl' and spacy_module:
             try:
-                self.nlp = spacy.load("nl_core_news_sm", disable=["lemmatizer"])
+                self.nlp = spacy_module.load("nl_core_news_sm", disable=["lemmatizer"])
             except:
                 print("[警告] 未找到 nl_core_news_sm，改用基本分詞")
 
