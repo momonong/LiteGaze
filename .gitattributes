@@ -1,0 +1,8 @@
+# Files covered by scientific provenance hashes must have checkout-stable bytes.
+/core/cognition/artifacts/*.json text eol=lf
+/core/cognition/fusion_validation.py text eol=lf
+/core/cognition/generalization.py text eol=lf
+/core/cognition/text_artifact.py text eol=lf
+/docs/experiments/protocols/2026-08-06-production-text-fusion-v1.json text eol=lf
+/scripts/build_provenance_text_artifact.py text eol=lf
+/scripts/evaluate_provenance_fusion.py text eol=lf

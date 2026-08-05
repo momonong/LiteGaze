@@ -10,6 +10,7 @@ import pandas as pd
 from core.cognition.generalization import (
     cross_fit_grouped_ridge,
     fit_standardized_ridge,
+    fit_weighted_standardized_ridge,
     paired_bootstrap_mean_difference,
     predict_standardized_ridge,
     safe_spearman,
@@ -35,6 +36,24 @@ class TextModelGeneralizationTests(unittest.TestCase):
 
         np.testing.assert_allclose(predictions, target, atol=1e-9)
         self.assertAlmostEqual(float(model.mean[0]), float(features.mean()))
+
+    def test_weighted_ridge_balances_groups_without_duplicating_rows(self) -> None:
+        features = np.array([[0.0], [1.0], [10.0]], dtype=float)
+        target = np.array([0.0, 1.0, 10.0], dtype=float)
+        weights = np.array([5.0, 5.0, 1.0], dtype=float)
+        model = fit_weighted_standardized_ridge(
+            features,
+            target,
+            weights,
+            alpha=0.0,
+        )
+        predictions = predict_standardized_ridge(model, features)
+
+        np.testing.assert_allclose(predictions, target, atol=1e-9)
+        self.assertAlmostEqual(
+            float(model.mean[0]),
+            float(np.average(features[:, 0], weights=weights)),
+        )
 
     def test_cross_fit_holds_out_complete_texts_and_shuffle_loses_signal(self) -> None:
         rng = np.random.default_rng(7)

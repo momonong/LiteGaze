@@ -1,22 +1,27 @@
-"""
-experiment_fusion.py - Run and evaluate gaze-cognitive fusion methods on GECO data
-==================================================================================
+"""Legacy circular fusion simulation demo; not a validation experiment.
+
 This script loads GECO trial 5 clean reading data and its corresponding BERT
 cognitive mass features, applies six different fusion algorithms, correlates the
 results with actual human reading times, and saves the output plots and report.
+
+The simulated gaze dwell and fixation variables are constructed from the same
+GECO total reading time used as the evaluation target. Results are therefore
+circular and cannot support a scientific or production fusion claim. Use
+``scripts.evaluate_provenance_fusion`` for promotion-eligible evaluation.
 """
 
 import os
 import sys
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
-from scipy.stats import spearmanr, pearsonr
+from scipy.stats import pearsonr, spearmanr
 
 # Add scripts directory to path to load fusion_module
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from fusion_module import LexiGazeFusion, normalize
+from fusion_module import LexiGazeFusion
 
 # Define paths
 GECO_CLEAN_PATH = "archive/data/geco/geco_pp01_trial5_clean.csv"
@@ -24,6 +29,7 @@ GECO_COG_PATH = "archive/data/geco/geco_pp01_cognitive_mass.csv"
 OUTPUT_DIR = "output"
 
 def main():
+    print("WARNING: legacy circular simulation demo; not validation evidence")
     print("Starting Multimodal Fusion Experiment...")
     
     # 1. Check directories
@@ -31,7 +37,7 @@ def main():
     print(f"Created output directory: {OUTPUT_DIR}")
     
     if not os.path.exists(GECO_CLEAN_PATH) or not os.path.exists(GECO_COG_PATH):
-        print(f"Error: Required data files not found in archive/data/geco/")
+        print("Error: Required data files not found in archive/data/geco/")
         return
         
     # 2. Load and merge datasets

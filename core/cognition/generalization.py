@@ -40,7 +40,7 @@ def stable_group_folds(
         raise ValueError("number of unique groups must be at least n_folds")
 
     def digest(value: str) -> str:
-        return hashlib.sha256(f"{seed}|{value}".encode("utf-8")).hexdigest()
+        return hashlib.sha256(f"{seed}|{value}".encode()).hexdigest()
 
     ordered = sorted(unique, key=lambda value: (digest(value), value))
     return {value: index % n_folds for index, value in enumerate(ordered)}
@@ -74,6 +74,59 @@ def fit_standardized_ridge(
     coefficients = np.linalg.solve(
         design.T @ design + penalty,
         design.T @ y,
+    )
+    return StandardizedRidge(
+        mean=mean,
+        scale=scale,
+        coefficients=coefficients,
+        alpha=float(alpha),
+    )
+
+
+def fit_weighted_standardized_ridge(
+    features: np.ndarray,
+    target: np.ndarray,
+    sample_weight: np.ndarray,
+    *,
+    alpha: float,
+) -> StandardizedRidge:
+    """Fit Ridge with weighted scaling and an unpenalized intercept.
+
+    Weights are normalized to sum to the number of rows so ``alpha`` keeps the
+    same interpretation as :func:`fit_standardized_ridge`.  This is useful for
+    corpus- or group-balanced training without duplicating observations.
+    """
+    x = np.asarray(features, dtype=np.float64)
+    y = np.asarray(target, dtype=np.float64)
+    weights = np.asarray(sample_weight, dtype=np.float64)
+    if x.ndim != 2 or y.ndim != 1 or len(x) != len(y):
+        raise ValueError("features must be 2D and aligned with a 1D target")
+    if weights.ndim != 1 or len(weights) != len(y):
+        raise ValueError("sample_weight must be 1D and aligned with target")
+    if not len(y):
+        raise ValueError("cannot fit Ridge on an empty training fold")
+    if alpha < 0:
+        raise ValueError("alpha must be non-negative")
+    if not np.isfinite(x).all() or not np.isfinite(y).all():
+        raise ValueError("Ridge inputs must be finite")
+    if not np.isfinite(weights).all() or np.any(weights <= 0):
+        raise ValueError("sample weights must be finite and strictly positive")
+
+    weights = weights * (len(weights) / weights.sum())
+    mean = np.average(x, axis=0, weights=weights)
+    variance = np.average((x - mean) ** 2, axis=0, weights=weights)
+    scale = np.sqrt(variance)
+    scale = np.where(scale > 0, scale, 1.0)
+    standardized = (x - mean) / scale
+    design = np.column_stack([np.ones(len(standardized)), standardized])
+    root_weight = np.sqrt(weights)
+    weighted_design = design * root_weight[:, np.newaxis]
+    weighted_target = y * root_weight
+    penalty = np.eye(design.shape[1], dtype=np.float64) * float(alpha)
+    penalty[0, 0] = 0.0
+    coefficients = np.linalg.solve(
+        weighted_design.T @ weighted_design + penalty,
+        weighted_design.T @ weighted_target,
     )
     return StandardizedRidge(
         mean=mean,
@@ -121,9 +174,12 @@ def cross_fit_grouped_ridge(
     alpha: float,
     seed: int,
     shuffled_target_model: str | None = None,
+    sample_weight_column: str | None = None,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     """Generate predictions with complete groups held out from every fitted model."""
     required = {group_column, target_column}
+    if sample_weight_column is not None:
+        required.add(sample_weight_column)
     required.update(feature for features in feature_sets.values() for feature in features)
     missing = required.difference(frame.columns)
     if missing:
@@ -136,6 +192,10 @@ def cross_fit_grouped_ridge(
     result = frame.copy().reset_index(drop=True)
     if result[target_column].isna().any():
         raise ValueError("target column contains missing values")
+    if sample_weight_column is not None:
+        weights = result[sample_weight_column].to_numpy(dtype=np.float64)
+        if not np.isfinite(weights).all() or np.any(weights <= 0):
+            raise ValueError("sample weights must be finite and strictly positive")
     group_values = result[group_column].astype(str)
     assignments = stable_group_folds(group_values, n_folds, seed=seed)
     result["outer_fold"] = group_values.map(assignments).astype(int)
@@ -156,10 +216,23 @@ def cross_fit_grouped_ridge(
             raise RuntimeError(f"group leakage detected in fold {fold}: {sorted(overlap)}")
 
         y_train = result.loc[train_mask, target_column].to_numpy(dtype=np.float64)
+        train_weight = None
+        if sample_weight_column is not None:
+            train_weight = result.loc[
+                train_mask, sample_weight_column
+            ].to_numpy(dtype=np.float64)
         for model_name, columns in feature_sets.items():
             x_train = result.loc[train_mask, list(columns)].to_numpy(dtype=np.float64)
             x_test = result.loc[test_mask, list(columns)].to_numpy(dtype=np.float64)
-            model = fit_standardized_ridge(x_train, y_train, alpha=alpha)
+            if train_weight is None:
+                model = fit_standardized_ridge(x_train, y_train, alpha=alpha)
+            else:
+                model = fit_weighted_standardized_ridge(
+                    x_train,
+                    y_train,
+                    train_weight,
+                    alpha=alpha,
+                )
             result.loc[test_mask, f"prediction_{model_name}"] = (
                 predict_standardized_ridge(model, x_test)
             )
@@ -170,7 +243,17 @@ def cross_fit_grouped_ridge(
             x_test = result.loc[test_mask, columns].to_numpy(dtype=np.float64)
             rng = np.random.default_rng(seed + 10_000 + fold)
             shuffled_target = rng.permutation(y_train)
-            sentinel = fit_standardized_ridge(x_train, shuffled_target, alpha=alpha)
+            if train_weight is None:
+                sentinel = fit_standardized_ridge(
+                    x_train, shuffled_target, alpha=alpha
+                )
+            else:
+                sentinel = fit_weighted_standardized_ridge(
+                    x_train,
+                    shuffled_target,
+                    train_weight,
+                    alpha=alpha,
+                )
             result.loc[test_mask, "prediction_target_shuffle_sentinel"] = (
                 predict_standardized_ridge(sentinel, x_test)
             )
@@ -183,6 +266,9 @@ def cross_fit_grouped_ridge(
                 "train_groups": len(train_groups),
                 "test_groups": len(test_groups),
                 "group_overlap": 0,
+                "train_weight_sum": (
+                    float(train_weight.sum()) if train_weight is not None else None
+                ),
             }
         )
 
@@ -250,5 +336,5 @@ def paired_bootstrap_mean_difference(
         "mean_difference": float(differences.mean()),
         "ci_95_low": float(np.quantile(bootstrap, 0.025)),
         "ci_95_high": float(np.quantile(bootstrap, 0.975)),
-        "n_pairs": int(len(differences)),
+        "n_pairs": len(differences),
     }

@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "protocol_id": "production-text-fusion-v1",
+  "frozen_date": "2026-08-06",
+  "status_at_freeze": "development_outcomes_previously_observed",
+  "objective": "Build a provenance-complete English text-difficulty candidate and evaluate whether it adds held-out value beyond real gaze measurements.",
+  "claim_boundary": {
+    "development_fit_is_new_confirmation": false,
+    "reason": "PROVO and GECO outcomes were inspected in earlier frozen experiments.",
+    "promotion_requires_future_independent_capture": true,
+    "onestop_role": "immutable_external_audit_only"
+  },
+  "text_artifact": {
+    "artifact_id": "lexigaze-en-text-difficulty-m1-v1",
+    "status": "candidate",
+    "training_corpora": [
+      "PROVO",
+      "GECO_L2_English"
+    ],
+    "excluded_corpora": [
+      "OneStop_Eye_Movements"
+    ],
+    "outcome": {
+      "name": "total_reading_time",
+      "transform": "log1p",
+      "condition": "finite_positive_duration"
+    },
+    "model": {
+      "family": "standardized_ridge",
+      "alpha": 1.0,
+      "corpus_weighting": "equal_total_weight_per_corpus",
+      "scaler_fit": "development_training_rows_only"
+    },
+    "features": [
+      "log_char_length",
+      "zipf_frequency",
+      "relative_position",
+      "starts_upper",
+      "ends_punctuation",
+      "subtoken_count",
+      "prev_log_char_length",
+      "prev_zipf_frequency",
+      "causal_surprisal",
+      "prev_causal_surprisal"
+    ],
+    "feature_policy": {
+      "language_model": "gpt2",
+      "context_direction": "left_only",
+      "language_model_frozen": true,
+      "language_model_fine_tuning": false,
+      "label_free_feature_cache_required": true,
+      "excluded_features": [
+        "shannon_entropy",
+        "renyi_entropy",
+        "prev_shannon_entropy",
+        "prev_renyi_entropy"
+      ]
+    },
+    "score_calibration": {
+      "method": "fixed_training_prediction_quantile_clip",
+      "lower_quantile": 0.05,
+      "upper_quantile": 0.95,
+      "request_local_normalization_allowed": false
+    },
+    "distribution_guard": {
+      "feature_lower_quantile": 0.005,
+      "feature_upper_quantile": 0.995,
+      "out_of_distribution_output": "retain_score_and_set_in_distribution_false"
+    }
+  },
+  "development_diagnostic": {
+    "purpose": "implementation_consistency_only",
+    "outer_holdout": "complete_text",
+    "outer_folds": 5,
+    "seed": 20260805,
+    "comparison": "m1_causal_surprisal_minus_m0_lexical",
+    "hyperparameter_or_feature_search_allowed": false,
+    "target_shuffle_sentinel": true
+  },
+  "fusion_evaluation": {
+    "input_unit": "one aggregated word outcome per participant-session-device-article-word",
+    "required_columns": [
+      "participant_id",
+      "session_id",
+      "device_id",
+      "article_id",
+      "word_id",
+      "difficulty_target",
+      "gaze_score",
+      "gaze_confidence",
+      "text_score"
+    ],
+    "models": {
+      "text_only": [
+        "text_score"
+      ],
+      "gaze_only": [
+        "gaze_score",
+        "gaze_confidence",
+        "gaze_weighted"
+      ],
+      "combined": [
+        "gaze_score",
+        "gaze_confidence",
+        "gaze_weighted",
+        "text_score",
+        "gaze_text_interaction"
+      ]
+    },
+    "model_family": "standardized_ridge",
+    "ridge_alpha": 1.0,
+    "primary_target": {
+      "field": "difficulty_target",
+      "range": [
+        0.0,
+        1.0
+      ],
+      "allowed_source": "independent post-reading word familiarity or difficulty audit",
+      "derived_from_gaze": false,
+      "derived_from_text_model": false,
+      "public_question_answer_benchmark": false
+    },
+    "descriptive_outcome_only": {
+      "field": "total_reading_time_ms",
+      "promotion_eligible": false,
+      "reason": "Dwell-derived gaze predictors and reading time are not sufficiently independent for a fusion claim."
+    },
+    "primary_holdout": "participant_session_device_capture_group",
+    "secondary_holdout": "article",
+    "outer_folds": 5,
+    "seed": 20260806,
+    "minimum_independent_groups_per_holdout": 10,
+    "group_balanced_training_weights": true,
+    "same_folds_for_all_models": true,
+    "target_shuffle_sentinel_model": "combined"
+  },
+  "promotion_gate": {
+    "comparison": "combined_minus_gaze_only",
+    "capture_group_bootstrap_ci_95_low_greater_than": 0.0,
+    "article_bootstrap_ci_95_low_greater_than": 0.0,
+    "minimum_positive_outer_folds_per_holdout": 4,
+    "shuffle_sentinel_must_not_have_strictly_positive_ci": true,
+    "both_holdout_axes_must_pass": true,
+    "bootstrap_samples": 10000,
+    "failure_action": "retain_existing_gaze_only_production_path"
+  },
+  "leakage_controls": {
+    "question_answer_dataset_used": false,
+    "question_accuracy_used_for_article_selection": false,
+    "primary_target_derived_from_gaze_or_text": false,
+    "onestop_used_for_training_selection_or_thresholding": false,
+    "frame_level_random_split_allowed": false,
+    "fusion_parameters_must_be_frozen_before_independent_outcomes": true,
+    "untrained_cross_attention_is_eligible": false
+  },
+  "compute": {
+    "device": "cpu",
+    "gpu_allowed": false,
+    "language_model_features": "reuse_verified_cpu_cache",
+    "reason": "Ridge fitting and grouped evaluation do not require GPU allocation."
+  },
+  "mutation_policy": {
+    "after_independent_outcome_access": "No feature, split, threshold, comparison, or gate change is allowed in v1.",
+    "schema_mismatch": "Stop without evaluation, document the mismatch, and freeze v2 before reading outcomes.",
+    "unfavorable_result": "Report it unchanged and retain gaze-only production behavior."
+  }
+}

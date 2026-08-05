@@ -37,8 +37,11 @@ TEST_TARGETS = (
     "scripts.test_adaptive_stepper",
     "scripts.test_cognitive_policy",
     "scripts.test_cognitive_inspector",
+    "scripts.test_text_artifact",
+    "scripts.test_text_model_generalization",
+    "scripts.test_provenance_fusion",
     "scripts.test_onestop_confirmation_preparation",
-    "scripts.test_fusion_routes.TestFusionRoutes.test_fatigue_adaptive_method",
+    "scripts.test_fusion_routes",
 )
 
 PROVIDER_CREDENTIALS = (

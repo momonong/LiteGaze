@@ -9,6 +9,7 @@ Reading Difficulty Score (RDS).
 import numpy as np
 import pandas as pd
 
+
 def normalize(array):
     """Min-max normalize array to [0, 1]."""
     arr = np.array(array, dtype=float)
@@ -264,12 +265,15 @@ class LexiGazeFusion:
 
     def fuse_cross_attention(self, gaze_dwell, gaze_fix, load_score):
         """
-        12. Neural Cross-Attention Fusion
-        Runs a PyTorch Cross-Attention projection over gaze and cognitive features
-        to predict reading difficulty.
+        12. Experimental untrained neural projection (research archive only).
+
+        The weights below are initialized from a fixed random seed and have no
+        trained checkpoint. Production orchestration rejects this method; this
+        implementation remains only so historical exploratory outputs can be
+        reproduced and clearly labelled.
         """
         import torch
-        import torch.nn as nn
+        from torch import nn
         
         g_dwell = normalize(gaze_dwell)
         g_fix = normalize(gaze_fix)

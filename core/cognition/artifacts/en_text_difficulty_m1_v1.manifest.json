@@ -1,0 +1,22 @@
+{
+  "artifact": {
+    "file": "en_text_difficulty_m1_v1.json",
+    "sha256": "dd61352144fc6b2921cb50897f7e7409b413d06c82d42ae85fcc116beb6c476b",
+    "size_bytes": 35616
+  },
+  "artifact_id": "lexigaze-en-text-difficulty-m1-v1",
+  "builder": {
+    "path": "scripts/build_provenance_text_artifact.py",
+    "sha256": "694672efb1c28f2fd7cb816f7639355726cd64eba10a862a8e42d71120a9dc40"
+  },
+  "created_at": "2026-08-05T17:32:44.652332+00:00",
+  "implementation": {
+    "core/cognition/generalization.py": "53d33f9a753e2190cff4473d1cb16ae8332dd9482ba844b1b5fc07b6ca7abe11",
+    "core/cognition/text_artifact.py": "7281021e7f844c2a34e7a8f08ad1b054550580b01577502c8083035ee7493a59"
+  },
+  "protocol": {
+    "path": "docs/experiments/protocols/2026-08-06-production-text-fusion-v1.json",
+    "sha256": "2a7999129b6c70e0bf3de29364fa03e9646d9088fb8cfc2ef7dae0718dc89476"
+  },
+  "schema_version": 1
+}

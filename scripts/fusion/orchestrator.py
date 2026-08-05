@@ -27,11 +27,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 import time
 from pathlib import Path
-from typing import Optional
 
 # ── Path bootstrap ────────────────────────────────────────────────────────────
 ROOT       = Path(__file__).resolve().parents[2]   # lexigaze/
@@ -42,7 +40,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.fusion_module import LexiGazeFusion
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 1. 眼動感知端 — 讀取 gaze_log.jsonl
@@ -144,7 +141,7 @@ def build_cognitive_lookup(word_analysis: list[dict]) -> dict[str, dict]:
     return merged
 
 
-def lookup_word(key: str, merged_lookup: dict[str, dict]) -> Optional[dict]:
+def lookup_word(key: str, merged_lookup: dict[str, dict]) -> dict | None:
     """查詢單字的認知分析條目（小寫，含連字號退回）。"""
     return merged_lookup.get(key.lower())
 
@@ -156,6 +153,13 @@ def lookup_word(key: str, merged_lookup: dict[str, dict]) -> Optional[dict]:
 W_DWELL   = 0.35   # 停留時間權重
 W_FIXATION = 0.25  # 注視次數權重
 W_LOAD    = 0.40   # 認知負荷分數權重
+
+PRODUCTION_INELIGIBLE_METHODS = {
+    "cross_attention": (
+        "cross_attention has no trained checkpoint and is retained only for "
+        "historical research reproducibility"
+    )
+}
 
 DWELL_MS_PER_COUNT = 120  # 前端以 120 ms 輪詢，每次命中代表約 120 ms 停留
 
@@ -208,8 +212,11 @@ def compute_rds(
       3. 套用選取的雙模態融合演算法 (例如 Linear, Bayesian, RRF, Spillover_rrf 等)
       4. 合併細粒度語言學特徵
     """
+    method_lower = str(method).strip().lower()
+    if method_lower in PRODUCTION_INELIGIBLE_METHODS:
+        raise ValueError(PRODUCTION_INELIGIBLE_METHODS[method_lower])
+
     word_analysis = cognitive_result.get("word_analysis", [])
-    merged_lookup = build_cognitive_lookup(word_analysis)
     aggregated    = aggregate_gaze_events(gaze_events)
 
     if not word_analysis:
@@ -234,8 +241,6 @@ def compute_rds(
 
     # 執行融合
     fusion = LexiGazeFusion()
-    method_lower = method.lower()
-
     if method_lower == "linear":
         rds_seq = fusion.fuse_linear(dwell_seq, fix_seq, load_seq)
     elif method_lower == "multiplicative":
@@ -258,8 +263,6 @@ def compute_rds(
         rds_seq = fusion.fuse_parafoveal_rrf(dwell_seq, load_seq)
     elif method_lower == "spillover_parafoveal_rrf":
         rds_seq = fusion.fuse_spillover_parafoveal_rrf(dwell_seq, load_seq)
-    elif method_lower == "cross_attention":
-        rds_seq = fusion.fuse_cross_attention(dwell_seq, fix_seq, load_seq)
     elif method_lower == "fatigue_adaptive":
         rds_seq = fusion.fuse_fatigue_adaptive(dwell_seq, load_seq)
     else:

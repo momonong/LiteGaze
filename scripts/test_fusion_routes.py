@@ -6,6 +6,7 @@ fusion methods work correctly in the Flask API.
 """
 
 import json
+import sys
 import unittest
 
 from web import create_app
@@ -47,20 +48,17 @@ class TestFusionRoutes(unittest.TestCase):
         }
 
     def test_cross_attention_method(self):
-        """Heavy regression: preserved, but excluded from the no-Torch gate."""
+        """Untrained cross-attention is rejected without importing Torch."""
+        torch_was_loaded = "torch" in sys.modules
         res_cross = self.client.post(
             "/api/fuse/",
             json=self._request_payload("cross_attention"),
         )
-        self.assertEqual(res_cross.status_code, 200)
+        self.assertEqual(res_cross.status_code, 422)
         data_cross = json.loads(res_cross.data)
-        self.assertTrue(data_cross["ok"])
-        self.assertEqual(len(data_cross["rds"]), 4)
-        
-        # Verify RDS scores are non-empty
-        for item in data_cross["rds"]:
-            self.assertIn("rds", item)
-            self.assertIn("rds_level", item)
+        self.assertFalse(data_cross["ok"])
+        self.assertEqual(data_cross["error"], "production_ineligible_fusion_method")
+        self.assertEqual("torch" in sys.modules, torch_was_loaded)
 
     def test_fatigue_adaptive_method(self):
         """Fast deterministic fusion regression used by the offline CPU gate."""

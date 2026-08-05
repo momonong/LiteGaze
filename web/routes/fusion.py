@@ -14,7 +14,6 @@ import json
 import sys
 import time
 from pathlib import Path
-from typing import Optional
 
 from flask import Blueprint, jsonify, request
 
@@ -27,15 +26,12 @@ SCRIPTS_DIR = ROOT / "scripts" / "fusion"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from orchestrator import (   # noqa: E402
-    aggregate_gaze_events,
-    build_cognitive_lookup,
-    compute_rds,
-    lookup_word,
+from orchestrator import (
+    PRODUCTION_INELIGIBLE_METHODS,
     W_DWELL,
     W_FIXATION,
     W_LOAD,
-    _classify_rds,
+    compute_rds,
 )
 
 fusion_bp = Blueprint("fusion", __name__, url_prefix="/api/fuse")
@@ -95,6 +91,15 @@ def fuse():
     gaze_events      = body.get("gaze_events") or []
     method           = body.get("method", "linear")
 
+    method_key = str(method).strip().lower()
+    if method_key in PRODUCTION_INELIGIBLE_METHODS:
+        return jsonify({
+            "ok": False,
+            "error": "production_ineligible_fusion_method",
+            "method": method_key,
+            "detail": PRODUCTION_INELIGIBLE_METHODS[method_key],
+        }), 422
+
     if not isinstance(gaze_events, list):
         return jsonify({"ok": False, "error": "'gaze_events' 必須是陣列"}), 400
     if not isinstance(cognitive_result, dict):
@@ -106,6 +111,7 @@ def fuse():
         if words_seq:
             try:
                 import re
+
                 from core.cognition import CognitiveLoadPipeline
                 from core.cognition.model_policy import default_model_for_language
                 is_zh = any(re.search(r'[\u4e00-\u9fff]', w) for w in words_seq)
@@ -118,11 +124,11 @@ def fuse():
                 )
                 cognitive_result = pipeline.run(text_str)
                 print(f"[fusion] Fallback CognitiveLoadPipeline ran successfully. Formed {len(cognitive_result.get('word_analysis', []))} words.")
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - optional fallback must not fail fusion
                 print(f"[fusion] Warning: Failed to run fallback CognitiveLoadPipeline: {exc}")
 
     # Run fusion
-    rds_results = compute_rds(gaze_events, cognitive_result, method=method)
+    rds_results = compute_rds(gaze_events, cognitive_result, method=method_key)
 
     elapsed_ms = int((time.time() - t0) * 1000)
 
