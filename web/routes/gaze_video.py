@@ -129,6 +129,7 @@ def analyze_reading_video():
     try:
         import re
         from core.cognition import CognitiveLoadPipeline
+        from core.cognition.model_policy import default_model_for_language
         # Detect if text contains Chinese
         is_zh = any(re.search(r'[\u4e00-\u9fff]', str(e.get("word", ""))) for e in reading_timeline)
         lang = "zh" if is_zh else "en"
@@ -137,8 +138,10 @@ def analyze_reading_video():
         words_seq = [str(e.get("word", "")) for e in reading_timeline if e.get("word")]
         if words_seq:
             text_str = " ".join(words_seq) if lang == "en" else "".join(words_seq)
-            # Use BERT model for dynamic surprisal
-            pipeline = CognitiveLoadPipeline(model_type='bert', lang=lang)
+            pipeline = CognitiveLoadPipeline(
+                model_type=default_model_for_language(lang),
+                lang=lang,
+            )
             cog_result = pipeline.run(text_str)
             word_analysis = cog_result.get("word_analysis", [])
             for item in word_analysis:

@@ -17,7 +17,6 @@
 """
 
 import json
-import math
 import re
 import os
 if os.name != 'nt' and os.environ.get("HF_HOME"):
@@ -35,6 +34,8 @@ from wordfreq import zipf_frequency
 from opencc import OpenCC
 import jieba
 import jieba.posseg as pseg
+
+from .calibration import calibrate_reading_time_prediction
 
 try:
     import spacy
@@ -464,10 +465,10 @@ class CognitiveLoadPipeline:
                          r.word_length, r.zipf_score, r.pos_score, r.dependency_load])
         dm = xgb.DMatrix(np.array(rows, dtype=float), feature_names=XGB_FEATS)
         raw_preds = self._xgb_model.predict(dm).tolist()
-        mn, mx = min(raw_preds), max(raw_preds)
-        span = mx - mn if mx > mn else 1.0
         for r, p in zip(results, raw_preds):
-            scaled = (p - mn) / span
+            # XGBoost was trained on log(TRT_ms).  Request-local min-max made
+            # every existing word move when an unrelated extreme was appended.
+            scaled = calibrate_reading_time_prediction(p, log_space=True)
             r.load_score = round(min(scaled * r.pos_score + (1 - r.pos_score) * 0.0, 1.0), 4)
 
     def _apply_ridge(self, results: list) -> None:
@@ -481,10 +482,9 @@ class CognitiveLoadPipeline:
             feat_s = (feat - self._ridge_mu) / self._ridge_std
             pred   = float(np.dot(self._ridge_coef, feat_s) + self._ridge_icept)
             raw_preds.append(pred)
-        mn, mx = min(raw_preds), max(raw_preds)
-        span = mx - mn if mx > mn else 1.0
         for r, p in zip(results, raw_preds):
-            scaled = (p - mn) / span
+            # The Ridge fallback predicts TRT directly in milliseconds.
+            scaled = calibrate_reading_time_prediction(p, log_space=False)
             r.load_score = round(min(scaled * r.pos_score + (1 - r.pos_score) * 0.0, 1.0), 4)
 
     def _aoa_score(self, word: str) -> float:

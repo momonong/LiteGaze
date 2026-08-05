@@ -35,6 +35,7 @@ TEST_TARGETS = (
     "scripts.test_gaze_session_independence",
     "scripts.test_gaze_torch_runtime",
     "scripts.test_adaptive_stepper",
+    "scripts.test_cognitive_policy",
     "scripts.test_cognitive_inspector",
     "scripts.test_fusion_routes.TestFusionRoutes.test_fatigue_adaptive_method",
 )

@@ -23,6 +23,8 @@ from typing import Optional
 
 from flask import Blueprint, jsonify, request
 
+from core.cognition.model_policy import DEFAULT_MODEL_BY_LANGUAGE
+
 # ── Safe output wrapper for CP950 (Windows Big5) encoding ────────────────────
 class _SafeWriter:
     """Wraps a writable stream, replacing unencodable characters on write()."""
@@ -95,8 +97,10 @@ cognitive_bp = Blueprint("cognitive", __name__, url_prefix="/api/cognitive")
 _pipelines: dict[str, object] = {"zh": None, "en": None}
 _pipeline_lock = threading.Lock()
 
-# 預設配對：中文用 BERT，英文用 GPT-2（README 推薦）。
-_DEFAULT_MODELS = {"zh": "bert", "en": "gpt2"}
+# 預設配對由共用 policy 管理，避免各 route 漂移成不同 metric semantics。
+_DEFAULT_MODELS = {
+    lang: DEFAULT_MODEL_BY_LANGUAGE[lang] for lang in _pipelines
+}
 _ALLOWED_EXT = {".pdf", ".txt", ".md"}
 
 

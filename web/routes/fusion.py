@@ -107,11 +107,15 @@ def fuse():
             try:
                 import re
                 from core.cognition import CognitiveLoadPipeline
+                from core.cognition.model_policy import default_model_for_language
                 is_zh = any(re.search(r'[\u4e00-\u9fff]', w) for w in words_seq)
                 lang = "zh" if is_zh else "en"
                 text_str = " ".join(words_seq) if lang == "en" else "".join(words_seq)
-                
-                pipeline = CognitiveLoadPipeline(model_type='bert', lang=lang)
+
+                pipeline = CognitiveLoadPipeline(
+                    model_type=default_model_for_language(lang),
+                    lang=lang,
+                )
                 cognitive_result = pipeline.run(text_str)
                 print(f"[fusion] Fallback CognitiveLoadPipeline ran successfully. Formed {len(cognitive_result.get('word_analysis', []))} words.")
             except Exception as exc:
