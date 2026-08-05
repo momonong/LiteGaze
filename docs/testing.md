@@ -38,6 +38,27 @@ Hardware/model experiments remain opt-in. Examples include `scripts/test_all_fea
 
 The offline gate validates application contracts and deterministic algorithms. It is not evidence of model accuracy, dataset generalization, or GPU correctness.
 
+## Motion-robustness tests
+
+The offline lane includes two gaze-calibration modules that do not import
+PyTorch or open images:
+
+- `scripts.test_gaze_motion_robustness` verifies metadata coverage gates,
+  aggregate-only reporting, source hashing, session filtering, and group
+  disjointness;
+- `scripts.test_gaze_calibration_regression` verifies sample-vs-group leakage,
+  standardized ridge fitting, and the frozen motion-conditioned feature schema.
+
+Audit historical or newly collected manifests with:
+
+```bash
+python -X utf8 -m scripts.audit_gaze_motion_coverage
+python -X utf8 -m scripts.audit_gaze_motion_coverage --session-id SESSION_ID --fail-on-not-ready
+```
+
+The audit is a data-readiness gate, not an accuracy benchmark. A real accuracy
+claim still requires a frozen session or participant holdout.
+
 ## Opt-in hardware benchmark
 
 `scripts/benchmark_gaze_inference.py` is intentionally excluded from routine hardware execution. Its pure statistics, GPU guard, telemetry parser, atomic-output tests, and CUDA runtime-policy tests run inside the offline gate without importing Torch. Actual CPU/CUDA inference is opt-in and follows the methodology in `docs/performance/gaze-inference-benchmark.md`.

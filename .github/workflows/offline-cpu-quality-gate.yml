@@ -44,27 +44,46 @@ jobs:
         run: >-
           python -m compileall -q
           web/__init__.py
+          core/gaze_core/calibration_regression.py
           core/gaze_core/inference.py
+          core/gaze_core/model_registry.py
+          core/gaze_core/motion_robustness.py
+          core/gaze_core/sample_store.py
           core/gaze_core/torch_runtime.py
+          core/gaze_core/training.py
+          scripts/audit_gaze_motion_coverage.py
           scripts/benchmark_gaze_inference.py
           scripts/run_offline_quality_gate.py
           scripts/test_app_factory.py
           scripts/test_gaze_benchmark.py
+          scripts/test_gaze_calibration_regression.py
+          scripts/test_gaze_motion_robustness.py
           scripts/test_gaze_torch_runtime.py
           scripts/test_adaptive_stepper.py
           scripts/test_cognitive_inspector.py
           scripts/test_fusion_routes.py
+          web/routes/demo.py
+          web/routes/gaze.py
+
+      - name: Check browser calibration syntax
+        run: node --check web/static/gaze_page.js
 
       - name: Lint changed validation surfaces
         run: >-
           python -m ruff check --select E4,E7,E9,F,I,UP
           web/__init__.py
+          core/gaze_core/calibration_regression.py
           core/gaze_core/inference.py
+          core/gaze_core/model_registry.py
+          core/gaze_core/motion_robustness.py
           core/gaze_core/torch_runtime.py
+          scripts/audit_gaze_motion_coverage.py
           scripts/benchmark_gaze_inference.py
           scripts/run_offline_quality_gate.py
           scripts/test_app_factory.py
           scripts/test_gaze_benchmark.py
+          scripts/test_gaze_calibration_regression.py
+          scripts/test_gaze_motion_robustness.py
           scripts/test_gaze_torch_runtime.py
           scripts/test_adaptive_stepper.py
           scripts/test_cognitive_inspector.py

@@ -29,6 +29,8 @@ DEFAULT_TIMEOUT_SECONDS = 180
 TEST_TARGETS = (
     "scripts.test_app_factory",
     "scripts.test_gaze_benchmark",
+    "scripts.test_gaze_calibration_regression",
+    "scripts.test_gaze_motion_robustness",
     "scripts.test_gaze_torch_runtime",
     "scripts.test_adaptive_stepper",
     "scripts.test_cognitive_inspector",

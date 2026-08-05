@@ -6,6 +6,7 @@ from flask import Blueprint, jsonify, request
 
 from core.gaze_core.inference import predict
 from core.gaze_core.model_registry import ensure_runs_dir, list_models, delete_model, rename_model
+from core.gaze_core.motion_robustness import audit_payload, load_motion_samples
 from core.gaze_core.sample_store import create_session, list_datasets, save_sample, delete_dataset, rename_dataset
 from core.gaze_core.training import train_placeholder
 
@@ -125,6 +126,19 @@ def reprocess_dataset(session_id):
         import traceback
         traceback.print_exc()
         return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@gaze_bp.get("/datasets/<session_id>/motion-audit")
+def motion_audit(session_id):
+    sessions_dir = ensure_sessions_dir(ROOT)
+    session_dir = (sessions_dir / session_id).resolve()
+    if session_dir.parent != sessions_dir.resolve() or not session_dir.is_dir():
+        return jsonify({"ok": False, "error": "session not found"}), 404
+    samples, diagnostics = load_motion_samples(
+        sessions_dir,
+        session_ids=(session_id,),
+    )
+    return jsonify({"ok": True, **audit_payload(samples, diagnostics)})
 
 
 

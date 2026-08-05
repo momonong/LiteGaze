@@ -1,0 +1,179 @@
+{
+  "issues": [
+    {
+      "code": "INSUFFICIENT_MOTION_BLOCKS",
+      "message": "Only 0 labeled motion blocks are present; at least 5 are required.",
+      "severity": "error"
+    },
+    {
+      "code": "NO_CROSS_CONDITION_TARGET_REPLICATION",
+      "message": "Only 0 session-target pairs repeat across motion conditions, so gaze target and posture cannot be identified separately.",
+      "severity": "error"
+    },
+    {
+      "code": "NARROW_HEAD_YAW_COVERAGE",
+      "message": "Observed head-yaw span is 16.3 degrees; the frozen minimum is 20.0.",
+      "severity": "error"
+    },
+    {
+      "code": "INCOMPLETE_CAMERA_ID",
+      "message": "camera_id is populated for 0/1019 samples.",
+      "severity": "error"
+    },
+    {
+      "code": "INCOMPLETE_CAPTURE_BURST_ID",
+      "message": "capture_burst_id is populated for 0/1019 samples.",
+      "severity": "error"
+    },
+    {
+      "code": "INCOMPLETE_COLLECT_MODE",
+      "message": "collect_mode is populated for 0/1019 samples.",
+      "severity": "error"
+    },
+    {
+      "code": "INCOMPLETE_COLLECTION_PROTOCOL",
+      "message": "collection_protocol is populated for 0/1019 samples.",
+      "severity": "error"
+    },
+    {
+      "code": "INCOMPLETE_DEVICE_CLASS",
+      "message": "device_class is populated for 0/1019 samples.",
+      "severity": "error"
+    },
+    {
+      "code": "INCOMPLETE_DISTANCE_CONDITION",
+      "message": "distance_condition is populated for 0/1019 samples.",
+      "severity": "error"
+    },
+    {
+      "code": "INCOMPLETE_LIGHTING_CONDITION",
+      "message": "lighting_condition is populated for 0/1019 samples.",
+      "severity": "error"
+    },
+    {
+      "code": "INCOMPLETE_MOTION_BLOCK_ID",
+      "message": "motion_block_id is populated for 0/1019 samples.",
+      "severity": "error"
+    },
+    {
+      "code": "INCOMPLETE_POSTURE_CONDITION",
+      "message": "posture_condition is populated for 0/1019 samples.",
+      "severity": "error"
+    },
+    {
+      "code": "MISSING_DISTANCE_CONDITIONS",
+      "message": "Required conditions are missing: far, near, nominal.",
+      "severity": "error"
+    },
+    {
+      "code": "MISSING_POSTURE_CONDITIONS",
+      "message": "Required conditions are missing: left, neutral, right.",
+      "severity": "error"
+    },
+    {
+      "code": "UNVERIFIED_LATERAL_POSE_SEPARATION",
+      "message": "Left/right posture rows lack usable head-yaw measurements.",
+      "severity": "error"
+    },
+    {
+      "code": "UNVERIFIED_DISTANCE_SEPARATION",
+      "message": "Nominal/near/far rows lack usable normalized face-scale measurements.",
+      "severity": "error"
+    }
+  ],
+  "requirements": {
+    "min_distance_scale_change_ratio": 0.05,
+    "min_head_yaw_span_deg": 20.0,
+    "min_lateral_pose_separation_deg": 15.0,
+    "min_motion_blocks": 5,
+    "min_replicated_targets": 9,
+    "min_usable_samples": 50,
+    "required_distance_conditions": [
+      "nominal",
+      "near",
+      "far"
+    ],
+    "required_metadata_fields": [
+      "camera_id",
+      "capture_burst_id",
+      "collect_mode",
+      "collection_protocol",
+      "device_class",
+      "distance_condition",
+      "lighting_condition",
+      "motion_block_id",
+      "posture_condition"
+    ],
+    "required_posture_conditions": [
+      "neutral",
+      "left",
+      "right"
+    ]
+  },
+  "status": "not_ready",
+  "summary": {
+    "collection_protocol_distribution": {},
+    "distance_condition_distribution": {},
+    "face_scale": {
+      "max": 0.749,
+      "min": 0.401,
+      "p05": 0.45,
+      "p50": 0.58,
+      "p95": 0.683
+    },
+    "face_scale_by_distance": {
+      "far": null,
+      "near": null,
+      "nominal": null
+    },
+    "head_pitch_deg": {
+      "max": 33.285,
+      "min": 13.197,
+      "p05": 16.315,
+      "p50": 20.379,
+      "p95": 27.027
+    },
+    "head_pose_usable": 1018,
+    "head_yaw_by_posture": {
+      "left": null,
+      "neutral": null,
+      "right": null
+    },
+    "head_yaw_deg": {
+      "max": 12.974,
+      "min": -3.306,
+      "p05": 1.231,
+      "p50": 5.548,
+      "p95": 10.226
+    },
+    "malformed_lines": 0,
+    "manifest_lines": 1019,
+    "manifests_seen": 83,
+    "metadata_coverage": {
+      "camera_id": 0,
+      "capture_burst_id": 0,
+      "collect_mode": 0,
+      "collection_protocol": 0,
+      "device_class": 0,
+      "distance_condition": 0,
+      "lighting_condition": 0,
+      "motion_block_id": 0,
+      "posture_condition": 0
+    },
+    "participant_label_count": 37,
+    "phase_distribution": {
+      "calibration": 1018,
+      "unknown": 1
+    },
+    "posture_condition_distribution": {},
+    "repeat_distribution": {
+      "0": 1019
+    },
+    "replicated_session_targets": 0,
+    "samples": 1019,
+    "schema_version": 1,
+    "sessions_seen": 83,
+    "source_sha256": "54bc65510db9ef14caaddf927b7dc32ba9bd661b5ac7abe3a9d348fa6ac7907c",
+    "unique_motion_blocks": 0
+  }
+}

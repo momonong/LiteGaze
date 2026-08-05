@@ -10,6 +10,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from .motion_robustness import capture_metadata
+
 # Thread-safe locks
 _preprocessor_lock = threading.Lock()
 _manifest_lock = threading.Lock()
@@ -158,6 +160,7 @@ def save_sample(root: Path, payload: dict) -> tuple[dict, int]:
             "raw_path": raw_path.relative_to(session_dir).as_posix(),
             "created_at_unix": time.time(),
         }
+        record.update(capture_metadata(payload))
 
         # Decode image and process facial normalization landmarks using MediaPipe preprocessor
         try:

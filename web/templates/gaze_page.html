@@ -399,7 +399,11 @@ input::placeholder { color: var(--ink-muted); }
             <select id="collectMode" class="tray-select">
               <option value="standard">13 點標準校正</option>
               <option value="four_corners">四角快速校正</option>
+              <option value="motion_robust">動作強健校正（5 姿勢 × 13 點）</option>
             </select>
+            <small style="display: block; margin-top: 6px; color: var(--ink-secondary); line-height: 1.45;">
+              動作強健模式會在正面、左轉、右轉、近距與遠距重複相同目標，共至少 65 筆。
+            </small>
           </div>
           <div class="field-row">
             <div class="field">
