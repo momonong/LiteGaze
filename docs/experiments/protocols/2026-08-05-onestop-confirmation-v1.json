@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "protocol_id": "onestop-ordinary-advanced-confirmation-v1",
+  "frozen_date": "2026-08-05",
+  "status_at_freeze": "outcome_blind",
+  "dataset": {
+    "name": "OneStop Eye Movements",
+    "release": "1.0",
+    "subcorpus": "ordinary",
+    "file_name": "ia_Paragraph_ordinary.csv.zip",
+    "osf_download_id": "xkgfz",
+    "download_url": "https://osf.io/download/xkgfz/",
+    "size_bytes": 177291322,
+    "sha256": "8883478946ee52381e7057683c9e84dc69fcea9054acc34f0c900463a6b546e9",
+    "eye_tracking_license": "CC-BY-4.0",
+    "text_license": "CC-BY-SA-4.0"
+  },
+  "scope": {
+    "practice_trial": false,
+    "question_preview": false,
+    "repeated_reading_trial": false,
+    "difficulty_level": "Adv",
+    "exclude_article_id": 0,
+    "reading_period": "Paragraph",
+    "questions_answers_and_correctness_read": false,
+    "precomputed_linguistic_annotations_read": false
+  },
+  "analysis_read_columns": [
+    "participant_id",
+    "list_number",
+    "question_preview",
+    "article_batch",
+    "trial_index",
+    "practice_trial",
+    "article_id",
+    "paragraph_id",
+    "difficulty_level",
+    "repeated_reading_trial",
+    "IA_ID",
+    "IA_LABEL",
+    "IA_DWELL_TIME",
+    "IA_FIRST_RUN_DWELL_TIME",
+    "IA_FIRST_FIXATION_DURATION"
+  ],
+  "outcomes": {
+    "primary": {
+      "name": "total_reading_time",
+      "source_column": "IA_DWELL_TIME"
+    },
+    "secondary": [
+      {
+        "name": "gaze_duration",
+        "source_column": "IA_FIRST_RUN_DWELL_TIME"
+      },
+      {
+        "name": "first_fixation_duration",
+        "source_column": "IA_FIRST_FIXATION_DURATION"
+      }
+    ],
+    "transform": "log1p",
+    "condition": "finite_positive_duration"
+  },
+  "grouping": {
+    "outer_holdout": "complete_article",
+    "article_identity": [
+      "article_batch",
+      "article_id"
+    ],
+    "context_boundary": "paragraph_display_sequence",
+    "outer_folds": 5,
+    "seed": 20260805,
+    "first_item_of_each_context_excluded": true
+  },
+  "models": {
+    "ridge_alpha": 1.0,
+    "word_length_only": [
+      "log_char_length"
+    ],
+    "m0_lexical": [
+      "log_char_length",
+      "zipf_frequency",
+      "relative_position",
+      "starts_upper",
+      "ends_punctuation",
+      "subtoken_count",
+      "prev_log_char_length",
+      "prev_zipf_frequency"
+    ],
+    "m1_causal_surprisal": [
+      "log_char_length",
+      "zipf_frequency",
+      "relative_position",
+      "starts_upper",
+      "ends_punctuation",
+      "subtoken_count",
+      "prev_log_char_length",
+      "prev_zipf_frequency",
+      "causal_surprisal",
+      "prev_causal_surprisal"
+    ],
+    "language_model": "gpt2",
+    "language_model_frozen": true,
+    "language_model_fine_tuning": false,
+    "target_shuffle_sentinel_model": "m1_causal_surprisal"
+  },
+  "decision_gate": {
+    "comparison": "m1_causal_surprisal_minus_m0_lexical",
+    "primary_outcome_only": true,
+    "participant_bootstrap_ci_95_low_greater_than": 0.0,
+    "article_bootstrap_ci_95_low_greater_than": 0.0,
+    "minimum_positive_outer_folds": 4,
+    "shuffle_sentinel_must_not_have_positive_ci_on_participants_or_articles": true,
+    "bootstrap_samples": 10000,
+    "feature_or_threshold_search_allowed": false
+  },
+  "compute": {
+    "device": "cpu",
+    "gpu_allowed": false,
+    "reason": "The frozen GPT-2-small extraction completed within minutes on prior corpora; GPU allocation is unnecessary for this confirmation."
+  },
+  "mutation_policy": {
+    "after_outcome_access": "No feature, filter, split, outcome, threshold, or gate change is allowed in v1.",
+    "schema_mismatch": "Mark v1 invalid with the reason, freeze v2 before outcome evaluation, and retain v1 artifacts.",
+    "unfavorable_result": "Report it unchanged; do not tune on OneStop."
+  }
+}
