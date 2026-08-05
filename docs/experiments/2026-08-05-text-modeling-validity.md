@@ -2,8 +2,14 @@
 
 - Date: 2026-08-05
 - Branch: `research/text-modeling-validity`
-- Status: research review and preregistered experiment plan; no new benchmark result yet
+- Status: protocol snapshot; implemented and evaluated on `experiment/text-model-generalization`
 - Compute used for this review: CPU/file inspection only; no model inference and no GPU workload
+
+> Outcome update: the frozen M0/M1/M2 protocol was subsequently run on Provo
+> and English GECO L2. See
+> [`2026-08-05-text-model-generalization-run-001.md`](2026-08-05-text-model-generalization-run-001.md).
+> The data-availability note below records what was known during this review;
+> the active `data/provo/` and `data/geco/` sources were located afterward.
 
 ## 1. Decision
 
