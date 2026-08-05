@@ -6,6 +6,8 @@ import types
 import unittest
 from unittest import mock
 
+import torch
+
 from core.cognition import pipeline as cognition_pipeline
 from core.cognition.pipeline import LanguageModelCalculator
 
@@ -22,6 +24,27 @@ class _TokenCountTokenizer:
         else:
             count = len(words)
         return {"input_ids": list(range(count))}
+
+
+class _TensorEncoding(dict):
+    def __init__(self) -> None:
+        super().__init__({
+            "input_ids": torch.tensor([[1, 2, 3]]),
+            "attention_mask": torch.tensor([[1, 1, 1]]),
+        })
+
+    def to(self, device):
+        return self
+
+    def word_ids(self):
+        return [0, 1, 2]
+
+
+class _TensorTokenizer:
+    def __call__(self, words, *, is_split_into_words, return_tensors):
+        if not is_split_into_words or return_tensors != "pt":
+            raise AssertionError("unexpected tokenizer contract")
+        return _TensorEncoding()
 
 
 def _fake_window_metrics(self, words):
@@ -111,6 +134,24 @@ class TextModelingValidityTests(unittest.TestCase):
         self.assertEqual(masked["surprisal_kind"], "masked_pseudo")
         self.assertEqual(masked["context_direction"], "bidirectional")
         self.assertNotEqual(causal["surprisal_kind"], masked["surprisal_kind"])
+
+    def test_gpt_forward_receives_cpu_attention_mask(self) -> None:
+        calculator = self._calculator()
+        calculator.tokenizer = _TensorTokenizer()
+        calculator.model = mock.MagicMock(
+            return_value=types.SimpleNamespace(logits=torch.zeros(1, 3, 4))
+        )
+
+        result = LanguageModelCalculator._compute_gpt(
+            calculator,
+            ["one", "two", "three"],
+        )
+
+        input_ids = calculator.model.call_args.args[0]
+        attention_mask = calculator.model.call_args.kwargs["attention_mask"]
+        torch.testing.assert_close(input_ids, torch.tensor([[1, 2, 3]]))
+        torch.testing.assert_close(attention_mask, torch.tensor([[1, 1, 1]]))
+        self.assertEqual(len(result["surprisals"]), 3)
 
 
 if __name__ == "__main__":

@@ -269,7 +269,15 @@ class LanguageModelCalculator:
 
         word_ids = encoding.word_ids()
 
-        outputs = self.model(input_ids)
+        # Pass the tokenizer mask even for an unpadded single sequence. Recent
+        # Transformers releases otherwise enter a padding-warning helper that
+        # probes CUDA stream state despite this calculator being explicitly on
+        # CPU. Besides avoiding that unrelated accelerator side effect, keeping
+        # the mask is the correct forward contract if batching is added later.
+        outputs = self.model(
+            input_ids,
+            attention_mask=encoding.get("attention_mask"),
+        )
         shift_logits = outputs.logits[..., :-1, :].contiguous()
         shift_labels = input_ids[..., 1:].contiguous()
 
