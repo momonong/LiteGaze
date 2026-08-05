@@ -163,7 +163,13 @@ def inspect_archive(
 
     with zipfile.ZipFile(path) as archive:
         members = [item for item in archive.infolist() if not item.is_dir()]
-        csv_members = [item for item in members if item.filename.lower().endswith(".csv")]
+        csv_members = [
+            item
+            for item in members
+            if item.filename.lower().endswith(".csv")
+            and "__MACOSX" not in Path(item.filename).parts
+            and not Path(item.filename).name.startswith("._")
+        ]
         if len(csv_members) != 1:
             raise RuntimeError(
                 f"expected exactly one CSV member, found {len(csv_members)}"

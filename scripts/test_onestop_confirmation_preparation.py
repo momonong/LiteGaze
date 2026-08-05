@@ -22,6 +22,7 @@ class OneStopConfirmationPreparationTests(unittest.TestCase):
         body = b"SENSITIVE-OUTCOME-CANARY\xff\n"
         with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.writestr("ia_Paragraph_ordinary.csv", header + body)
+            archive.writestr("__MACOSX/._ia_Paragraph_ordinary.csv", b"sidecar")
         return path
 
     def test_inspector_parses_only_header_and_records_ignored_fields(self) -> None:
