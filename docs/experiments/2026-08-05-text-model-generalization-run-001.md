@@ -284,3 +284,11 @@ Before inspecting another corpus's reading-time outcomes:
 Hardware work can proceed in parallel, but the new two-camera/phone path should
 be evaluated on independent capture groups and must not use these text corpora to
 tune gaze calibration.
+
+## 11. Follow-up closure
+
+The frozen third-corpus objective was completed later on 2026-08-05 using the
+OneStop ordinary-reading Advanced subset. Its protocol was committed before any
+outcome access, all 30 articles were held out as complete groups, and the primary
+causal-surprisal gate passed without OneStop-specific tuning. See
+[`2026-08-05-onestop-confirmation-run-001.md`](2026-08-05-onestop-confirmation-run-001.md).
