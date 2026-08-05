@@ -1,3 +1,5 @@
+# Disabled on 2026-08-05: local quality gates are the source of truth for the
+# current experiment workflow. Rename this file back to `.yml` to re-enable it.
 name: Offline CPU quality gate
 
 on:
