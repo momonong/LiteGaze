@@ -8,6 +8,7 @@ import pandas as pd
 
 from scripts.run_geco_l2_text_model_experiment import (
     SOURCE_COLUMNS,
+    _normalize_word,
     _prepare_geco_l2,
 )
 
@@ -34,6 +35,11 @@ def _row(**updates: str) -> dict[str, str]:
 
 
 class GecoTextModelExperimentTests(unittest.TestCase):
+    def test_normalization_repairs_only_known_source_mojibake(self) -> None:
+        self.assertEqual(_normalize_word("\u00d4\u00c7\u00f4"), "\u2013")
+        self.assertEqual(_normalize_word("\u00d4\u00c7\u00a3It"), "\u201cIt")
+        self.assertEqual(_normalize_word("why?\u00d4\u00c7?"), "why?\u201d")
+
     def test_preparation_normalizes_display_padding_and_builds_text_id(self) -> None:
         raw, items = _prepare_geco_l2(pd.DataFrame([_row()]))
 

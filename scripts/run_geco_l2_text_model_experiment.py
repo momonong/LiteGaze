@@ -60,10 +60,21 @@ OUTCOMES = {
     "first_fixation_duration": "WORD_FIRST_FIXATION_DURATION",
 }
 
+# Five frozen-source labels contain CP850-rendered UTF-8 punctuation.  Keep the
+# repair deliberately narrow so arbitrary corpus text is never re-decoded.
+GECO_PUNCTUATION_REPAIRS = {
+    "\u00d4\u00c7\u00f4": "\u2013",  # en dash
+    "\u00d4\u00c7\u00a3": "\u201c",  # opening double quotation mark
+    "\u00d4\u00c7?": "\u201d",  # closing quote with lost CP850 glyph
+}
+
 
 def _normalize_word(value: object) -> str:
     """Remove GECO display padding without changing internal punctuation."""
-    return unicodedata.normalize("NFKC", str(value)).strip()
+    normalized = unicodedata.normalize("NFKC", str(value)).strip()
+    for mojibake, punctuation in GECO_PUNCTUATION_REPAIRS.items():
+        normalized = normalized.replace(mojibake, punctuation)
+    return normalized
 
 
 def _prepare_geco_l2(
@@ -95,6 +106,10 @@ def _prepare_geco_l2(
     raw["IA_LABEL"] = raw["WORD"].map(_normalize_word)
     if raw["IA_LABEL"].eq("").any():
         raise ValueError("GECO L2 contains an empty normalized word label")
+    if raw["IA_LABEL"].str.contains("\u00d4\u00c7", regex=False).any():
+        raise ValueError("GECO L2 contains an unmapped mojibake sequence")
+    if raw["IA_LABEL"].str.contains("\ufffd", regex=False).any():
+        raise ValueError("GECO L2 contains a Unicode replacement character")
     raw["Participant_ID"] = raw["PP_NR"].astype(str)
     raw["Text_ID"] = (
         raw["PART"].astype(str) + ":" + raw["TRIAL"].astype(str)
