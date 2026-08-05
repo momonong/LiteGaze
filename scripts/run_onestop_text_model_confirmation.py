@@ -149,6 +149,59 @@ def _scope_mask(chunk: pd.DataFrame) -> pd.Series:
     return (~practice) & (~preview) & (~repeated) & difficulty.eq("Adv") & article.ne(0)
 
 
+def _ensure_extracted_csv(path: Path, manifest: Mapping[str, Any]) -> Path:
+    """Materialize the verified main CSV to avoid large ZipExtFile parser crashes."""
+    member_name = str(manifest["archive"]["member_name"])
+    expected_size = int(manifest["archive"]["uncompressed_size_bytes"])
+    extracted = path.with_suffix("")
+    metadata_path = extracted.with_suffix(extracted.suffix + ".metadata.json")
+
+    if extracted.exists() and metadata_path.exists():
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        reusable = (
+            extracted.stat().st_size == expected_size
+            and metadata.get("archive_sha256") == manifest["source"]["sha256"]
+            and metadata.get("member_name") == member_name
+            and metadata.get("size_bytes") == expected_size
+            and metadata.get("sha256") == sha256(extracted)
+        )
+        if reusable:
+            return extracted
+        raise RuntimeError("existing extracted OneStop CSV failed provenance checks")
+
+    if extracted.exists() != metadata_path.exists():
+        raise RuntimeError("incomplete extracted OneStop CSV provenance pair")
+    temporary = extracted.with_suffix(extracted.suffix + ".part")
+    digest = hashlib.sha256()
+    written = 0
+    try:
+        with zipfile.ZipFile(path) as archive, archive.open(
+            member_name, "r"
+        ) as source, temporary.open("wb") as output:
+            while block := source.read(1024 * 1024):
+                output.write(block)
+                digest.update(block)
+                written += len(block)
+        if written != expected_size:
+            raise RuntimeError(
+                f"extracted OneStop CSV size mismatch: {written} != {expected_size}"
+            )
+        os.replace(temporary, extracted)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    frozen._write_json(
+        metadata_path,
+        {
+            "archive_sha256": manifest["source"]["sha256"],
+            "member_name": member_name,
+            "sha256": digest.hexdigest(),
+            "size_bytes": written,
+        },
+    )
+    return extracted
+
+
 def _read_selected_source(
     path: Path,
     *,
@@ -156,25 +209,24 @@ def _read_selected_source(
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Read only an explicit column whitelist and apply frozen identity filters."""
     manifest = inspect_archive(path)
-    member_name = manifest["archive"]["member_name"]
+    csv_path = _ensure_extracted_csv(path, manifest)
     chunks: list[pd.DataFrame] = []
     input_rows = 0
     selected_rows = 0
-    with zipfile.ZipFile(path) as archive, archive.open(member_name, "r") as source:
-        reader = pd.read_csv(
-            source,
-            usecols=list(columns),
-            dtype=str,
-            keep_default_na=False,
-            chunksize=CHUNK_ROWS,
-            low_memory=False,
-        )
-        for chunk in reader:
-            input_rows += len(chunk)
-            mask = _scope_mask(chunk)
-            selected = chunk.loc[mask, list(columns)].copy()
-            selected_rows += len(selected)
-            chunks.append(selected)
+    reader = pd.read_csv(
+        csv_path,
+        usecols=list(columns),
+        dtype=str,
+        keep_default_na=False,
+        chunksize=CHUNK_ROWS,
+        low_memory=False,
+    )
+    for chunk in reader:
+        input_rows += len(chunk)
+        mask = _scope_mask(chunk)
+        selected = chunk.loc[mask, list(columns)].copy()
+        selected_rows += len(selected)
+        chunks.append(selected)
     if not chunks or not selected_rows:
         raise RuntimeError("frozen OneStop scope selected no rows")
     return pd.concat(chunks, ignore_index=True), {
