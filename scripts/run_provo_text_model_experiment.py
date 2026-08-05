@@ -165,6 +165,11 @@ def load_provo(path: Path) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
         keep_default_na=False,
         low_memory=False,
     )
+    # EyeLink labels include display-padding whitespace.  It is not part of the
+    # lexical item and would otherwise become an extra GPT-2 space token.
+    raw["IA_LABEL"] = raw["IA_LABEL"].map(
+        lambda value: unicodedata.normalize("NFKC", str(value)).strip()
+    )
     if raw[list(SOURCE_COLUMNS[:4])].eq("").any().any():
         raise ValueError("PROVO identity/display fields must be complete")
     raw["Text_ID"] = raw["Text_ID"].astype(str)
