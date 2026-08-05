@@ -47,17 +47,24 @@ jobs:
           core/gaze_core/calibration_regression.py
           core/gaze_core/inference.py
           core/gaze_core/model_registry.py
+          core/gaze_core/motion_experiment.py
           core/gaze_core/motion_robustness.py
+          core/gaze_core/session_independence.py
           core/gaze_core/sample_store.py
           core/gaze_core/torch_runtime.py
           core/gaze_core/training.py
           scripts/audit_gaze_motion_coverage.py
+          scripts/audit_gaze_session_independence.py
           scripts/benchmark_gaze_inference.py
+          scripts/import_offline_calibration.py
+          scripts/run_gaze_motion_experiment.py
           scripts/run_offline_quality_gate.py
           scripts/test_app_factory.py
           scripts/test_gaze_benchmark.py
           scripts/test_gaze_calibration_regression.py
+          scripts/test_gaze_motion_experiment.py
           scripts/test_gaze_motion_robustness.py
+          scripts/test_gaze_session_independence.py
           scripts/test_gaze_torch_runtime.py
           scripts/test_adaptive_stepper.py
           scripts/test_cognitive_inspector.py
@@ -75,19 +82,30 @@ jobs:
           core/gaze_core/calibration_regression.py
           core/gaze_core/inference.py
           core/gaze_core/model_registry.py
+          core/gaze_core/motion_experiment.py
           core/gaze_core/motion_robustness.py
+          core/gaze_core/session_independence.py
+          core/gaze_core/sample_store.py
           core/gaze_core/torch_runtime.py
+          core/gaze_core/training.py
           scripts/audit_gaze_motion_coverage.py
+          scripts/audit_gaze_session_independence.py
           scripts/benchmark_gaze_inference.py
+          scripts/import_offline_calibration.py
+          scripts/run_gaze_motion_experiment.py
           scripts/run_offline_quality_gate.py
           scripts/test_app_factory.py
           scripts/test_gaze_benchmark.py
           scripts/test_gaze_calibration_regression.py
+          scripts/test_gaze_motion_experiment.py
           scripts/test_gaze_motion_robustness.py
+          scripts/test_gaze_session_independence.py
           scripts/test_gaze_torch_runtime.py
           scripts/test_adaptive_stepper.py
           scripts/test_cognitive_inspector.py
           scripts/test_fusion_routes.py
+          web/routes/demo.py
+          web/routes/gaze.py
 
       - name: Run offline CPU quality gate
         run: python -X utf8 -m scripts.run_offline_quality_gate --timeout-seconds 180

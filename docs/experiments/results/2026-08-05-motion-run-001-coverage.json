@@ -1,0 +1,147 @@
+{
+  "issues": [],
+  "requirements": {
+    "min_distance_scale_change_ratio": 0.05,
+    "min_head_yaw_span_deg": 20.0,
+    "min_lateral_pose_separation_deg": 15.0,
+    "min_motion_blocks": 5,
+    "min_replicated_targets": 9,
+    "min_usable_samples": 50,
+    "required_distance_conditions": [
+      "nominal",
+      "near",
+      "far"
+    ],
+    "required_metadata_fields": [
+      "camera_id",
+      "capture_burst_id",
+      "capture_run_id",
+      "capture_source",
+      "collect_mode",
+      "collection_protocol",
+      "device_class",
+      "distance_condition",
+      "lighting_condition",
+      "motion_block_id",
+      "posture_condition"
+    ],
+    "required_posture_conditions": [
+      "neutral",
+      "left",
+      "right"
+    ]
+  },
+  "status": "ready",
+  "summary": {
+    "collection_protocol_distribution": {
+      "motion-diverse-v1": 65
+    },
+    "distance_condition_distribution": {
+      "far": 13,
+      "near": 13,
+      "nominal": 39
+    },
+    "face_scale": {
+      "max": 0.77,
+      "min": 0.396,
+      "p05": 0.4,
+      "p50": 0.569,
+      "p95": 0.756
+    },
+    "face_scale_by_distance": {
+      "far": {
+        "max": 0.407,
+        "min": 0.396,
+        "p05": 0.396,
+        "p50": 0.403,
+        "p95": 0.404
+      },
+      "near": {
+        "max": 0.77,
+        "min": 0.736,
+        "p05": 0.736,
+        "p50": 0.749,
+        "p95": 0.768
+      },
+      "nominal": {
+        "max": 0.589,
+        "min": 0.553,
+        "p05": 0.554,
+        "p50": 0.569,
+        "p95": 0.581
+      }
+    },
+    "head_pitch_deg": {
+      "max": 29.723,
+      "min": 15.113,
+      "p05": 17.689,
+      "p50": 23.116,
+      "p95": 27.772
+    },
+    "head_pose_usable": 65,
+    "head_yaw_by_posture": {
+      "left": {
+        "max": 0.134,
+        "min": -8.236,
+        "p05": -8.236,
+        "p50": -3.636,
+        "p95": -0.217
+      },
+      "neutral": {
+        "max": 12.172,
+        "min": 5.298,
+        "p05": 5.527,
+        "p50": 9.354,
+        "p95": 11.664
+      },
+      "right": {
+        "max": 21.385,
+        "min": 17.514,
+        "p05": 17.514,
+        "p50": 19.421,
+        "p95": 20.859
+      }
+    },
+    "head_yaw_deg": {
+      "max": 21.385,
+      "min": -8.236,
+      "p05": -5.731,
+      "p50": 9.354,
+      "p95": 20.447
+    },
+    "malformed_lines": 0,
+    "manifest_lines": 65,
+    "manifests_seen": 1,
+    "metadata_coverage": {
+      "camera_id": 65,
+      "capture_burst_id": 65,
+      "capture_run_id": 65,
+      "capture_source": 65,
+      "collect_mode": 65,
+      "collection_protocol": 65,
+      "device_class": 65,
+      "distance_condition": 65,
+      "lighting_condition": 65,
+      "motion_block_id": 65,
+      "posture_condition": 65
+    },
+    "participant_label_count": 1,
+    "phase_distribution": {
+      "calibration": 65
+    },
+    "posture_condition_distribution": {
+      "left": 13,
+      "neutral": 39,
+      "right": 13
+    },
+    "repeat_distribution": {
+      "0": 65
+    },
+    "replicated_session_targets": 13,
+    "samples": 65,
+    "schema_version": 1,
+    "sessions_seen": 1,
+    "source_sha256": "87b303655095f360eaa68fc910f12df404345d5c1fad04a2c7e945a59db33d36",
+    "unique_motion_blocks": 5
+  }
+}

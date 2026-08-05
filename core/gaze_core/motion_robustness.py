@@ -17,10 +17,11 @@ from math import isfinite, pi, sqrt
 from pathlib import Path
 from typing import Any
 
-
 MOTION_METADATA_FIELDS = (
     "camera_id",
     "capture_burst_id",
+    "capture_run_id",
+    "capture_source",
     "collect_mode",
     "collection_protocol",
     "device_class",
@@ -30,7 +31,10 @@ MOTION_METADATA_FIELDS = (
     "posture_condition",
 )
 
-CAPTURE_METADATA_TEXT_FIELDS = MOTION_METADATA_FIELDS
+CAPTURE_METADATA_TEXT_FIELDS = (
+    *MOTION_METADATA_FIELDS,
+    "source_session_id",
+)
 CAPTURE_METADATA_NUMBER_FIELDS = (
     "camera_frame_rate",
     "camera_height",
@@ -50,6 +54,8 @@ class MotionSample:
     face_scale: float | None
     camera_id: str | None
     capture_burst_id: str | None
+    capture_run_id: str | None
+    capture_source: str | None
     device_class: str | None
     distance_condition: str | None
     lighting_condition: str | None
@@ -200,6 +206,8 @@ def _motion_sample(
         face_scale=face_scale,
         camera_id=_optional_text(record.get("camera_id")),
         capture_burst_id=_optional_text(record.get("capture_burst_id")),
+        capture_run_id=_optional_text(record.get("capture_run_id")),
+        capture_source=_optional_text(record.get("capture_source")),
         device_class=_optional_text(record.get("device_class")),
         distance_condition=_optional_text(record.get("distance_condition")),
         lighting_condition=_optional_text(record.get("lighting_condition")),

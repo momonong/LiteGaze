@@ -51,6 +51,7 @@ class LowPassFilter {
 
 const state = {
   sessionId: "",
+  captureRunId: "",
   collecting: false,
   testing: false,
   heatmap: false,
@@ -341,8 +342,16 @@ async function refreshModelsList() {
 
 async function createSession() {
   const participantId = els.participantName.value.trim() || "anonymous";
-  const data = await postJson("/api/gaze/session", { participant_id: participantId });
+  state.captureRunId = globalThis.crypto?.randomUUID
+    ? `capture-${globalThis.crypto.randomUUID()}`
+    : `capture-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const data = await postJson("/api/gaze/session", {
+    participant_id: participantId,
+    capture_run_id: state.captureRunId,
+    capture_source: "direct-frame",
+  });
   state.sessionId = data.session_id;
+  state.captureRunId = data.capture_run_id;
   els.session.textContent = state.sessionId;
   log(`建立資料集 ${state.sessionId}`);
 }
@@ -481,6 +490,8 @@ async function collect() {
           collection_protocol: collectMode === "motion_robust" ? "motion-diverse-v1" : "standard-v1",
           motion_block_id: block.id,
           capture_burst_id: `${state.sessionId}:${block.id}:r${repeat}`,
+          capture_run_id: state.captureRunId,
+          capture_source: "direct-frame",
           posture_condition: block.posture,
           distance_condition: block.distance,
           lighting_condition: "ambient",
@@ -507,6 +518,8 @@ async function collect() {
         const participantId = els.participantName.value.trim() || "anonymous";
         const timelineData = {
           participant_id: participantId,
+          capture_run_id: state.captureRunId,
+          source_session_id: state.sessionId,
           viewport_width: window.innerWidth,
           viewport_height: window.innerHeight,
           targets: state.timelineTargets

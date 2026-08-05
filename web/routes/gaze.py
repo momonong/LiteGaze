@@ -1,15 +1,31 @@
 from __future__ import annotations
 
+import json
+import time
+import traceback
 from pathlib import Path
 
+import cv2
 from flask import Blueprint, jsonify, request
 
 from core.gaze_core.inference import predict
-from core.gaze_core.model_registry import ensure_runs_dir, list_models, delete_model, rename_model
+from core.gaze_core.model_registry import (
+    delete_model,
+    ensure_runs_dir,
+    list_models,
+    rename_model,
+)
 from core.gaze_core.motion_robustness import audit_payload, load_motion_samples
-from core.gaze_core.sample_store import create_session, list_datasets, save_sample, delete_dataset, rename_dataset
+from core.gaze_core.sample_store import (
+    create_session,
+    delete_dataset,
+    ensure_sessions_dir,
+    get_preprocessor,
+    list_datasets,
+    rename_dataset,
+    save_sample,
+)
 from core.gaze_core.training import train_placeholder
-
 
 ROOT = Path(__file__).resolve().parents[2]
 gaze_bp = Blueprint("gaze", __name__, url_prefix="/api/gaze")
@@ -35,7 +51,15 @@ def datasets():
 @gaze_bp.post("/session")
 def session():
     body = request.get_json(force=True) or {}
-    return jsonify(create_session(ROOT, body.get("participant_id", "anonymous")))
+    return jsonify(
+        create_session(
+            ROOT,
+            body.get("participant_id", "anonymous"),
+            capture_run_id=body.get("capture_run_id"),
+            capture_source=body.get("capture_source", "direct-frame"),
+            source_session_id=body.get("source_session_id"),
+        )
+    )
 
 
 @gaze_bp.post("/sample")
@@ -73,10 +97,6 @@ def dataset_ops(session_id):
 @gaze_bp.post("/datasets/<session_id>/reprocess")
 def reprocess_dataset(session_id):
     """Re-run MediaPipe on raw frames for sessions that had face detection failures."""
-    import json as _json
-    import cv2 as _cv2
-    from core.gaze_core.sample_store import get_preprocessor, ensure_sessions_dir
-
     session_dir = ensure_sessions_dir(ROOT) / session_id
     manifest_path = session_dir / "manifest.jsonl"
     if not session_dir.exists() or not manifest_path.exists():
@@ -84,7 +104,11 @@ def reprocess_dataset(session_id):
 
     try:
         preprocessor = get_preprocessor()
-        records = [_json.loads(l) for l in manifest_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+        records = [
+            json.loads(line)
+            for line in manifest_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
         fixed = 0
         still_failed = 0
         updated = []
@@ -93,7 +117,7 @@ def reprocess_dataset(session_id):
                 updated.append(rec)
                 continue
             raw_p = session_dir / rec.get("raw_path", "")
-            img = _cv2.imread(str(raw_p), _cv2.IMREAD_COLOR)
+            img = cv2.imread(str(raw_p), cv2.IMREAD_COLOR)
             if img is None:
                 still_failed += 1
                 updated.append(rec)
@@ -103,8 +127,8 @@ def reprocess_dataset(session_id):
                 stem = Path(rec["raw_path"]).stem
                 crop_path = session_dir / "crop" / f"{stem}.jpg"
                 norm_path = session_dir / "normalized_face" / f"{stem}.jpg"
-                _cv2.imwrite(str(crop_path), processed.crop_bgr)
-                _cv2.imwrite(str(norm_path), processed.image_bgr)
+                cv2.imwrite(str(crop_path), processed.crop_bgr)
+                cv2.imwrite(str(norm_path), processed.image_bgr)
                 rec["crop_path"] = crop_path.relative_to(session_dir).as_posix()
                 rec["normalized_face_path"] = norm_path.relative_to(session_dir).as_posix()
                 rec["head_pose_pitch_yaw"] = processed.head_pose_pitch_yaw.tolist()
@@ -118,12 +142,12 @@ def reprocess_dataset(session_id):
                 still_failed += 1
             updated.append(rec)
         manifest_path.write_text(
-            "\n".join(_json.dumps(r, ensure_ascii=False) for r in updated) + "\n",
+            "\n".join(json.dumps(record, ensure_ascii=False) for record in updated)
+            + "\n",
             encoding="utf-8",
         )
         return jsonify({"ok": True, "fixed": fixed, "still_failed": still_failed, "total": len(updated)})
     except Exception as exc:
-        import traceback
         traceback.print_exc()
         return jsonify({"ok": False, "error": str(exc)}), 500
 
@@ -181,7 +205,15 @@ def api_list_datasets():
 @gaze_api_bp.post("/session")
 def api_session():
     body = request.get_json(force=True) or {}
-    return jsonify(create_session(ROOT, body.get("participant_id", "anonymous")))
+    return jsonify(
+        create_session(
+            ROOT,
+            body.get("participant_id", "anonymous"),
+            capture_run_id=body.get("capture_run_id"),
+            capture_source=body.get("capture_source", "direct-frame"),
+            source_session_id=body.get("source_session_id"),
+        )
+    )
 
 
 @gaze_api_bp.post("/sample")
@@ -198,7 +230,6 @@ def api_train():
         response, status = train_placeholder(ROOT, body)
         return jsonify(response), status
     except Exception as exc:
-        import traceback
         traceback.print_exc()
         return jsonify({"ok": False, "error": f"Train failed: {exc}"}), 500
 
@@ -210,15 +241,12 @@ def api_predict():
         response, status = predict(ROOT, body)
         return jsonify(response), status
     except Exception as exc:
-        import traceback
         traceback.print_exc()
         return jsonify({"ok": False, "error": f"Predict failed: {exc}"}), 500
 
 
 @gaze_bp.post("/save_pairs")
 def save_pairs():
-    import json
-    import time
     body = request.get_json(force=True) or {}
     session_id = body.get("session_id", "")
     pairs = body.get("pairs", [])

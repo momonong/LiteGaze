@@ -62,6 +62,8 @@ To avoid mixed purposes, our documentation is structured as follows:
 | **[Hardware methodology ADR](docs/adr/0001-hardware-performance-methodology.md)** | Performance Decisions | Acceptance gates, data isolation, and reproducibility requirements. |
 | **[Motion-diverse calibration ADR](docs/adr/0003-motion-diverse-gaze-calibration.md)** | Gaze Robustness Decision | Five-block capture protocol, grouped validation, and promotion rules. |
 | **[Motion robustness experiment](docs/experiments/2026-08-05-gaze-motion-robustness.md)** | Experiment Record | Historical-data audit, implementation, tests, GPU gates, and next capture. |
+| **[Capture independence experiment](docs/experiments/2026-08-05-gaze-capture-independence.md)** | Data Provenance | Prevents direct/video artifacts from leaking across validation splits. |
+| **[Motion-shift run 001](docs/experiments/2026-08-05-gaze-motion-run-001.md)** | Real Capture Result | Nested block holdout, frozen M0/M1 gate, decision, limitations, and zero-GPU telemetry. |
 
 ---
 

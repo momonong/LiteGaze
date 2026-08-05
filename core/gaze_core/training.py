@@ -6,21 +6,26 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-import torch
 
 from .calibration_regression import (
     MOTION_FEATURE_NAMES,
     face_geometry_from_bbox,
     fit_best_stage,
     fit_standardized_ridge,
-    motion_challenger_decision,
     motion_conditioned_features,
     standardized_design,
 )
 from .model_registry import clean_model_name, model_path
+from .motion_experiment import (
+    BASELINE_MODEL,
+    CHALLENGER_MODEL,
+    VALIDATION_SCHEME,
+    evaluate_motion_candidates,
+)
 from .motion_robustness import audit_payload, load_motion_samples
 from .sample_store import ensure_sessions_dir
 from .torch_runtime import cuda_runtime_available
+
 
 def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
     dataset_id = payload.get("data_session_id", "")
@@ -62,9 +67,14 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
             }, 400
 
     try:
+        import torch
+
         from core.unigaze_personalization.dataset import read_manifest
+        from core.unigaze_personalization.model import (
+            UniGazeFeatureWrapper,
+            load_unigaze_b16,
+        )
         from core.unigaze_personalization.transforms import to_unigaze_tensor
-        from core.unigaze_personalization.model import UniGazeFeatureWrapper, load_unigaze_b16
 
         # 1. Load calibration data records
         records = read_manifest(manifest_path)
@@ -178,7 +188,7 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
         unique_targets = len(set(tuple(t) for t in target_list))
         grouped_validation = validation_groups if uses_motion_protocol else None
         validation_scheme = (
-            "leave_one_motion_block_out"
+            VALIDATION_SCHEME
             if grouped_validation is not None
             else "leave_one_sample_out"
         )
@@ -189,7 +199,12 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
             # sessions retain sample-level LOOCV for backward compatibility.
             X_raw = np.array(gaze_list)
             Y = np.array(target_list)
-            W, poly_degree, best_alpha, baseline_validation_error = fit_best_stage(
+            (
+                W,
+                poly_degree,
+                best_alpha,
+                baseline_hyperparameter_error,
+            ) = fit_best_stage(
                 X_raw,
                 Y,
                 viewport_list,
@@ -207,7 +222,8 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                 X = np.column_stack([yaw, pitch, yaw * yaw, pitch * pitch, yaw * pitch, np.ones(N)])
 
             baseline_predictions = X @ W
-            best_validation_error = baseline_validation_error
+            baseline_validation_error = baseline_hyperparameter_error
+            best_validation_error = baseline_hyperparameter_error
 
             if uses_motion_protocol:
                 motion_features = motion_conditioned_features(
@@ -220,31 +236,54 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                     feature_mean,
                     feature_scale,
                     conditioned_alpha,
-                    conditioned_validation_error,
+                    conditioned_hyperparameter_error,
                 ) = fit_standardized_ridge(
                     motion_features,
                     Y,
                     viewport_list,
                     validation_groups=validation_groups,
                 )
-                (
-                    select_conditioned,
-                    required_improvement,
-                    observed_improvement,
-                ) = motion_challenger_decision(
-                    baseline_validation_error,
-                    conditioned_validation_error,
+                nested_comparison = evaluate_motion_candidates(
+                    X_raw,
+                    np.array(head_pose_list),
+                    np.array(face_geometry_list),
+                    Y,
+                    viewport_list,
+                    validation_groups,
                 )
+                promotion_gate = nested_comparison["promotion_gate"]
+                baseline_validation_error = nested_comparison["candidates"][
+                    BASELINE_MODEL
+                ]["macro_mean_px"]
+                conditioned_validation_error = nested_comparison["candidates"][
+                    CHALLENGER_MODEL
+                ]["macro_mean_px"]
+                select_conditioned = bool(promotion_gate["passed"])
                 candidate_comparison = {
                     "baseline_gaze_only_px": baseline_validation_error,
                     "motion_conditioned_px": conditioned_validation_error,
-                    "required_improvement_px": required_improvement,
-                    "observed_improvement_px": observed_improvement,
-                    "selected": (
-                        "motion_conditioned_ridge_v1"
-                        if select_conditioned
-                        else "gaze_polynomial"
-                    ),
+                    "required_improvement_px": promotion_gate[
+                        "required_improvement_px"
+                    ],
+                    "observed_improvement_px": promotion_gate[
+                        "observed_improvement_px"
+                    ],
+                    "selected": promotion_gate["selected_model"],
+                    "validation_scheme": nested_comparison["validation_scheme"],
+                    "metrics": nested_comparison["candidates"],
+                    "promotion_gate": promotion_gate,
+                    "folds": nested_comparison["folds"],
+                    "final_fit_hyperparameters": {
+                        BASELINE_MODEL: {
+                            "alpha": best_alpha,
+                            "degree": poly_degree,
+                            "group_cv_mean_px": baseline_hyperparameter_error,
+                        },
+                        CHALLENGER_MODEL: {
+                            "alpha": conditioned_alpha,
+                            "group_cv_mean_px": conditioned_hyperparameter_error,
+                        },
+                    },
                 }
             else:
                 select_conditioned = False
@@ -268,6 +307,7 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                     "W": conditioned_weights.tolist(),
                     "alpha": conditioned_alpha,
                     "validation_px_error": conditioned_validation_error,
+                    "hyperparameter_cv_px_error": conditioned_hyperparameter_error,
                     "validation_scheme": validation_scheme,
                     "mean_px_error": 0.0,
                 }]
@@ -280,6 +320,7 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                     "poly_degree": poly_degree,
                     "alpha": best_alpha,
                     "validation_px_error": baseline_validation_error,
+                    "hyperparameter_cv_px_error": baseline_hyperparameter_error,
                     "validation_scheme": validation_scheme,
                     "mean_px_error": 0.0,
                 }]

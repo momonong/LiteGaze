@@ -40,7 +40,7 @@ The offline gate validates application contracts and deterministic algorithms. I
 
 ## Motion-robustness tests
 
-The offline lane includes two gaze-calibration modules that do not import
+The offline lane includes three gaze-calibration modules that do not import
 PyTorch or open images:
 
 - `scripts.test_gaze_motion_robustness` verifies metadata coverage gates,
@@ -48,6 +48,9 @@ PyTorch or open images:
   disjointness;
 - `scripts.test_gaze_calibration_regression` verifies sample-vs-group leakage,
   standardized ridge fitting, and the frozen motion-conditioned feature schema.
+- `scripts.test_gaze_motion_experiment` verifies nested outer-block isolation,
+  a positive motion-shift control, a no-shift negative control, and portable GPU
+  telemetry parsing.
 
 Audit historical or newly collected manifests with:
 
@@ -58,6 +61,36 @@ python -X utf8 -m scripts.audit_gaze_motion_coverage --session-id SESSION_ID --f
 
 The audit is a data-readiness gate, not an accuracy benchmark. A real accuracy
 claim still requires a frozen session or participant holdout.
+
+Run the preregistered real-capture comparison only after its audit passes:
+
+```bash
+python -X utf8 -m scripts.run_gaze_motion_experiment \
+  --session-id SESSION_ID \
+  --output-model-name motion_run_001_nested_cpu \
+  --json-output docs/experiments/results/motion-run.json
+```
+
+This runner forces the training request to CPU, keeps model hubs offline,
+monitors `nvidia-smi`, fingerprints every normalized input image, and writes an
+aggregate-only result. It refuses to overwrite an existing model artifact.
+
+## Capture-run independence gate
+
+Direct browser samples and frames extracted from the accompanying video are two
+artifacts of one physical capture, not two independent sessions. New sessions
+therefore persist a `capture_run_id`, `capture_source`, and (for video-derived
+sessions) `source_session_id`. Audit the available independent captures with:
+
+```bash
+python -X utf8 -m scripts.audit_gaze_session_independence
+```
+
+The offline test `scripts.test_gaze_session_independence` verifies that linked
+direct/video artifacts can never land on opposite sides of a validation split.
+Legacy sessions without provenance are conservatively grouped when the same
+participant label appears within the frozen 24-hour window. Participant labels
+are operational labels and are not asserted to identify unique people.
 
 ## Opt-in hardware benchmark
 

@@ -41,6 +41,8 @@ def _record(
             {
                 "camera_id": "integrated-webcam",
                 "capture_burst_id": f"{block}:r{repeat}",
+                "capture_run_id": "capture-test-run",
+                "capture_source": "direct-frame",
                 "collect_mode": "motion_robust",
                 "collection_protocol": "motion-diverse-v1",
                 "device_class": "laptop",
@@ -81,6 +83,8 @@ class MotionCoverageAuditTests(unittest.TestCase):
         metadata = capture_metadata(
             {
                 "camera_id": "camera-a",
+                "capture_run_id": "capture-a",
+                "capture_source": "direct-frame",
                 "camera_width": "1280",
                 "posture_condition": "left",
                 "unknown_private_field": "must-not-be-stored",
@@ -89,6 +93,8 @@ class MotionCoverageAuditTests(unittest.TestCase):
         )
 
         self.assertEqual(metadata["camera_id"], "camera-a")
+        self.assertEqual(metadata["capture_run_id"], "capture-a")
+        self.assertEqual(metadata["capture_source"], "direct-frame")
         self.assertEqual(metadata["camera_width"], 1280.0)
         self.assertEqual(metadata["posture_condition"], "left")
         self.assertEqual(len(metadata["motion_block_id"]), 128)

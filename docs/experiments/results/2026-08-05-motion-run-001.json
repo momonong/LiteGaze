@@ -1,0 +1,403 @@
+{
+  "coverage_gate": {
+    "issues": [],
+    "requirements": {
+      "min_distance_scale_change_ratio": 0.05,
+      "min_head_yaw_span_deg": 20.0,
+      "min_lateral_pose_separation_deg": 15.0,
+      "min_motion_blocks": 5,
+      "min_replicated_targets": 9,
+      "min_usable_samples": 50,
+      "required_distance_conditions": [
+        "nominal",
+        "near",
+        "far"
+      ],
+      "required_metadata_fields": [
+        "camera_id",
+        "capture_burst_id",
+        "capture_run_id",
+        "capture_source",
+        "collect_mode",
+        "collection_protocol",
+        "device_class",
+        "distance_condition",
+        "lighting_condition",
+        "motion_block_id",
+        "posture_condition"
+      ],
+      "required_posture_conditions": [
+        "neutral",
+        "left",
+        "right"
+      ]
+    },
+    "status": "ready",
+    "summary": {
+      "collection_protocol_distribution": {
+        "motion-diverse-v1": 65
+      },
+      "distance_condition_distribution": {
+        "far": 13,
+        "near": 13,
+        "nominal": 39
+      },
+      "face_scale": {
+        "max": 0.77,
+        "min": 0.396,
+        "p05": 0.4,
+        "p50": 0.569,
+        "p95": 0.756
+      },
+      "face_scale_by_distance": {
+        "far": {
+          "max": 0.407,
+          "min": 0.396,
+          "p05": 0.396,
+          "p50": 0.403,
+          "p95": 0.404
+        },
+        "near": {
+          "max": 0.77,
+          "min": 0.736,
+          "p05": 0.736,
+          "p50": 0.749,
+          "p95": 0.768
+        },
+        "nominal": {
+          "max": 0.589,
+          "min": 0.553,
+          "p05": 0.554,
+          "p50": 0.569,
+          "p95": 0.581
+        }
+      },
+      "head_pitch_deg": {
+        "max": 29.723,
+        "min": 15.113,
+        "p05": 17.689,
+        "p50": 23.116,
+        "p95": 27.772
+      },
+      "head_pose_usable": 65,
+      "head_yaw_by_posture": {
+        "left": {
+          "max": 0.134,
+          "min": -8.236,
+          "p05": -8.236,
+          "p50": -3.636,
+          "p95": -0.217
+        },
+        "neutral": {
+          "max": 12.172,
+          "min": 5.298,
+          "p05": 5.527,
+          "p50": 9.354,
+          "p95": 11.664
+        },
+        "right": {
+          "max": 21.385,
+          "min": 17.514,
+          "p05": 17.514,
+          "p50": 19.421,
+          "p95": 20.859
+        }
+      },
+      "head_yaw_deg": {
+        "max": 21.385,
+        "min": -8.236,
+        "p05": -5.731,
+        "p50": 9.354,
+        "p95": 20.447
+      },
+      "malformed_lines": 0,
+      "manifest_lines": 65,
+      "manifests_seen": 1,
+      "metadata_coverage": {
+        "camera_id": 65,
+        "capture_burst_id": 65,
+        "capture_run_id": 65,
+        "capture_source": 65,
+        "collect_mode": 65,
+        "collection_protocol": 65,
+        "device_class": 65,
+        "distance_condition": 65,
+        "lighting_condition": 65,
+        "motion_block_id": 65,
+        "posture_condition": 65
+      },
+      "participant_label_count": 1,
+      "phase_distribution": {
+        "calibration": 65
+      },
+      "posture_condition_distribution": {
+        "left": 13,
+        "neutral": 39,
+        "right": 13
+      },
+      "repeat_distribution": {
+        "0": 65
+      },
+      "replicated_session_targets": 13,
+      "samples": 65,
+      "schema_version": 1,
+      "sessions_seen": 1,
+      "source_sha256": "87b303655095f360eaa68fc910f12df404345d5c1fad04a2c7e945a59db33d36",
+      "unique_motion_blocks": 5
+    }
+  },
+  "decision": {
+    "model_artifact": "motion_run_001_nested_cpu.json",
+    "model_artifact_sha256": "759c0d5ab5d2ef8cc32ea5aadca63e8bfed525655f841212125c4c5267b251d2",
+    "optimization_adopted": true,
+    "selected_model": "motion_conditioned_ridge_v1"
+  },
+  "duration_seconds": 15.26406549999956,
+  "evaluation": {
+    "baseline_gaze_only_px": 330.2202830609762,
+    "final_fit_hyperparameters": {
+      "gaze_polynomial": {
+        "alpha": 0.1,
+        "degree": 1,
+        "group_cv_mean_px": 324.4702074867024
+      },
+      "motion_conditioned_ridge_v1": {
+        "alpha": 10.0,
+        "group_cv_mean_px": 214.99089791694377
+      }
+    },
+    "folds": [
+      {
+        "gaze_polynomial": {
+          "alpha": 0.1,
+          "degree": 1,
+          "inner_validation_mean_px": 337.9664824158044,
+          "mean_px": 395.13782411904776,
+          "median_px": 374.4192879578205,
+          "p95_px": 684.9318917335781
+        },
+        "motion_conditioned_ridge_v1": {
+          "alpha": 0.1,
+          "inner_validation_mean_px": 365.61858957162383,
+          "mean_px": 390.15347302431144,
+          "median_px": 374.37359234694526,
+          "p95_px": 648.1754127888328
+        },
+        "outer_motion_block": "far",
+        "train_motion_block_count": 4,
+        "train_samples": 52,
+        "validation_samples": 13
+      },
+      {
+        "gaze_polynomial": {
+          "alpha": 0.1,
+          "degree": 1,
+          "inner_validation_mean_px": 327.67552813904734,
+          "mean_px": 342.7742544526206,
+          "median_px": 361.6072599548983,
+          "p95_px": 541.7153620977886
+        },
+        "motion_conditioned_ridge_v1": {
+          "alpha": 10.0,
+          "inner_validation_mean_px": 222.94915609916208,
+          "mean_px": 225.74434374323312,
+          "median_px": 247.88883028191043,
+          "p95_px": 392.24795439127894
+        },
+        "outer_motion_block": "left",
+        "train_motion_block_count": 4,
+        "train_samples": 52,
+        "validation_samples": 13
+      },
+      {
+        "gaze_polynomial": {
+          "alpha": 0.1,
+          "degree": 2,
+          "inner_validation_mean_px": 358.60971056116097,
+          "mean_px": 326.0196878900317,
+          "median_px": 315.50221117575114,
+          "p95_px": 504.8443851591892
+        },
+        "motion_conditioned_ridge_v1": {
+          "alpha": 10.0,
+          "inner_validation_mean_px": 360.07970659337013,
+          "mean_px": 205.69092627485665,
+          "median_px": 183.09864061590474,
+          "p95_px": 486.39274124102667
+        },
+        "outer_motion_block": "near",
+        "train_motion_block_count": 4,
+        "train_samples": 52,
+        "validation_samples": 13
+      },
+      {
+        "gaze_polynomial": {
+          "alpha": 0.1,
+          "degree": 1,
+          "inner_validation_mean_px": 339.9978545387407,
+          "mean_px": 250.92196034620426,
+          "median_px": 242.7669597063085,
+          "p95_px": 381.7178369534803
+        },
+        "motion_conditioned_ridge_v1": {
+          "alpha": 10.0,
+          "inner_validation_mean_px": 250.84288597835106,
+          "mean_px": 175.0322567674848,
+          "median_px": 191.51985418417468,
+          "p95_px": 239.12163217023738
+        },
+        "outer_motion_block": "neutral",
+        "train_motion_block_count": 4,
+        "train_samples": 52,
+        "validation_samples": 13
+      },
+      {
+        "gaze_polynomial": {
+          "alpha": 0.1,
+          "degree": 1,
+          "inner_validation_mean_px": 331.77532413752385,
+          "mean_px": 336.2476884969767,
+          "median_px": 327.1530434157023,
+          "p95_px": 598.4540608982244
+        },
+        "motion_conditioned_ridge_v1": {
+          "alpha": 1.0,
+          "inner_validation_mean_px": 251.25478075534525,
+          "mean_px": 147.92783375746998,
+          "median_px": 118.04501522825102,
+          "p95_px": 399.11825100778134
+        },
+        "outer_motion_block": "right",
+        "train_motion_block_count": 4,
+        "train_samples": 52,
+        "validation_samples": 13
+      }
+    ],
+    "metrics": {
+      "gaze_polynomial": {
+        "macro_mean_px": 330.2202830609762,
+        "mean_px": 330.2202830609762,
+        "median_px": 327.1530434157023,
+        "p95_px": 614.8318349136911
+      },
+      "motion_conditioned_ridge_v1": {
+        "macro_mean_px": 228.9097667134712,
+        "mean_px": 228.90976671347116,
+        "median_px": 202.063622590209,
+        "p95_px": 499.801291535252
+      }
+    },
+    "motion_conditioned_px": 228.9097667134712,
+    "observed_improvement_px": 101.310516347505,
+    "promotion_gate": {
+      "min_absolute_improvement_px": 5.0,
+      "min_relative_improvement": 0.05,
+      "observed_improvement_px": 101.310516347505,
+      "observed_relative_improvement": 0.30679677035101355,
+      "passed": true,
+      "required_improvement_px": 16.511014153048812,
+      "selected_model": "motion_conditioned_ridge_v1"
+    },
+    "required_improvement_px": 16.511014153048812,
+    "selected": "motion_conditioned_ridge_v1",
+    "validation_scheme": "nested_leave_one_motion_block_out"
+  },
+  "evidence_scope": "one real capture; supports motion-block robustness for this run, not cross-person or cross-session generalization",
+  "experiment": "real_single_capture_motion_shift",
+  "gpu": {
+    "after": {
+      "available": true,
+      "compute_processes": [
+        {
+          "memory_used_mib": null,
+          "pid": 39820
+        },
+        {
+          "memory_used_mib": null,
+          "pid": 28684
+        },
+        {
+          "memory_used_mib": null,
+          "pid": 24684
+        },
+        {
+          "memory_used_mib": null,
+          "pid": 16076
+        }
+      ],
+      "devices": [
+        {
+          "index": 0,
+          "memory_total_mib": 24463.0,
+          "memory_used_mib": 0.0,
+          "name": "NVIDIA GeForce RTX 5090 Laptop GPU",
+          "utilization_percent": 0.0
+        }
+      ]
+    },
+    "before": {
+      "available": true,
+      "compute_processes": [
+        {
+          "memory_used_mib": null,
+          "pid": 39820
+        },
+        {
+          "memory_used_mib": null,
+          "pid": 28684
+        },
+        {
+          "memory_used_mib": null,
+          "pid": 24684
+        },
+        {
+          "memory_used_mib": null,
+          "pid": 16076
+        }
+      ],
+      "devices": [
+        {
+          "index": 0,
+          "memory_total_mib": 24463.0,
+          "memory_used_mib": 0.0,
+          "name": "NVIDIA GeForce RTX 5090 Laptop GPU",
+          "utilization_percent": 0.0
+        }
+      ]
+    },
+    "cpu_contract_passed": true,
+    "monitor": {
+      "current_process_observed": false,
+      "peak_current_process_memory_mib": 0.0,
+      "peak_device_memory_used_mib": 0.0,
+      "peak_device_utilization_percent": 0.0,
+      "poll_count": 20
+    },
+    "torch_cuda_initialized": false
+  },
+  "input": {
+    "manifest_sha256": "06de902efe6b6c7d11501ce0daf406f5b43724a5a4e54381197fecad83a2b572",
+    "motion_manifest_source_sha256": "87b303655095f360eaa68fc910f12df404345d5c1fad04a2c7e945a59db33d36",
+    "normalized_image_count": 65,
+    "normalized_images_sha256": "3c49115c48676bb60f44076492114b0b7fc59b8e8e32bc55532b1c84c4250916",
+    "session_count": 1,
+    "unique_normalized_image_count": 65
+  },
+  "overfit_controls": {
+    "candidate_models_fixed_before_encoder_run": true,
+    "confirmation_capture_used": false,
+    "outer_split_unit": "motion_block_id",
+    "outer_validation_target_visible_to_hyperparameter_search": false,
+    "promotion_requires_absolute_and_relative_margin": true
+  },
+  "question_answer_datasets_used": false,
+  "runtime": {
+    "cpu_threads": 8,
+    "numpy": "2.4.6",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9",
+    "torch": "2.13.0+cu130"
+  },
+  "schema_version": 1,
+  "status": "passed"
+}

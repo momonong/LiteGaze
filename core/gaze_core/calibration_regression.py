@@ -22,13 +22,16 @@ MOTION_FEATURE_NAMES = (
     "gaze_pitch_x_face_scale",
 )
 
+MOTION_PROMOTION_MIN_ABSOLUTE_PX = 5.0
+MOTION_PROMOTION_MIN_RELATIVE = 0.05
+
 
 def motion_challenger_decision(
     baseline_error: float,
     challenger_error: float,
     *,
-    min_absolute_improvement: float = 5.0,
-    min_relative_improvement: float = 0.05,
+    min_absolute_improvement: float = MOTION_PROMOTION_MIN_ABSOLUTE_PX,
+    min_relative_improvement: float = MOTION_PROMOTION_MIN_RELATIVE,
 ) -> tuple[bool, float, float]:
     """Apply the frozen absolute-and-relative promotion rule."""
 
@@ -68,12 +71,17 @@ def face_geometry_from_bbox(face_bbox: Mapping[str, Any]) -> tuple[float, float,
     return x + width * 0.5, y + height * 0.5, sqrt(width * height)
 
 
-def _design_matrix(
+def polynomial_design(
     inputs: np.ndarray,
     *,
     degree: int,
     is_stage_1: bool,
 ) -> np.ndarray:
+    """Build the production gaze-polynomial design matrix."""
+
+    inputs = np.asarray(inputs, dtype=np.float64)
+    if inputs.ndim != 2 or inputs.shape[1] != 2:
+        raise ValueError("inputs must have shape (N, 2)")
     if is_stage_1:
         value_1 = inputs[:, 1]  # gaze yaw -> screen x
         value_2 = inputs[:, 0]  # gaze pitch -> screen y
@@ -318,7 +326,11 @@ def fit_best_stage(
     best_alpha = 1e-3
     best_validation_error = float("inf")
     for degree in candidate_degrees:
-        design = _design_matrix(inputs, degree=degree, is_stage_1=is_stage_1)
+        design = polynomial_design(
+            inputs,
+            degree=degree,
+            is_stage_1=is_stage_1,
+        )
         for alpha in candidate_alphas:
             fold_errors: list[float] = []
             for train_indices, validation_indices in folds:
@@ -347,7 +359,7 @@ def fit_best_stage(
 
     if not np.isfinite(best_validation_error):
         raise ValueError("no valid calibration validation fold could be fitted")
-    final_design = _design_matrix(
+    final_design = polynomial_design(
         inputs,
         degree=best_degree,
         is_stage_1=is_stage_1,

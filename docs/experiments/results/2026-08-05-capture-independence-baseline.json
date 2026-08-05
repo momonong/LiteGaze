@@ -1,0 +1,49 @@
+{
+  "issues": [
+    {
+      "code": "INSUFFICIENT_REPEAT_LABELS",
+      "message": "Only 1 labels have independent capture runs; at least 5 are required.",
+      "severity": "error"
+    },
+    {
+      "code": "INSUFFICIENT_INDEPENDENT_CAPTURE_RUNS",
+      "message": "Only 2 independent runs belong to repeat labels; at least 10 are required.",
+      "severity": "error"
+    },
+    {
+      "code": "MISSING_CAPTURE_PROVENANCE",
+      "message": "83 sessions lack capture_run_id; legacy sessions within the frozen time window are conservatively linked.",
+      "severity": "warning"
+    },
+    {
+      "code": "SHARED_CAPTURE_ARTIFACTS",
+      "message": "80 sessions collapse into 35 shared capture groups.",
+      "severity": "warning"
+    }
+  ],
+  "requirements": {
+    "legacy_independence_gap_seconds": 86400.0,
+    "min_independent_capture_runs": 10,
+    "min_repeat_labels": 5
+  },
+  "status": "not_ready",
+  "summary": {
+    "capture_groups": 38,
+    "explicit_provenance_sessions": 0,
+    "independent_capture_runs_for_repeat_labels": 2,
+    "legacy_links_applied": 45,
+    "malformed_lines": 0,
+    "manifest_lines": 1019,
+    "manifests_seen": 83,
+    "max_capture_runs_per_label": 2,
+    "missing_provenance_sessions": 83,
+    "participant_label_count": 36,
+    "provenance_conflicts": 0,
+    "repeat_labels": 1,
+    "sessions": 83,
+    "sessions_in_shared_capture_groups": 80,
+    "shared_capture_groups": 35,
+    "source_sha256": "533619f51706cfe20f04fc2698daab6ba03a154627472689c2805fe6a88bccbc",
+    "video_derived_sessions": 44
+  }
+}

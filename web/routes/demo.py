@@ -1,22 +1,21 @@
 # chenghao/demo_routes.py
 from __future__ import annotations
 
+import collections
 import json
 import time
 import traceback
-import collections
 from pathlib import Path
-from flask import Blueprint, jsonify, request
-import cv2
-import numpy as np
 
-from core.gaze_core.model_registry import ensure_runs_dir, model_path
+import cv2
+from flask import Blueprint, jsonify, request
+
 from core.gaze_core.motion_robustness import (
     audit_payload,
     capture_metadata,
     load_motion_samples,
 )
-from core.gaze_core.sample_store import ensure_sessions_dir, create_session
+from core.gaze_core.sample_store import create_session, ensure_sessions_dir
 from core.gaze_core.training import train_placeholder
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -112,12 +111,20 @@ def upload_video():
     targets = timeline.get("targets", [])
     viewport_width = float(timeline.get("viewport_width", 1920.0))
     viewport_height = float(timeline.get("viewport_height", 1080.0))
+    capture_run_id = timeline.get("capture_run_id")
+    source_session_id = timeline.get("source_session_id")
 
     if not targets:
         return jsonify({"ok": False, "error": "Timeline targets list is empty"}), 400
 
     # 2. Create a calibration session folder
-    session_res = create_session(ROOT, participant_id)
+    session_res = create_session(
+        ROOT,
+        participant_id,
+        capture_run_id=capture_run_id,
+        capture_source="video-extracted",
+        source_session_id=source_session_id,
+    )
     if not session_res.get("ok"):
         return jsonify({"ok": False, "error": "Failed to create session directory structures"}), 500
         
@@ -208,7 +215,16 @@ def upload_video():
                 "extracted_from_video": True,
                 "extracted_timestamp_ms": timestamp_ms
             }
-            record.update(capture_metadata(target))
+            record.update(
+                capture_metadata(
+                    {
+                        **target,
+                        "capture_run_id": session_res["capture_run_id"],
+                        "capture_source": "video-extracted",
+                        "source_session_id": source_session_id,
+                    }
+                )
+            )
             
             with manifest_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(record, ensure_ascii=False) + "\n")

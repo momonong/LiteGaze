@@ -79,7 +79,8 @@ A motion-diverse dataset must satisfy all of the following before training:
 - at least 15° separation between median left/right head yaw;
 - `neutral/left/right` and `nominal/near/far` coverage;
 - near and far median face scale at least 5% above/below nominal respectively;
-- complete required metadata on every sample.
+- complete required metadata on every sample, including `capture_run_id` and
+  `capture_source` so direct and video-derived artifacts cannot be split.
 - zero malformed manifest rows.
 
 The web API returns the aggregate audit for one session. Video extraction
@@ -195,3 +196,9 @@ not yet have a real protocol-compliant capture. Therefore the honest current
 result is infrastructure and methodology improvement, not an accuracy claim.
 The next evidence-producing action is to capture one 65-row session and run the
 frozen M0/M1 comparison.
+
+## Follow-up
+
+That capture and frozen comparison are now complete. The aggregate result and
+single-capture limitations are recorded in
+[`2026-08-05-gaze-motion-run-001.md`](2026-08-05-gaze-motion-run-001.md).

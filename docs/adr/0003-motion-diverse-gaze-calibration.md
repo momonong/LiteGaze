@@ -27,14 +27,18 @@ robustness identifiable.
    blocks (`neutral`, `left`, `right`, `near`, and `far`), producing at least 65
    rows per session.
 3. Persist a bounded allow-list of capture metadata on every row: `camera_id`,
-   `device_class`, `motion_block_id`, `capture_burst_id`, posture, distance,
-   lighting, and non-identifying camera geometry/rate.
+   `device_class`, `motion_block_id`, `capture_burst_id`, `capture_run_id`,
+   capture source, posture, distance, lighting, and non-identifying camera
+   geometry/rate. A video-derived session also records `source_session_id` so
+   it remains grouped with direct frames from the same physical capture.
 4. Reject motion-diverse training unless the frozen metadata audit passes. The
    gate checks usable sample count, block/condition coverage, repeated targets,
    actual yaw separation, and near/far face-scale separation.
-5. Select polynomial degree and ridge regularization using leave-one-motion-
-   block-out validation. Never split one motion block across train and
-   validation.
+5. Evaluate with nested leave-one-motion-block-out validation. The entire outer
+   block is hidden while polynomial degree and ridge regularization are chosen
+   by group validation inside the remaining blocks. Never split one motion
+   block across train and validation or use its targets for hyperparameter
+   selection.
 6. Compare two calibration candidates on exactly the same folds:
 
    - M0: gaze-only linear/quadratic ridge calibration;
@@ -60,6 +64,10 @@ robustness identifiable.
   even if the UI labels say the requested movement was performed.
 - A synthetic duplicate-frame regression demonstrates why sample-level LOOCV
   is not evidence of motion robustness.
+- The first protocol-compliant real run selected M1 under the frozen rule:
+  330.22 px to 228.91 px outer-block macro mean. This is single-capture
+  evidence only; far-distance error remained 390.15 px and still requires an
+  independent confirmation capture.
 - The collection takes longer (at least 65 targets) and requires user movement.
 - No real-world accuracy gain is claimed until a new protocol-compliant session
   is captured and evaluated. The implementation creates the measurement path;

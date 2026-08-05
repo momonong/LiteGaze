@@ -1,22 +1,27 @@
 #!/usr/bin/env python3
 # scripts/import_offline_calibration.py
-import sys
-import os
 import json
+import shutil
+import sys
 import time
 from pathlib import Path
+
 import cv2
-import numpy as np
 
 # Ensure local packages in the root can be found
-ROOT = Path(__file__).parent.parent
+ROOT = Path(__file__).resolve().parents[1]
 CHENGHAO_DIR = ROOT
 sys.path.insert(0, str(ROOT))
 
-from core.gaze_core.sample_store import ensure_sessions_dir, create_session, get_preprocessor
-from core.gaze_core.model_registry import ensure_runs_dir
-from core.gaze_core.training import train_placeholder
-from web.routes.demo import extract_all_targets_sequential
+from core.gaze_core.motion_robustness import capture_metadata  # noqa: E402
+from core.gaze_core.sample_store import (  # noqa: E402
+    create_session,
+    ensure_sessions_dir,
+    get_preprocessor,
+)
+from core.gaze_core.training import train_placeholder  # noqa: E402
+from web.routes.demo import extract_all_targets_sequential  # noqa: E402
+
 
 def main():
     if len(sys.argv) < 3:
@@ -33,7 +38,7 @@ def main():
         print(f"Error: Timeline file not found at: {timeline_file}")
         sys.exit(1)
         
-    with open(timeline_file, 'r', encoding='utf-8') as f:
+    with timeline_file.open(encoding="utf-8") as f:
         timeline = json.load(f)
         
     participant_id = sys.argv[3] if len(sys.argv) > 3 else timeline.get("participant_id", "anonymous")
@@ -41,17 +46,23 @@ def main():
     viewport_width = float(timeline.get("viewport_width", 1920.0))
     viewport_height = float(timeline.get("viewport_height", 1080.0))
     
-    print(f"==================================================")
-    print(f"  LexiGaze Offline Calibration Importer")
-    print(f"==================================================")
+    print("==================================================")
+    print("  LexiGaze Offline Calibration Importer")
+    print("==================================================")
     print(f"Participant ID: {participant_id}")
     print(f"Video File    : {video_file.name}")
     print(f"Timeline File : {timeline_file.name}")
     print(f"Gaze Targets  : {len(targets)}")
-    print(f"==================================================")
+    print("==================================================")
     
     # 1. Create a calibration session directory
-    session_res = create_session(CHENGHAO_DIR, participant_id)
+    session_res = create_session(
+        CHENGHAO_DIR,
+        participant_id,
+        capture_run_id=timeline.get("capture_run_id"),
+        capture_source="video-extracted",
+        source_session_id=timeline.get("source_session_id"),
+    )
     if not session_res.get("ok"):
         print("Error: Failed to create session directory structure.")
         sys.exit(1)
@@ -62,7 +73,6 @@ def main():
     
     # 2. Copy raw video file to session directory
     video_path = session_dir / f"raw_video{video_file.suffix}"
-    import shutil
     shutil.copy2(video_file, video_path)
     
     # 3. Open video using OpenCV
@@ -130,6 +140,16 @@ def main():
                 "extracted_from_video": True,
                 "extracted_timestamp_ms": timestamp_ms
             }
+            record.update(
+                capture_metadata(
+                    {
+                        **target,
+                        "capture_run_id": session_res["capture_run_id"],
+                        "capture_source": "video-extracted",
+                        "source_session_id": timeline.get("source_session_id"),
+                    }
+                )
+            )
             with manifest_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(record, ensure_ascii=False) + "\n")
             processed_count += 1

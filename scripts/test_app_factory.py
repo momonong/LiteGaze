@@ -22,6 +22,20 @@ class FocusedAppFactoryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unknown-subsystem"):
             create_app({"LEXIGAZE_BLUEPRINTS": ("unknown-subsystem",)})
 
+    def test_gaze_motion_audit_route_is_lightweight_and_handles_missing_session(self):
+        app = create_app({
+            "TESTING": True,
+            "LEXIGAZE_BLUEPRINTS": ("gaze",),
+        })
+
+        response = app.test_client().get(
+            "/api/gaze/datasets/does-not-exist-for-test/motion-audit"
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.get_json()["error"], "session not found")
+        self.assertNotIn("torch", sys.modules)
+
 
 if __name__ == "__main__":
     unittest.main()

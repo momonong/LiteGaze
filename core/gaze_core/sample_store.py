@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import base64
 import json
+import threading
 import time
 import uuid
-import threading
 from pathlib import Path
 
 import cv2
@@ -23,7 +23,10 @@ def get_preprocessor():
     if _preprocessor is None:
         with _preprocessor_lock:
             if _preprocessor is None:
-                from core.unigaze_personalization.preprocess import MediaPipeUniGazePreprocessor
+                from core.unigaze_personalization.preprocess import (
+                    MediaPipeUniGazePreprocessor,
+                )
+
                 _preprocessor = MediaPipeUniGazePreprocessor()
     return _preprocessor
 
@@ -39,10 +42,26 @@ def clean_id(value: str) -> str:
     return cleaned or "anonymous"
 
 
-def create_session(root: Path, participant_id: str) -> dict:
+def _bounded_metadata_text(value: object, *, default: str = "") -> str:
+    text = str(value or "").strip()
+    return (text or default)[:128]
+
+
+def create_session(
+    root: Path,
+    participant_id: str,
+    *,
+    capture_run_id: str | None = None,
+    capture_source: str = "direct-frame",
+    source_session_id: str | None = None,
+) -> dict:
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     session_id = f"{timestamp}_{clean_id(participant_id)}_{uuid.uuid4().hex[:8]}"
     session_dir = ensure_sessions_dir(root) / session_id
+    resolved_capture_run_id = _bounded_metadata_text(
+        capture_run_id,
+        default=f"capture-{uuid.uuid4().hex}",
+    )
     
     # Create required subdirectories for calibration pipeline
     (session_dir / "raw").mkdir(parents=True, exist_ok=True)
@@ -53,12 +72,24 @@ def create_session(root: Path, participant_id: str) -> dict:
         "session_id": session_id,
         "participant_id": participant_id or "anonymous",
         "created_at": timestamp,
+        "capture_run_id": resolved_capture_run_id,
+        "capture_source": _bounded_metadata_text(
+            capture_source,
+            default="direct-frame",
+        ),
     }
+    resolved_source_session_id = _bounded_metadata_text(source_session_id)
+    if resolved_source_session_id:
+        meta["source_session_id"] = resolved_source_session_id
     (session_dir / "session.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    return {"ok": True, "session_id": session_id}
+    return {
+        "ok": True,
+        "session_id": session_id,
+        "capture_run_id": resolved_capture_run_id,
+    }
 
 
 def list_datasets(root: Path) -> list[dict]:
@@ -75,13 +106,17 @@ def list_datasets(root: Path) -> list[dict]:
         except Exception:
             sample_count = 0
         participant = "unknown"
+        capture_run_id = None
+        capture_source = None
+        source_session_id = None
         session_json = folder / "session.json"
         if session_json.exists():
             try:
-                participant = json.loads(session_json.read_text(encoding="utf-8")).get(
-                    "participant_id",
-                    "unknown",
-                )
+                session_meta = json.loads(session_json.read_text(encoding="utf-8"))
+                participant = session_meta.get("participant_id", "unknown")
+                capture_run_id = session_meta.get("capture_run_id")
+                capture_source = session_meta.get("capture_source")
+                source_session_id = session_meta.get("source_session_id")
             except Exception:
                 pass
         datasets.append(
@@ -90,6 +125,9 @@ def list_datasets(root: Path) -> list[dict]:
                 "display_name": f"{participant} ({sample_count} samples)",
                 "participant": participant,
                 "sample_count": sample_count,
+                "capture_run_id": capture_run_id,
+                "capture_source": capture_source,
+                "source_session_id": source_session_id,
             }
         )
     return datasets
