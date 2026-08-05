@@ -164,6 +164,9 @@ not used for the experiment.
 - No gaze coordinate or duration was used as a predictor.
 - No feature, model size, alpha, fold, filter, or threshold search was performed.
 - Participants answered a question after each paragraph, so the result applies to ordinary reading for comprehension, not unrestricted browsing.
+- "Pristine" means outcome-blind relative to this project. Possible overlap
+  between GPT-2 pretraining data and the underlying Guardian articles cannot be
+  ruled out, so this is not a language-model contamination audit.
 - OneStop is not used for subsequent tuning regardless of the outcome.
 
 ## Decision and next boundary
