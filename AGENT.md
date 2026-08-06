@@ -1,67 +1,49 @@
-# 🤖 LexiGaze: Developer Rules & AI Agent Guidelines
+# LexiGaze Developer and Agent Guidelines
 
-This document defines guidelines, design principles, and coding standards for all AI agents and developers working on the **LexiGaze** repository.
+## Product vision
 
----
+LexiGaze combines webcam-based gaze tracking and psycholinguistic text modelling to support unobtrusive English vocabulary learning. The core product goal is to identify potentially difficult words without interrupting reading, then offer the evidence as a review aid rather than a diagnosis.
 
-## 🎯 Product Vision: Unobtrusive English Vocabulary Acquisition
+## Architecture
 
-LexiGaze is built to be a next-generation English learning system that merges **webcam-based eye-tracking** and **NLP cognitive text modeling** to enable effortless learning:
-* **Zero Disruption**: Instead of requiring readers to pause, highlight, or manually look up unfamiliar words, the system identifies vocabulary gaps *implicitly*.
-* **Fixation & Dwell Detection**: By analyzing real-time gaze trajectories (long dwell times, multiple fixations, and backward reading regressions), the system detects words where the reader is struggling.
-* **Linguistic Surprisal & Complexity**: Using NLP models (BERT, GPT-2), the system computes lexical surprisal and entropy to determine if the target word is complex or rare.
-* **Automated Vocabulary Book**: High-load words identified by the gaze-cognitive fusion pipeline are automatically compiled into a personalized vocabulary list. This allows readers to maintain their natural reading flow while building a study guide behind the scenes.
+1. `core/unigaze_personalization/`: webcam perception, preprocessing, gaze estimation, and personalization.
+2. `core/cognition/`: word-level linguistic features and text-difficulty modelling.
+3. `scripts/`: fusion, experiments, evaluation, and data tooling.
+4. `web/`: Flask routes and the reader UI.
 
----
+## Coding constraints
 
-## 🏛️ System Architecture Overview
+### Package imports
 
-LexiGaze is divided into four main subsystems:
-1. **Perception Module (`core/unigaze_personalization/`)**: Captures video frames via webcam, runs MediaPipe face mesh and landmark preprocessing, passes normalized face crops to the UniGaze-B16 ViT neural net, and fits polynomial calibration models to correct systematic eye-tracking offsets.
-2. **Cognition Module (`core/cognition/`)**: Computes word-level linguistic complexity metrics (surprisal, contextual entropy, zipf frequency) to determine text difficulty.
-3. **Fusion & Orchestrator (`scripts/`)**: Integrates raw gaze dwell duration and cognitive load weights using math fusion models (RRF, Bayesian Integration, etc.) to yield a final Reading Difficulty Score (RDS).
-4. **Web UI & Server (`web/`)**: Renders the document reading dashboard (word layout mapping and highlight overlay) and handles calibration recording and automated post-calibration training.
+Do not add legacy path-injection hacks. Import core modules through `core` and web modules through `web`.
 
----
+### API routes
 
-## ⚙️ Coding Standards & Constraints
+Browser code under `web/` must use relative API paths such as `/api/gaze/predict` so local and tunnel deployments behave consistently.
 
-### 1. Unified Modular Packages
-Do NOT use legacy path-injection hacks inside Python files. All modules must be imported natively using the consolidated package layouts:
-* Core logic and submodules (gaze calculation, deep learning preprocessing, NLP pipelines) are imported from the `core` package.
-* Flask routes and web application elements are imported from the `web` package.
+### Unicode and runtime
 
-### 2. Relative API Routes
-All API endpoints inside HTML or Javascript files under `web/` must use relative paths (e.g., `/api/gaze/predict`). This allows the frontend to run seamlessly through public `ngrok` tunnels without domain rewrites.
+- Run Python commands containing non-ASCII output with `-X utf8`.
+- Read and write text with explicit UTF-8 encoding.
+- Use the repository `.venv` Python 3.11 environment. The project supports Python `>=3.11,<3.14`.
 
-### 3. Unicode & Console Printing
-* Always launch Python scripts containing non-ASCII print outputs using the UTF-8 flag:
-  ```bash
-  python -X utf8 run.py
-  ```
-* Always open project text files with explicit UTF-8 encoding:
-  ```python
-  with open(filepath, 'w', encoding='utf-8') as f:
-  ```
+### Headless backend
 
-### 4. Running Backend Headlessly
-Ensure OpenCV face extraction processes do not rely on X11 display environments, using `opencv-python-headless` for server tasks.
+Server-side computer-vision paths must not require an interactive display.
 
----
+## Reader Assessment v2 (experimental)
 
-## 🧠 Core Feature: Cognitive Ability Inspector Agent (Fully Implemented)
+The former Cognitive Ability Inspector heuristics are retired. A single gaze trace must not be described as a validated measure of cognitive ability, attention, fatigue, reading ability, English proficiency, or CEFR.
 
-The **Cognitive Ability Inspector** is a fully realized, integrated core module that analyzes sequential reading trajectories to assess user cognitive load, vocabulary level, reading ability, and fatigue.
+Required claim discipline:
 
-### Features & Capabilities
-1. **Gaze Trajectory & Saccade Sequence Analysis**: Evaluates chronological eye-tracking streams to compute:
-   * **Fixation Duration** (dwell time per word group) $\rightarrow$ Reflects **Cognitive Load**.
-   * **Fixation Count** (hit counts) $\rightarrow$ Reflects **Attention/Focus**.
-   * **Regression Count** (backtracking transitions) $\rightarrow$ Reflects **Comprehension Difficulty**.
-   * **Reread Count** (returning to previously read words) $\rightarrow$ Reflects **Vocabulary Difficulty**.
-   * **Dwell Time** (total region/paragraph duration) $\rightarrow$ Reflects **Overall Burden**.
-2. **Linguistic Diagnostic Profiles**: Correlates long fixations and regressions against word lexical characteristics (Zipf frequency) to determine:
-   * **Reading Ability Score & Level**: Measures words per minute (WPM), regression rates, and avg fixation duration.
-   * **English Proficiency Score & Level**: Evaluates if reader pauses are on rare technical words vs. common basic syntax.
-   * **Fatigue Level (Low/Medium/High)**: Compares average fixation times in the second half of reading vs. the first half.
-3. **Reports History & CRUD Panel**: Generates and persists detailed Markdown reports with actionable remedial advice to [`docs/cognitive_reports/`](file://D:/projects/lexigaze/docs/cognitive_reports/). The reading dashboard includes a history manager to reload, delete, or download reports.
+1. Keep observable session behaviour separate from latent-trait claims.
+2. Report data quality and uncertainty; abstain when prerequisites are missing.
+3. Calculate full-text WPM only from explicit text length, completion, and elapsed time.
+4. Treat fixation duration, regressions, rereads, lexical effects, and early/late changes as context-dependent signals, not direct ability labels.
+5. Keep typography experiments separate from ability assessment by using matched text and randomized or counterbalanced layouts.
+6. Do not tune against a fixed question set and report results on the same questions. Freeze participant and item/text holdouts before fitting.
+7. Do not promote the pilot theta to an ability label until the item bank has real calibration, reliability, fairness/DIF, and external-validity evidence.
+8. Keep routine assessment validation CPU-only unless a GPU experiment has a preregistered need and budget.
+
+The complete contract, research basis, protocol, and progress log are under `docs/reader_assessment/`.

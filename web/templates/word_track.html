@@ -1266,10 +1266,10 @@
             <circle cx="12" cy="12" r="3"/>
           </svg>
         </button>
-        <button class="icon-bar-btn" data-panel="cognitive" title="認知負荷評估">
+        <button class="icon-bar-btn" data-panel="cognitive" title="文本處理需求">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 0 1 7.07 17.07A10 10 0 0 1 4.93 4.93 10 10 0 0 1 12 2z"/><path d="M12 6v6l4 2"/></svg>
           </button>
-        <button class="icon-bar-btn" data-panel="inspector" title="認知能力診斷">
+        <button class="icon-bar-btn" data-panel="inspector" title="閱讀測量證據">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
             <circle cx="12" cy="7" r="4"></circle>
@@ -1292,7 +1292,7 @@
         <div class="guide-welcome">
           <div style="font-size: 0.76rem; font-weight: 700; color: var(--accent); margin-bottom: 2px; display:flex; align-items:center; gap:5px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>歡迎使用 LexiGaze !</div>
           <div style="font-size: 0.65rem; color: var(--ink-secondary); line-height: 1.4;">
-            請跟隨以下步驟進行硬體配置、相機校正、閱讀錄影，最後生成詳細的認知負荷診斷報告。
+            請跟隨以下步驟進行硬體配置、相機校正與閱讀錄影，最後檢視本次閱讀的可觀察證據與資料限制。
           </div>
         </div>
 
@@ -1431,12 +1431,12 @@
             <div class="guide-step-header">
               <div class="guide-step-title-wrap">
                 <span class="guide-step-number">5</span>
-                <span class="guide-step-title">認知分析診斷</span>
+                <span class="guide-step-title">閱讀證據分析</span>
               </div>
               <span class="guide-step-badge" id="guideStep5Badge">待執行</span>
             </div>
             <div class="guide-step-desc">
-              系統將依據您在閱讀期間的視線軌跡，計算認知負荷、閱讀理解力及生成個人化診斷報告。
+              系統只摘要本次閱讀可觀察到的速度、停留與回看行為，並呈現資料品質；不推論智力、注意力、疲勞或英語程度。
             </div>
             <div class="guide-step-content">
               <div style="display:flex; flex-direction:column; gap:2px; margin-bottom:4px;">
@@ -1444,16 +1444,16 @@
                 <input type="text" id="guideParticipantInput" value="anonymous" style="font-size:11px; padding:4px; min-height:26px; border-radius:var(--radius-sm); border:1px solid var(--line-strong);" autocomplete="off">
               </div>
               <button class="btn btn-primary" id="guideAnalyzeBtn" onclick="runCognitiveInspectorAnalysis()" style="width:100%; font-size:11px; min-height:28px; margin-top:2px;">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>開始認知能力診斷
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>分析本次閱讀證據
               </button>
               <button class="btn btn-secondary" id="guideReportBtn" onclick="generateAndShowCognitiveReport()" style="width:100%; font-size:11px; min-height:28px; margin-top:4px;" disabled>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>產生與儲存診斷報告
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>產生與儲存證據報告
               </button>
               <button class="btn btn-info" id="guideQuizBtn" onclick="openAgenticQuizModal()" style="width:100%; font-size:11px; min-height:28px; margin-top:4px;" disabled>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>互動認知理解測驗 (Gemini)
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>互動理解題（實驗性）
               </button>
               <button class="btn btn-info" id="guideAdaptiveBtn" onclick="openAdaptiveTestModal()" style="width:100%; font-size:11px; min-height:28px; margin-top:4px;" disabled>
-                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px; margin-right:3px;"><path d="M12 2a10 10 0 0 1 7.07 17.07A10 10 0 0 1 4.93 4.93 10 10 0 0 1 12 2z"/><path d="M12 6v6l4 2"/></svg>適應性多輪認知診斷
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px; margin-right:3px;"><path d="M12 2a10 10 0 0 1 7.07 17.07A10 10 0 0 1 4.93 4.93 10 10 0 0 1 12 2z"/><path d="M12 6v6l4 2"/></svg>實驗性多輪閱讀評量
               </button>
             </div>
           </div>
@@ -1680,11 +1680,14 @@
       </div>
 
 
-      <!-- Panel: Cognitive Load -->
+      <!-- Panel: text-level processing-demand model (not a user assessment) -->
       <div class="sidebar-panel" id="panel-cognitive">
-        <div class="panel-section-title">認知負荷評估</div>
+        <div class="panel-section-title">文本處理需求</div>
+        <p style="font-size:0.72rem; color:var(--ink-secondary); margin:0 0 0.65rem; line-height:1.4;">
+          依詞頻、語境與語言特徵標示文章中相對較難處理的詞；這是文本模型輸出，不是使用者認知負荷或能力測量。
+        </p>
         
-        <button class="btn btn-primary" id="cogAnalyzeBtn" style="width:100%">分析認知負荷</button>
+        <button class="btn btn-primary" id="cogAnalyzeBtn" style="width:100%">分析文本處理需求</button>
 
         <div class="stats-card" id="cogStats">
           <div class="stat-grid">
@@ -1701,7 +1704,7 @@
               <span class="stat-val" id="cogTotal">—</span>
             </div>
             <div class="stat-box">
-              <span class="stat-lbl">高負荷詞數</span>
+              <span class="stat-lbl">高需求詞數</span>
               <span class="stat-val" id="cogHighCount">—</span>
             </div>
           </div>
@@ -1759,19 +1762,19 @@
           <input type="range" id="cogSigmaSlider" min="10" max="120" step="2" value="40">
         </div>
         <div class="field">
-          <label>高負荷詞彙</label>
+          <label>高需求詞彙</label>
           <div class="cog-list" id="cogList"></div>
           <div class="cog-empty" id="cogEmpty">尚未分析</div>
         </div>
 
         <div class="switch-row" id="cogOverlaySec">
           <div class="switch-info">
-            <div class="switch-lbl">在文件上標示負荷</div>
-            <div class="switch-desc">視覺化高認知負擔詞彙</div>
+            <div class="switch-lbl">在文件上標示處理需求</div>
+            <div class="switch-desc">視覺化模型判定的高需求詞彙</div>
           </div>
           <button class="toggle-btn" id="cogOverlayToggle" type="button">
             <div class="sw-track"></div>
-            <span id="cogOverlayLabel" style="display:none">在文件上標示負荷（關閉）</span>
+            <span id="cogOverlayLabel" style="display:none">在文件上標示處理需求（關閉）</span>
           </button>
         </div>
 
@@ -1821,9 +1824,9 @@
 
       <!-- Panel: Cognitive Capability Inspector -->
       <div class="sidebar-panel" id="panel-inspector">
-        <div class="panel-section-title">認知能力診斷</div>
+        <div class="panel-section-title">閱讀測量證據</div>
         <p style="font-size:0.75rem; color:var(--ink-secondary); margin-bottom:0.75rem; line-height:1.4;">
-          基於眼動序列，分析使用者的閱讀理解力、英語熟練度與疲勞程度。
+          摘要本次閱讀的可觀察行為、資料品質與不確定性；不將單次眼動資料當作能力或臨床診斷。
         </p>
 
         <div class="field">
@@ -1839,21 +1842,21 @@
           </select>
         </div>
 
-        <button class="btn btn-primary" id="inspectAnalyzeBtn" style="width:100%; margin-top:8px;">開始診斷認知能力</button>
-        <button class="btn btn-secondary" id="inspectReportBtn" style="width:100%; margin-top:6px;" disabled>產生與儲存診斷報告</button>
+        <button class="btn btn-primary" id="inspectAnalyzeBtn" style="width:100%; margin-top:8px;">分析本次閱讀證據</button>
+        <button class="btn btn-secondary" id="inspectReportBtn" style="width:100%; margin-top:6px;" disabled>產生與儲存證據報告</button>
         <button class="btn btn-info" id="inspectAdaptiveBtn" onclick="openAdaptiveTestModal()" style="width:100%; margin-top:6px;">
           <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px; margin-right:3px;"><path d="M12 2a10 10 0 0 1 7.07 17.07A10 10 0 0 1 4.93 4.93 10 10 0 0 1 12 2z"/><path d="M12 6v6l4 2"/></svg>
-          開始適應性多輪診斷
+          開始實驗性多輪閱讀評量
         </button>
 
         <!-- Dynamic Diagnosis Results Card -->
         <div class="stats-card" id="inspectResultsCard" style="margin-top:12px; display:none; flex-direction:column; gap:10px; padding: 12px; background: rgba(0,0,0,0.02); border: 1px solid var(--line-strong);">
           <div style="font-size:0.75rem; font-weight:700; border-bottom:1px solid var(--line); padding-bottom:6px; margin-bottom:4px;">診斷結果畫像 (Diagnostics Profile)</div>
           
-          <!-- Reading Ability Score -->
+          <!-- Evidence-bounded session reading observation -->
           <div>
             <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px;">
-              <span style="font-weight:600; color:var(--ink-secondary);">閱讀理解力 (Reading Ability)</span>
+              <span style="font-weight:600; color:var(--ink-secondary);">本次閱讀流暢證據 (Session Fluency)</span>
               <span id="inspectReadingScore" style="color:var(--accent); font-weight:700;">—</span>
             </div>
             <div style="background:var(--bg-highest); height:5px; border-radius:2px; margin-top:4px; overflow:hidden;">
@@ -1862,10 +1865,10 @@
             <div id="inspectReadingLevel" style="font-size:9px; color:var(--ink-muted); margin-top:2px;">—</div>
           </div>
 
-          <!-- English Proficiency Score -->
+          <!-- English proficiency claim status -->
           <div>
             <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px;">
-              <span style="font-weight:600; color:var(--ink-secondary);">英語熟練度 (English Proficiency)</span>
+              <span style="font-weight:600; color:var(--ink-secondary);">英語程度推論狀態 (English Inference)</span>
               <span id="inspectEnglishScore" style="color:var(--accent); font-weight:700;">—</span>
             </div>
             <div style="background:var(--bg-highest); height:5px; border-radius:2px; margin-top:4px; overflow:hidden;">
@@ -1874,10 +1877,10 @@
             <div id="inspectEnglishLevel" style="font-size:9px; color:var(--ink-muted); margin-top:2px;">—</div>
           </div>
 
-          <!-- Cognitive Load Index -->
+          <!-- Measurement quality, not cognitive load -->
           <div>
             <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px;">
-              <span style="font-weight:600; color:var(--ink-secondary);">心智認知負荷 (Cognitive Load)</span>
+              <span style="font-weight:600; color:var(--ink-secondary);">測量資料品質 (Data Quality)</span>
               <span id="inspectLoadScore" style="color:var(--warning); font-weight:700;">—</span>
             </div>
             <div style="background:var(--bg-highest); height:5px; border-radius:2px; margin-top:4px; overflow:hidden;">
@@ -1896,11 +1899,11 @@
               <span id="inspectRegRate" style="font-size:11px; font-weight:600; color:var(--ink-primary);">—</span>
             </div>
             <div>
-              <span style="font-size:9px; color:var(--ink-muted); display:block;">注意力穩定 (Attention)</span>
+              <span style="font-size:9px; color:var(--ink-muted); display:block;">注意力推論 (Attention)</span>
               <span id="inspectAttention" style="font-size:11px; font-weight:600; color:var(--success);">—</span>
             </div>
             <div>
-              <span style="font-size:9px; color:var(--ink-muted); display:block;">疲勞狀態 (Fatigue)</span>
+              <span style="font-size:9px; color:var(--ink-muted); display:block;">疲勞推論 (Fatigue)</span>
               <span id="inspectFatigue" style="font-size:11px; font-weight:600; color:var(--ink-primary);">—</span>
             </div>
           </div>
@@ -1909,13 +1912,13 @@
         <!-- Reports History List -->
         <hr style="border:none; border-top:1px solid var(--line); margin:0.75rem 0 0.5rem 0">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-          <span style="font-size:0.72rem; font-weight:700; color:var(--ink-secondary);">歷史診斷報告 (History Reports)</span>
+          <span style="font-size:0.72rem; font-weight:700; color:var(--ink-secondary);">歷史證據報告 (Evidence Reports)</span>
           <button class="btn-sm" id="inspectRefreshReportsBtn" style="min-height:22px; padding:0 8px; font-size:9px;">重新整理</button>
         </div>
         <div id="inspectReportsList" style="max-height:160px; overflow-y:auto; font-size:10px; display:flex; flex-direction:column; gap:4px;">
           <!-- Loaded dynamically -->
         </div>
-        <div id="inspectReportsEmpty" style="font-size:10px; color:var(--ink-muted); text-align:center; padding:10px 0;">尚無歷史診斷報告</div>
+        <div id="inspectReportsEmpty" style="font-size:10px; color:var(--ink-muted); text-align:center; padding:10px 0;">尚無歷史證據報告</div>
       </div>
 
     </div><!-- /sidebar -->
@@ -2981,7 +2984,7 @@
       cogEmpty.textContent = '尚未執行分析';
       cogProgressBlock.classList.remove('visible');
       cogOverlayToggle.classList.remove('active');
-      cogOverlayLabel.textContent = '在文件上標示負荷（關閉）';
+      cogOverlayLabel.textContent = '在文件上標示處理需求（關閉）';
     }
 
     function detectLang(text) {
@@ -3035,7 +3038,7 @@
       cogProgressBlock.classList.add('visible');
       cogProgressFill.style.width = '15%';
       cogProgressTxt.textContent = `送出請求中 (語言: ${lang})...`;
-      log(`── 啟動認知負荷評估 [lang=${lang}, domain=${domain}] ──`, 'hi');
+      log(`── 啟動文本處理需求分析 [lang=${lang}, domain=${domain}] ──`, 'hi');
 
       try {
         const res = await fetch('/api/cognitive/analyze/text', {
@@ -3130,13 +3133,13 @@
       const next = (typeof forceState === 'boolean') ? forceState : !cognitiveOn;
       cognitiveOn = next;
       cogOverlayToggle.classList.toggle('active', cognitiveOn);
-      cogOverlayLabel.textContent = cognitiveOn ? '在文件上標示負荷（開啟）' : '在文件上標示負荷（關閉）';
+      cogOverlayLabel.textContent = cognitiveOn ? '在文件上標示處理需求（開啟）' : '在文件上標示處理需求（關閉）';
 
       if (cognitiveOn && !cogScoreMap.size) {
         log('請先執行評估分析', 'err');
         cognitiveOn = false;
         cogOverlayToggle.classList.remove('active');
-        cogOverlayLabel.textContent = '在文件上標示負荷（關閉）';
+        cogOverlayLabel.textContent = '在文件上標示處理需求（關閉）';
         return;
       }
 
@@ -3145,7 +3148,7 @@
       } else {
         if (overlayOn) redrawAllOverlays();
       }
-      log(`認知負荷標記：${cognitiveOn ? '開啟' : '關閉'}`);
+      log(`文本處理需求標記：${cognitiveOn ? '開啟' : '關閉'}`);
     }
 
     cogOverlayToggle.addEventListener('click', () => toggleCognitiveOverlay());
@@ -3321,6 +3324,7 @@
     const inspectFatigue           = document.getElementById('inspectFatigue');
 
     let lastInspectorAnalysisGazeHistory = null;
+    let lastInspectorAnalysisContext = null;
 
     async function runCognitiveInspectorAnalysis() {
       let gazeHistoryData = typeof window.flushGazeHistory === 'function' ? window.flushGazeHistory() : [];
@@ -3364,7 +3368,12 @@
           body: JSON.stringify({
             gaze_history: gazeHistoryData,
             participant_id: participantId,
-            lang: inspectLangSelect.value
+            lang: inspectLangSelect.value,
+            context: {
+              text_word_count: Array.isArray(window.extractedData) ? window.extractedData.length : null,
+              completed_text: false,
+              tracker_mode: window.lexiPerfMode || 'unknown'
+            }
           })
         });
 
@@ -3373,37 +3382,50 @@
 
         const profile = data.analysis.user_profile;
         const summary = data.analysis.summary;
+        const quality = data.analysis.data_quality || {};
+        const claims = data.analysis.claims || {};
+        const fluencyClaim = claims.reading_fluency || {};
+        const englishClaim = claims.english_proficiency || {};
 
-        // Populate Dashboard UI
-        inspectReadingScore.textContent = profile.reading_ability_score.toFixed(1);
-        inspectReadingBar.style.width = `${profile.reading_ability_score}%`;
-        inspectReadingLevel.textContent = profile.reading_ability_level;
+        // v2 shows evidence and abstentions instead of unsupported ability scores.
+        inspectReadingScore.textContent = fluencyClaim.reading_rate_wpm == null
+          ? '未估計'
+          : `${Number(fluencyClaim.reading_rate_wpm).toFixed(1)} WPM`;
+        inspectReadingBar.style.width = `${Math.round((quality.score || 0) * 100)}%`;
+        inspectReadingLevel.textContent = fluencyClaim.status || 'not_estimated';
 
-        inspectEnglishScore.textContent = profile.english_proficiency_score.toFixed(1);
-        inspectEnglishBar.style.width = `${profile.english_proficiency_score}%`;
-        inspectEnglishLevel.textContent = profile.english_proficiency_level;
+        inspectEnglishScore.textContent = '未估計';
+        inspectEnglishBar.style.width = '0%';
+        inspectEnglishLevel.textContent = englishClaim.reason || englishClaim.status || 'not_estimated';
 
-        inspectLoadScore.textContent = profile.cognitive_load_index.toFixed(1);
-        inspectLoadBar.style.width = `${profile.cognitive_load_index}%`;
+        inspectLoadScore.textContent = `${Math.round((quality.score || 0) * 100)}%`;
+        inspectLoadBar.style.width = `${Math.round((quality.score || 0) * 100)}%`;
 
-        inspectWpm.textContent = `${summary.words_per_minute.toFixed(1)} 字/分`;
+        inspectWpm.textContent = summary.words_per_minute == null
+          ? '資料不足'
+          : `${Number(summary.words_per_minute).toFixed(1)} 字/分`;
         inspectRegRate.textContent = `${(summary.regression_rate * 100).toFixed(1)}%`;
-        inspectAttention.textContent = `${profile.attention_index}%`;
-        inspectFatigue.textContent = profile.fatigue_label;
+        inspectAttention.textContent = claims.attention?.status || 'not_estimated';
+        inspectFatigue.textContent = claims.fatigue?.status || 'not_estimated';
 
         // Display results
         inspectResultsCard.style.display = 'flex';
         inspectReportBtn.disabled = false;
         lastInspectorAnalysisGazeHistory = gazeHistoryData;
-        log(`認知能力診斷分析完成！(${participantId})`, 'ok');
+        lastInspectorAnalysisContext = {
+          text_word_count: Array.isArray(window.extractedData) ? window.extractedData.length : null,
+          completed_text: false,
+          tracker_mode: window.lexiPerfMode || 'unknown'
+        };
+        log(`本次閱讀證據分析完成！(${participantId})`, 'ok');
         if (typeof updateGuideUI === 'function') updateGuideUI();
 
       } catch (err) {
-        log(`認知能力診斷失敗：${err.message}`, 'err');
-        alert(`診斷失敗：${err.message}`);
+        log(`閱讀證據分析失敗：${err.message}`, 'err');
+        alert(`分析失敗：${err.message}`);
       } finally {
         inspectAnalyzeBtn.disabled = false;
-        inspectAnalyzeBtn.textContent = '開始診斷認知能力';
+        inspectAnalyzeBtn.textContent = '分析本次閱讀證據';
       }
     }
 
@@ -3427,6 +3449,7 @@
             participant_id: participantId,
             session_id: sessionId,
             lang: inspectLangSelect.value,
+            context: lastInspectorAnalysisContext || {},
             persist: true
           })
         });
@@ -3458,15 +3481,15 @@
         if (reportModalEl) {
           reportModalEl.classList.add('open');
         }
-        log(`診斷報告已生成並保存至：${data.analysis.report_path}`, 'ok');
+        log(`證據報告已生成並保存至：${data.analysis.report_path}`, 'ok');
         loadReportsHistory();
 
       } catch (err) {
-        log(`產生診斷報告失敗：${err.message}`, 'err');
+        log(`產生證據報告失敗：${err.message}`, 'err');
         alert(`產生報告失敗：${err.message}`);
       } finally {
         inspectReportBtn.disabled = false;
-        inspectReportBtn.textContent = '產生與儲存診斷報告';
+        inspectReportBtn.textContent = '產生與儲存證據報告';
       }
     }
 
@@ -3869,7 +3892,7 @@
             summaryDiv.innerHTML = `
               <div style="font-size: 14px; font-weight:700; color:var(--ink-primary);">測驗完成！答對題數：<span style="color:var(--accent); font-size:18px;">${correctCount} / ${currentQuizData.length}</span></div>
               <div style="font-size: 11px; color:var(--ink-secondary); margin-top:4px;">
-                ${scorePercent >= 80 ? '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;color:var(--success);display:inline-block;"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> 您的閱讀理解力極佳，完美掌握了難點句的文意！' : '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;color:var(--accent);display:inline-block;"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A5 5 0 0 0 8 8c0 1 .4 2.5 1.5 3.5.7.8 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg> 建議針對回看和長停頓的段落重讀，以加深語意理解。'}
+                ${scorePercent >= 80 ? '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;color:var(--success);display:inline-block;"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> 本題組答對率較高；結果僅適用於這組題目。' : '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;color:var(--accent);display:inline-block;"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A5 5 0 0 0 8 8c0 1 .4 2.5 1.5 3.5.7.8 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg> 本題組尚有未答對項目；不據此推論整體閱讀能力。'}
               </div>
             `;
             quizContent.insertBefore(summaryDiv, quizContent.firstChild);
@@ -4883,6 +4906,8 @@
     let adaptiveHistory = [];
     let adaptiveCurrentRound = 1;
     let adaptiveCurrentConfig = null;
+    let adaptiveAssessmentId = null;
+    let adaptiveMaxRounds = 6;
     let originalFileState = null;
 
     window.openAdaptiveTestModal = function() {
@@ -4910,9 +4935,9 @@
       
       content.innerHTML = `
         <div style="display:flex; flex-direction:column; gap:12px; font-size:12px; line-height:1.5;">
-          <div style="font-weight:700; font-size:13px; color:var(--accent);">適應性多輪認知診斷測驗</div>
+          <div style="font-weight:700; font-size:13px; color:var(--accent);">實驗性多輪閱讀評量</div>
           <p style="margin: 0; color: var(--ink-secondary);">
-            本測驗包含 <b>3 輪</b> 閱讀與理解測試。系統將評估您的眼動軌跡（WPM、回看次數、注視長度）與理解能力，並據此<b>動態調整後續文字的排版大小、行寬與文意難度</b>。
+            本測驗包含 <b>4–6 輪</b> 閱讀與理解題。題組蒐證期間會固定字級、行寬與行高，只依已簽署的答題結果調整文章相對難度，避免把排版、追蹤誤差與英文閱讀表現混在一起。
           </p>
           <div style="background:var(--bg-highest); border:1px solid var(--line); padding:10px; border-radius:6px;">
             <div style="font-weight:700; margin-bottom:4px; display:flex; align-items:center; gap:4px;"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent);"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 測試說明與步驟：</div>
@@ -4920,8 +4945,8 @@
               <li>點擊下方「開始測試」載入第 1 輪基線文章。</li>
               <li>點擊「開始閱讀」，系統將開啟相機。</li>
               <li>專注且自然地閱讀右側主畫面中的文章段落。</li>
-              <li>讀完後，點擊「我讀完了」回答兩題理解選擇題。</li>
-              <li>答題完畢後，系統將決定下一輪的排版與難度，重複以上步驟至第 3 輪結束。</li>
+              <li>讀完後，點擊「我讀完了」回答三題理解選擇題。</li>
+              <li>答題完畢後由後端計分並決定下一篇文章，達到最少輪數與精度門檻或第 6 輪後結束。</li>
             </ol>
           </div>
         </div>
@@ -4972,6 +4997,8 @@
         adaptiveCurrentRound = 1;
         adaptiveCurrentConfig = data;
         adaptiveCurrentConfig.lang = lang;
+        adaptiveAssessmentId = data.assessment_id;
+        adaptiveMaxRounds = data.max_rounds || 6;
         
         await loadAdaptiveRoundText(data);
       } catch (err) {
@@ -5008,7 +5035,7 @@
       content.innerHTML = `
         <div style="display:flex; flex-direction:column; gap:12px; font-size:12px; line-height:1.5;">
           <div style="display:flex; justify-content:space-between; align-items:center; background:var(--accent-soft); padding:6px 10px; border-radius:4px; border-left:3px solid var(--accent);">
-            <strong style="color:var(--accent); font-size:13px;">第 ${data.round} / 3 輪：閱讀中</strong>
+            <strong style="color:var(--accent); font-size:13px;">第 ${data.round} / ${adaptiveMaxRounds} 輪：閱讀中</strong>
             <span style="font-size:10px; background:var(--bg-highest); padding:2px 6px; border-radius:10px; color:var(--ink-secondary); font-weight:600;">難度: ${data.difficulty.toUpperCase()}</span>
           </div>
           
@@ -5123,16 +5150,24 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             gaze_history: rawGazeHistory,
-            lang: adaptiveCurrentConfig.lang || 'en'
+            lang: adaptiveCurrentConfig.lang || 'en',
+            context: {
+              text_word_count: adaptiveCurrentConfig.word_count,
+              elapsed_time_ms: readingDurationMs,
+              completed_text: true,
+              tracker_mode: mode,
+              passage_id: adaptiveCurrentConfig.passage_id
+            }
           })
         });
         const analysisData = await res.json();
         const metrics = analysisData.ok ? analysisData.analysis.summary : {};
         
         adaptiveCurrentConfig.metrics = {
-          wpm: metrics.words_per_minute || Math.round((window.extractedData?.length || 50) / (readingDurationMs / 60000.0)),
-          regression_rate: metrics.regression_rate || 0.0,
-          avg_fixation_duration_ms: metrics.avg_fixation_duration_ms || 250.0,
+          wpm: metrics.words_per_minute ?? Math.round((adaptiveCurrentConfig.word_count || 50) / (readingDurationMs / 60000.0)),
+          regression_rate: metrics.regression_rate ?? 0.0,
+          avg_fixation_duration_ms: metrics.avg_fixation_duration_ms ?? null,
+          data_quality_status: analysisData.analysis?.data_quality?.status || 'unknown',
           gaze_history: rawGazeHistory
         };
         
@@ -5198,6 +5233,74 @@
     }
 
     window.submitAdaptiveQuiz = async function() {
+      const v2Quiz = adaptiveCurrentConfig.quiz;
+      const responses = {};
+      let v2Unanswered = false;
+      v2Quiz.forEach((question, index) => {
+        const checked = document.querySelector(`input[name="ad_q_${index}"]:checked`);
+        if (!checked) {
+          v2Unanswered = true;
+        } else {
+          responses[question.question_id] = checked.value;
+        }
+      });
+      if (v2Unanswered) {
+        alert('請先回答所有理解題。');
+        return;
+      }
+
+      try {
+        const scoreResponse = await fetch('/api/inspector/adaptive/score', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            passage_id: adaptiveCurrentConfig.passage_id,
+            responses
+          })
+        });
+        const scoreData = await scoreResponse.json();
+        if (!scoreResponse.ok || !scoreData.ok) {
+          throw new Error(scoreData.error || '理解題計分失敗');
+        }
+        const scored = scoreData.round_result;
+        adaptiveHistory.push({
+          round: adaptiveCurrentConfig.round,
+          passage_id: adaptiveCurrentConfig.passage_id,
+          result_token: scoreData.result_token,
+          quiz_score: scored.correct,
+          quiz_total: scored.total,
+          wpm: adaptiveCurrentConfig.metrics.wpm,
+          regression_rate: adaptiveCurrentConfig.metrics.regression_rate,
+          avg_fixation_duration_ms: adaptiveCurrentConfig.metrics.avg_fixation_duration_ms,
+          data_quality_status: adaptiveCurrentConfig.metrics.data_quality_status
+        });
+
+        const nextResponse = await fetch('/api/inspector/adaptive/next', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            assessment_id: adaptiveAssessmentId,
+            history: adaptiveHistory
+          })
+        });
+        const nextData = await nextResponse.json();
+        if (!nextResponse.ok || !nextData.ok) {
+          throw new Error(nextData.error || '下一輪選題失敗');
+        }
+        if (nextData.is_finished) {
+          renderAdaptiveReportGenerating();
+          return;
+        }
+        adaptiveCurrentRound = nextData.round;
+        adaptiveCurrentConfig = nextData;
+        adaptiveCurrentConfig.lang = 'en';
+        adaptiveMaxRounds = nextData.max_rounds || adaptiveMaxRounds;
+        await loadAdaptiveRoundText(nextData);
+      } catch (error) {
+        alert('自適應評量失敗：' + error.message);
+      }
+      return;
+
       const quiz = adaptiveCurrentConfig.quiz;
       let score = 0;
       let unanswered = false;
@@ -5302,7 +5405,7 @@
       content.innerHTML = `
         <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:3rem; gap:1rem;">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="animate-spin" style="color:var(--accent);"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>
-          <div style="font-size:12px; color:var(--ink-secondary); display:flex; align-items:center; gap:6px;"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> 測試完成！系統正在進行跨階段認知負載與排版分析，正在生成專屬診斷報告...</div>
+          <div style="font-size:12px; color:var(--ink-secondary); display:flex; align-items:center; gap:6px;"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> 測試完成！正在彙整題組表現、估計不確定性與測量限制...</div>
         </div>
       `;
       footer.innerHTML = '';
@@ -5315,6 +5418,7 @@
           body: JSON.stringify({
             lang: adaptiveCurrentConfig.lang || 'en',
             history: adaptiveHistory,
+            assessment_id: adaptiveAssessmentId,
             participant_id: participantId,
             persist: true
           })
@@ -5340,32 +5444,36 @@
             <div style="display:flex; align-items:center; gap:8px;">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="color:var(--success);"><polyline points="20 6 9 17 4 12"/></svg>
               <div>
-                <span style="color:var(--success); font-weight:700; font-size:15px;">認知與排版適應性評估完成！</span>
+                <span style="color:var(--success); font-weight:700; font-size:15px;">閱讀評量證據彙整完成！</span>
                 <br><span style="font-size:11px; color:var(--ink-secondary);">已儲存報告至 docs/cognitive_reports/</span>
               </div>
             </div>
             <div style="text-align:right;">
               <span style="font-size:11px; color:var(--ink-muted);">理解答對率</span>
-              <br><strong style="font-size:20px; color:var(--success);">${summary.comprehension_rate}%</strong>
+              <br><strong style="font-size:20px; color:var(--success);">${summary.comprehension_rate == null ? '資料不足' : String(summary.comprehension_rate) + '%'}</strong>
             </div>
           </div>
           
           <div style="background:var(--bg-highest); border:1px solid var(--line-strong); padding:16px; border-radius:6px; margin-bottom:1rem; font-size:12px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
-            <div style="text-align:center; border-right:1px solid var(--line);"><span style="color:var(--ink-muted); display:block; font-size:11px; margin-bottom:4px;">最佳字級建議</span><strong style="font-size:18px; color:var(--accent);">${summary.optimal_font_size} px</strong></div>
-            <div style="text-align:center; border-right:1px solid var(--line);"><span style="color:var(--ink-muted); display:block; font-size:11px; margin-bottom:4px;">最佳行寬建議</span><strong style="font-size:18px; color:var(--accent);">${summary.optimal_line_width} px</strong></div>
-            <div style="text-align:center;"><span style="color:var(--ink-muted); display:block; font-size:11px; margin-bottom:4px;">建議行高設定</span><strong style="font-size:18px; color:var(--accent);">${summary.optimal_line_height}</strong></div>
+            <div style="text-align:center; border-right:1px solid var(--line);"><span style="color:var(--ink-muted); display:block; font-size:11px; margin-bottom:4px;">Pilot theta（未校準）</span><strong style="font-size:18px; color:var(--accent);">${summary.experimental_theta ?? '資料不足'}</strong></div>
+            <div style="text-align:center; border-right:1px solid var(--line);"><span style="color:var(--ink-muted); display:block; font-size:11px; margin-bottom:4px;">Posterior SD</span><strong style="font-size:18px; color:var(--accent);">${summary.posterior_sd ?? '資料不足'}</strong></div>
+            <div style="text-align:center;"><span style="color:var(--ink-muted); display:block; font-size:11px; margin-bottom:4px;">英語程度推論狀態</span><strong style="font-size:15px; color:var(--warning);">${summary.claim_status || 'not_estimated'}</strong></div>
           </div>
 
           <!-- Saccade Vector Profiling / Scanpath Canvas -->
           <div style="background:#fff; border:1px solid var(--line-strong); border-radius:6px; padding:16px; margin-bottom:1rem; box-shadow:var(--shadow-sm);">
             <div style="font-weight:700; margin-bottom:8px; font-size:12px; color:var(--ink-primary); display:flex; justify-content:space-between; align-items:center;">
-              <span>👁️ 眼動軌跡與認知回視重建 (Scanpath Visualizer)</span>
+              <span>👁️ 眼動座標軌跡（描述性視覺化）</span>
               <select id="scanpathRoundSelect" style="font-size:10px; padding:2px 6px; border-radius:4px; border:1px solid var(--line-strong);" onchange="drawScanpath()">
                 <option value="0">第一輪 (Round 1)</option>
                 <option value="1">第二輪 (Round 2)</option>
                 <option value="2">第三輪 (Round 3)</option>
+                <option value="3">第四輪 (Round 4)</option>
+                <option value="4">第五輪 (Round 5)</option>
+                <option value="5">第六輪 (Round 6)</option>
               </select>
             </div>
+            <div style="font-size:10px; color:var(--ink-muted); margin-bottom:8px;">顏色只標示座標移動方向，不代表理解困難、注意力或認知狀態。</div>
             <div style="position:relative; width:100%; height:190px; background:#fafafa; border:1px solid var(--line-strong); border-radius:4px; overflow:hidden;">
               <canvas id="scanpathCanvas" style="width:100%; height:100%; display:block;"></canvas>
             </div>
@@ -5451,24 +5559,24 @@
         // Draw fixations
         for (let i = 0; i < points.length; i++) {
           const pt = transform(points[i]);
-          let isRegression = false;
-          let isLineJump = false;
+          let isBackwardMove = false;
+          let isUpwardMove = false;
           
           if (i > 0) {
             const prev = points[i-1];
             if (points[i].y < prev.y - 15) {
-              isLineJump = true;
+              isUpwardMove = true;
             } else if (Math.abs(points[i].y - prev.y) <= 15 && points[i].x < prev.x - 45) {
-              isRegression = true;
+              isBackwardMove = true;
             }
           }
           
           let radius = 6;
           let color = 'rgba(37, 99, 235, 0.75)';
-          if (isRegression) {
+          if (isBackwardMove) {
             color = 'rgba(239, 68, 68, 0.85)';
             radius = 8;
-          } else if (isLineJump) {
+          } else if (isUpwardMove) {
             color = 'rgba(245, 158, 11, 0.85)';
             radius = 9;
           }
@@ -5481,7 +5589,7 @@
           ctx.lineWidth = 1;
           ctx.stroke();
           
-          if (isRegression || isLineJump) {
+          if (isBackwardMove || isUpwardMove) {
             ctx.font = '8px Inter, sans-serif';
             ctx.fillStyle = '#fff';
             ctx.textAlign = 'center';
@@ -5489,7 +5597,7 @@
             ctx.fillText(i + 1, pt.x, pt.y);
           }
           
-          if (i % 3 === 0 || isRegression || isLineJump) {
+          if (i % 3 === 0 || isBackwardMove || isUpwardMove) {
             ctx.font = '7.5px monospace';
             ctx.fillStyle = '#52525b';
             ctx.textAlign = 'left';
@@ -5512,13 +5620,13 @@
         ctx.arc(140, canvas.height - 18, 5, 0, 2 * Math.PI);
         ctx.fillStyle = 'rgba(239, 68, 68, 0.9)';
         ctx.fill();
-        ctx.fillText('回視 (Regression)', 152, canvas.height - 15);
+        ctx.fillText('同列左向移動', 152, canvas.height - 15);
         
         ctx.beginPath();
         ctx.arc(250, canvas.height - 18, 5, 0, 2 * Math.PI);
         ctx.fillStyle = 'rgba(245, 158, 11, 0.9)';
         ctx.fill();
-        ctx.fillText('跨行游移 (Line Jump)', 262, canvas.height - 15);
+        ctx.fillText('向上移動', 262, canvas.height - 15);
       };
       
       setTimeout(() => {
@@ -5621,7 +5729,7 @@
   <div class="modal-backdrop" id="cogReportModal">
     <div class="modal-card" style="max-width: 720px; max-height: 90vh;">
       <div class="modal-header">
-        <h3>認知能力診斷報告 / Cognitive Diagnostic Report</h3>
+        <h3>閱讀測量證據報告 / Reading Evidence Report</h3>
         <button class="modal-close-btn" id="closeCogReportBtn">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -5684,13 +5792,13 @@
 
         <h4 style="color:var(--accent); display:flex; align-items:center; gap:6px;">
           <span style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; background:var(--accent-soft); color:var(--accent); border-radius:50%; font-size:11px; font-weight:700;">3</span>
-          第三步：生成認知分析診斷報告 (Diagnostic Report)
+          第三步：生成閱讀測量證據報告 (Evidence Report)
         </h4>
         <ol style="margin-left: 1.5rem; margin-bottom: 1rem;">
-          <li>閱讀完成後，打開右側的<b>「認知能力診斷」</b>面板。</li>
+          <li>閱讀完成後，打開右側的<b>「閱讀測量證據」</b>面板。</li>
           <li>輸入您的<b>受試者 ID</b>，並選擇文本的對應語言。</li>
-          <li>點擊<b>「開始診斷認知能力」</b>，系統會統計您的閱讀速度 (WPM)、回看次數、注意力專注度及閱讀疲勞度。</li>
-          <li>點擊<b>「產生與儲存診斷報告」</b>，即可產生精緻的文件認知能力評估報告，並提供個人化的學習建議。</li>
+          <li>點擊<b>「分析本次閱讀證據」</b>，系統會摘要停留、回看與資料品質；只有在全文完成且時間資訊完整時才顯示全文 WPM。</li>
+          <li>點擊<b>「產生與儲存證據報告」</b>即可保存結果、信賴區間與限制。報告不推論智力、注意力、疲勞、臨床狀態或 CEFR 等級。</li>
         </ol>
         
         <div style="background:var(--bg-elevated); border: 1px solid var(--line); border-radius:var(--radius-sm); padding:12px; margin-top: 15px; font-size:12px; color:var(--ink-secondary); line-height: 1.5;">
@@ -5716,7 +5824,7 @@
       <div class="modal-header">
         <h3 style="display:flex; align-items:center; gap:6px;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-          互動認知能力診斷測驗
+          互動理解題（實驗性）
         </h3>
         <button class="modal-close-btn" id="closeQuizBtn">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -5741,7 +5849,7 @@
       <div class="modal-header">
         <h3 style="display:flex; align-items:center; gap:6px;">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 0 1 7.07 17.07A10 10 0 0 1 4.93 4.93 10 10 0 0 1 12 2z"/><path d="M12 6v6l4 2"/></svg>
-          適應性多輪認知診斷測驗
+          實驗性多輪閱讀評量
         </h3>
         <button class="modal-close-btn" onclick="closeAdaptiveTestModal()">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

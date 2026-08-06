@@ -210,8 +210,9 @@ This generates evaluation summaries and plots under `output/`:
 * `POST /api/cognitive/analyze/text`: Compute cognitive metrics on a string.
 * `POST /api/cognitive/analyze/file`: Batch compute cognitive metrics on a document.
 * `POST /api/cognitive/evaluate`: Compare predicted difficulty against user ground-truths.
-* `POST /api/inspector/analyze`: Analyze gaze history sequences to profile reading capability.
-* `POST /api/inspector/report`: Compile diagnostic Markdown profiles.
+* `POST /api/inspector/analyze`: Report session reading observations, data quality, uncertainty, and explicit abstentions from unsupported ability claims.
+* `POST /api/inspector/report`: Compile a local evidence-bounded Markdown report.
+* `POST /api/inspector/adaptive/start|score|next|report`: Run the signed, fixed-layout, uncalibrated reader-assessment pilot. It does not currently produce CEFR or validated ability labels.
 
 ### Joint Fusion
 * `POST /api/fuse/`: Combine gaze logs and cognitive load scores to compute RDS.

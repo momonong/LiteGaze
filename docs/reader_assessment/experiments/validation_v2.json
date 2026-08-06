@@ -1,0 +1,228 @@
+{
+  "experiment": "reader_assessment_v2_cpu_validation",
+  "seed": 20260806,
+  "participants_per_regime": 20000,
+  "total_simulated_participants": 40000,
+  "no_parameter_fitting_performed": true,
+  "qa_content_used_for_fitting": false,
+  "gpu_requested": false,
+  "cuda_visible_devices": null,
+  "environment": {
+    "python": "3.11.9",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "numpy": "2.4.6"
+  },
+  "item_bank": {
+    "ok": true,
+    "errors": [],
+    "passage_count": 6,
+    "question_count": 18,
+    "answer_distribution": {
+      "A": 5,
+      "B": 4,
+      "C": 5,
+      "D": 4
+    },
+    "construct_distribution": {
+      "explicit_information": 6,
+      "inference": 6,
+      "lexical_cohesion": 6
+    },
+    "difficulty_distribution": {
+      "advanced": 2,
+      "foundation": 2,
+      "standard": 2
+    },
+    "layout": {
+      "font_size": 16,
+      "line_width": 650,
+      "line_height": 1.7
+    },
+    "calibration_status": "expert_seed_only_uncalibrated"
+  },
+  "matched_assumption_sanity_check": {
+    "participants": 20000,
+    "truth_regime": "matched_model_assumptions",
+    "mean_bias": 0.0069,
+    "rmse": 0.6297,
+    "mae": 0.4963,
+    "spearman_theta": 0.8408,
+    "credible_interval_95_coverage": 0.9365,
+    "mean_rounds": 5.9893,
+    "max_round_fraction": 0.9893,
+    "round_distribution": {
+      "5": 214,
+      "6": 19786
+    },
+    "mean_item_count": 17.9679,
+    "passage_exposure": {
+      "advanced-a-feedback-loops": 19891,
+      "advanced-b-preregistration": 19904,
+      "foundation-a-seed-library": 19994,
+      "foundation-b-bus-signs": 19997,
+      "standard-a-urban-trees": 20000,
+      "standard-b-bird-counts": 20000
+    },
+    "ability_bins": [
+      {
+        "true_theta_range": [
+          -3.1,
+          -1.5
+        ],
+        "n": 1901,
+        "mean_true_theta": -2.031,
+        "mean_estimated_theta": -1.1673,
+        "rmse": 1.0083
+      },
+      {
+        "true_theta_range": [
+          -1.5,
+          -0.5
+        ],
+        "n": 4809,
+        "mean_true_theta": -0.9381,
+        "mean_estimated_theta": -0.6553,
+        "rmse": 0.5675
+      },
+      {
+        "true_theta_range": [
+          -0.5,
+          0.5
+        ],
+        "n": 6678,
+        "mean_true_theta": 0.0029,
+        "mean_estimated_theta": -0.0192,
+        "rmse": 0.4849
+      },
+      {
+        "true_theta_range": [
+          0.5,
+          1.5
+        ],
+        "n": 4746,
+        "mean_true_theta": 0.9355,
+        "mean_estimated_theta": 0.6572,
+        "rmse": 0.5467
+      },
+      {
+        "true_theta_range": [
+          1.5,
+          3.1
+        ],
+        "n": 1866,
+        "mean_true_theta": 2.0342,
+        "mean_estimated_theta": 1.2861,
+        "rmse": 0.8842
+      }
+    ]
+  },
+  "shifted_parameter_stress_test": {
+    "participants": 20000,
+    "truth_regime": "shifted_item_parameters",
+    "mean_bias": -0.0156,
+    "rmse": 0.6173,
+    "mae": 0.4888,
+    "spearman_theta": 0.8448,
+    "credible_interval_95_coverage": 0.9401,
+    "mean_rounds": 5.9913,
+    "max_round_fraction": 0.9913,
+    "round_distribution": {
+      "5": 173,
+      "6": 19827
+    },
+    "mean_item_count": 17.974,
+    "passage_exposure": {
+      "advanced-a-feedback-loops": 19938,
+      "advanced-b-preregistration": 19896,
+      "foundation-a-seed-library": 19996,
+      "foundation-b-bus-signs": 19997,
+      "standard-a-urban-trees": 20000,
+      "standard-b-bird-counts": 20000
+    },
+    "ability_bins": [
+      {
+        "true_theta_range": [
+          -3.1,
+          -1.5
+        ],
+        "n": 1812,
+        "mean_true_theta": -2.0179,
+        "mean_estimated_theta": -1.2252,
+        "rmse": 0.9428
+      },
+      {
+        "true_theta_range": [
+          -1.5,
+          -0.5
+        ],
+        "n": 4818,
+        "mean_true_theta": -0.9444,
+        "mean_estimated_theta": -0.6991,
+        "rmse": 0.5474
+      },
+      {
+        "true_theta_range": [
+          -0.5,
+          0.5
+        ],
+        "n": 6795,
+        "mean_true_theta": 0.0016,
+        "mean_estimated_theta": -0.0358,
+        "rmse": 0.5006
+      },
+      {
+        "true_theta_range": [
+          0.5,
+          1.5
+        ],
+        "n": 4697,
+        "mean_true_theta": 0.942,
+        "mean_estimated_theta": 0.6692,
+        "rmse": 0.5486
+      },
+      {
+        "true_theta_range": [
+          1.5,
+          3.1
+        ],
+        "n": 1878,
+        "mean_true_theta": 2.0459,
+        "mean_estimated_theta": 1.3035,
+        "rmse": 0.8788
+      }
+    ]
+  },
+  "gaze_metamorphic_checks": {
+    "sample_rate_invariance": {
+      "passed": true,
+      "median_duration_delta_ms": 0.0
+    },
+    "confidence_separation": {
+      "passed": true,
+      "high_quality_score": 0.938,
+      "low_quality_score": 0.738
+    },
+    "unsupported_claim_abstention": {
+      "passed": true
+    }
+  },
+  "gates": {
+    "item_bank_static_audit": true,
+    "matched_spearman_at_least_0_65": true,
+    "matched_rmse_below_0_90": true,
+    "matched_interval_coverage_at_least_0_85": true,
+    "shifted_spearman_at_least_0_55": true,
+    "rounds_within_protocol": true,
+    "gaze_metamorphic_checks": true
+  },
+  "all_gates_passed": true,
+  "operational_measurement_ready": false,
+  "known_limitations": [
+    "The item parameters are expert seeds rather than empirical calibration estimates.",
+    "A high max-round fraction indicates that the six-passage bank is information-limited.",
+    "The normal prior shrinks estimates at the extreme ends of the pilot scale.",
+    "No real participant, item-form, subgroup fairness, test-retest, or external-criterion validation has been run."
+  ],
+  "elapsed_seconds": 290.418,
+  "interpretation_limit": "Simulation validates software behaviour under declared assumptions only. It does not establish item calibration, CEFR linkage, external validity, or fairness."
+}

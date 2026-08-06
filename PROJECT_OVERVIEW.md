@@ -105,9 +105,9 @@ graph TD
         RDS["Reading Difficulty Score (RDS)"]
     end
 
-    subgraph INSP["📊 Cognitive Inspector (core/cognitive_inspector/)"]
-        FIX["Fixation Aggregator"]
-        DIAG["WPM, L2 & Fatigue Analyzer"]
+    subgraph INSP["📊 Reader Assessment v2 (core/cognitive_inspector/)"]
+        FIX["Fixation + Data Quality Aggregator"]
+        DIAG["Session Evidence + Abstention Policy"]
         REP["Gemini AI Report Generator"]
     end
 
@@ -231,11 +231,13 @@ flowchart LR
 
 ---
 
-### 2.6 Cognitive Inspector & Diagnostic Analyzer (`core/cognitive_inspector/`)
-Aggregates fixations and computes reader performance profiles:
-- **Fixation Grouper**: Converts raw gaze hits into discrete fixation events based on temporal thresholding ($\Delta t < 350\text{ms}$).
-- **Profile Metrics**: Calculates WPM, Regression Rate, Reread Count, Reading Ability Score, L2 English Proficiency Score, Attention Index, and Fatigue Level.
-- **LLM Report Generator** (`report_generator.py`): Formats diagnostic prompt templates and queries Google AI Studio API (`gemma-4-26b-a4b-it`) to construct structured markdown reports.
+### 2.6 Reader Assessment v2 (`core/cognitive_inspector/`)
+Provides an experimental, evidence-bounded reading measurement pipeline:
+- **Session Observables**: Groups gaze events and reports robust fixation, reread, regression, timing, and coverage summaries.
+- **Measurement Quality**: Surfaces tracking confidence, timestamp integrity, sampling cadence, prerequisites, and uncertainty.
+- **Claim Abstention**: Does not infer cognitive ability, attention, fatigue, English proficiency, or CEFR from a single gaze trace.
+- **Adaptive Pilot**: Uses fixed typography, server-side scoring, signed results, a multi-construct pilot bank, and an explicitly uncalibrated posterior estimate.
+- **Local Evidence Reports**: Generates Markdown locally without asking an LLM to amplify unsupported conclusions.
 
 ---
 
@@ -657,12 +659,18 @@ Top 10 cognitive bottleneck words identified by the optimal fusion model (`outpu
 - `POST /api/demo/upload_video` — Upload pre-recorded calibration WebM video for backend frame extraction and auto-training.
 
 ### 7.4 Cognitive Load & Diagnostic Inspector (`web/routes/cognitive.py` & `web/routes/inspector.py`)
+
+> **Reader Assessment v2 boundary:** inspector endpoints report session observations, data quality, uncertainty, and explicit abstentions. They do not currently provide validated cognitive ability, attention, fatigue, English proficiency, CEFR, or typography-optimum claims. The adaptive pilot uses fixed typography and an uncalibrated signed item flow; see `docs/reader_assessment/`.
 - `POST /api/cognitive/warmup` — Warm up and cache language models (`"en"` or `"zh"`).
 - `POST /api/cognitive/analyze/text` — Compute word surprisal and entropy for a raw text string.
 - `POST /api/cognitive/analyze/file` — Compute word surprisal for an uploaded document file.
 - `POST /api/cognitive/evaluate` — Benchmark predicted load against ground truth scores.
-- `POST /api/inspector/analyze` — Process raw gaze history to compute reader profile metrics.
-- `POST /api/inspector/report` — Compile structured diagnostic Markdown reports via Gemini API.
+- `POST /api/inspector/analyze` — Process gaze history and optional session context into observations, quality checks, uncertainty, and claim abstentions.
+- `POST /api/inspector/report` — Compile a local evidence-bounded Markdown report.
+- `POST /api/inspector/adaptive/start` — Start the fixed-layout reader-assessment pilot.
+- `POST /api/inspector/adaptive/score` — Score one passage on the server and sign the result.
+- `POST /api/inspector/adaptive/next` — Select the next unused passage or stop by the pilot precision rule.
+- `POST /api/inspector/adaptive/report` — Summarize uncalibrated pilot evidence without a CEFR or ability label.
 
 ### 7.5 Multimodal Fusion Engine (`web/routes/fusion.py`)
 - `POST /api/fuse/` — Fuse gaze history logs and cognitive load scores to generate RDS.
@@ -679,9 +687,10 @@ lexigaze/
 │   │   ├── pipeline.py                     # HuggingFace Surprisal/Entropy & XGBoost scoring
 │   │   ├── xgb_model.json                  # Pre-trained XGBoost cognitive load model weights
 │   │   └── ridge_model.json                # Pre-trained Ridge regression fallback weights
-│   ├── cognitive_inspector/                # Diagnostic Reader Profiling & AI Reporting
-│   │   ├── inspector.py                    # Fixation grouper, WPM, L2 & fatigue analyzer
-│   │   └── report_generator.py             # Prompt builder & Google AI Studio API integration
+│   ├── cognitive_inspector/                # Evidence-bounded experimental reader assessment
+│   │   ├── inspector.py                    # Session observables, quality, uncertainty, abstention
+│   │   ├── adaptive.py                     # Pilot bank, routing, posterior estimate
+│   │   └── report_generator.py             # Transparent local Markdown evidence report
 │   ├── gaze_core/                          # Real-Time Webcam Gaze Pipeline
 │   │   ├── inference.py                    # MediaPipe pose estimation & polynomial adapter
 │   │   ├── filters.py                      # OneEuro and horizontal corridor filters
@@ -700,7 +709,7 @@ lexigaze/
 │   │   ├── gaze.py                         # Live webcam calibration & prediction endpoints
 │   │   ├── gaze_video.py                   # Video stream capture endpoints
 │   │   ├── fusion.py                       # Multimodal fusion RDS API endpoints
-│   │   ├── inspector.py                    # Inspector diagnostic profiling endpoints
+│   │   ├── inspector.py                    # Reader evidence and signed adaptive pilot endpoints
 │   │   └── demo.py                         # Video extraction autotraining & demo endpoints
 │   ├── static/                             # Frontend Static Assets
 │   │   ├── mapping.js                      # DOM word bounding box extraction engine

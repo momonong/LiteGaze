@@ -1,296 +1,341 @@
-import json
+"""Regression tests for the evidence-bounded reader inspector v2."""
+
+from __future__ import annotations
+
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from core.cognitive_inspector.inspector import CognitiveInspector
+from core.cognitive_inspector.inspector import ASSESSMENT_VERSION, CognitiveInspector
 from web import create_app
 
 
-class TestCognitiveInspectorUnit(unittest.TestCase):
-    def setUp(self):
-        self.inspector = CognitiveInspector(sample_rate_hz=8) # 1 tick = 125ms
-
-    def test_empty_gaze_history(self):
-        """測試空眼動紀錄時的邊界行為，應回傳預設的零值結構。"""
-        result = self.inspector.analyze([], lang="en")
-        self.assertEqual(result["summary"]["total_fixations"], 0)
-        self.assertEqual(result["user_profile"]["reading_ability_score"], 0)
-        self.assertEqual(result["user_profile"]["english_proficiency_score"], 0)
-        self.assertEqual(result["user_profile"]["fatigue_level"], "none")
-
-    def test_single_fixation(self):
-        """測試僅有單一注視點的情況。"""
-        gaze_history = [
-            {"word": "Hello", "index": 0, "confidence": "high", "timestamp_ms": 1000}
-        ]
-        result = self.inspector.analyze(gaze_history, lang="en")
-        summary = result["summary"]
-        profile = result["user_profile"]
-        
-        self.assertEqual(summary["total_fixations"], 1)
-        self.assertEqual(summary["unique_words_read"], 1)
-        self.assertEqual(summary["regression_count"], 0)
-        self.assertEqual(summary["reread_count"], 0)
-        self.assertEqual(profile["fatigue_level"], "low")
-
-    def test_fluent_reading_flow(self):
-        """測試流暢閱讀（無回看、無長注視、順序閱讀），應獲得高閱讀能力分數、低認知負荷與高注意力穩定度。"""
-        gaze_history = []
-        words = ["The", "quick", "brown", "fox", "jumps", "over", "the", "lazy", "dog"]
-        # 順序產生 9 個單字的注視，每個單字停留 1 個 tick (125ms)
-        for i, word in enumerate(words):
-            gaze_history.append({
-                "word": word,
-                "index": i,
-                "confidence": "high",
-                "timestamp_ms": 1000 + i * 150
-            })
-            
-        result = self.inspector.analyze(gaze_history, lang="en")
-        summary = result["summary"]
-        profile = result["user_profile"]
-
-        self.assertEqual(summary["regression_count"], 0)
-        self.assertEqual(summary["reread_count"], 0)
-        self.assertEqual(summary["unique_words_read"], 9)
-        self.assertGreaterEqual(profile["reading_ability_score"], 70)
-        self.assertLess(profile["cognitive_load_index"], 40)
-        self.assertEqual(profile["attention_index"], 100)
-
-    def test_regressions_and_rereads(self):
-        """測試包含回看（Regression）與重讀（Reread）的困難閱讀情境。"""
-        # 軌跡順序: 0 -> 1 -> 2 -> 3 -> 1 (回看 1) -> 2 (重讀 2) -> 4
-        gaze_history = [
-            {"word": "word0", "index": 0, "confidence": "high", "timestamp_ms": 1000},
-            {"word": "word1", "index": 1, "confidence": "high", "timestamp_ms": 1150},
-            {"word": "word2", "index": 2, "confidence": "high", "timestamp_ms": 1300},
-            {"word": "word3", "index": 3, "confidence": "high", "timestamp_ms": 1450},
-            # 回看 word1
-            {"word": "word1", "index": 1, "confidence": "high", "timestamp_ms": 1600},
-            # 重讀 word2
-            {"word": "word2", "index": 2, "confidence": "high", "timestamp_ms": 1750},
-            {"word": "word4", "index": 4, "confidence": "high", "timestamp_ms": 1900},
-        ]
-        
-        result = self.inspector.analyze(gaze_history, lang="en")
-        summary = result["summary"]
-        profile = result["user_profile"]
-
-        # 軌跡中 3->1 是一次回看 (f.index < last_index)
-        self.assertGreaterEqual(summary["regression_count"], 1)
-        # word1 與 word2 被二次讀取
-        self.assertGreaterEqual(summary["reread_count"], 1)
-        # 注意力穩定指數應有所下降
-        self.assertLess(profile["attention_index"], 100)
-
-    def test_english_proficiency_rare_vs_common(self):
-        """測試英語熟練度指標：卡在罕見單字代表英文水準高，卡在常見基礎字代表英文水準低。"""
-        # Case A: 受阻（長注視）發生在罕見專業字 (如 "surprisal", zipf freq 很低)
-        gaze_rare = [
-            {"word": "surprisal", "index": 0, "confidence": "high", "timestamp_ms": 1000},
-            {"word": "surprisal", "index": 0, "confidence": "high", "timestamp_ms": 1120},
-            {"word": "surprisal", "index": 0, "confidence": "high", "timestamp_ms": 1240},
-            {"word": "surprisal", "index": 0, "confidence": "high", "timestamp_ms": 1360}, # 4 ticks = 500ms > 350ms (長注視)
-        ]
-        result_rare = self.inspector.analyze(gaze_rare, lang="en")
-        score_rare = result_rare["user_profile"]["english_proficiency_score"]
-
-        # Case B: 受阻（長注視）發生在極常見基礎字 (如 "the", zipf freq 極高)
-        gaze_common = [
-            {"word": "the", "index": 0, "confidence": "high", "timestamp_ms": 1000},
-            {"word": "the", "index": 0, "confidence": "high", "timestamp_ms": 1120},
-            {"word": "the", "index": 0, "confidence": "high", "timestamp_ms": 1240},
-            {"word": "the", "index": 0, "confidence": "high", "timestamp_ms": 1360}, # 4 ticks = 500ms (長注視)
-        ]
-        result_common = self.inspector.analyze(gaze_common, lang="en")
-        score_common = result_common["user_profile"]["english_proficiency_score"]
-
-        # 預期卡在罕見字得到的分數（代表使用者懂常見字，只是卡生字）應高於卡在常見字
-        self.assertGreater(score_rare, score_common)
-
-    def test_fatigue_level_stability(self):
-        """測試疲勞度評估：前後半段注視時長比例變化應正確映射至低/中/高疲勞標籤。"""
-        # Case A: 前後半段注視時長完全相同 -> 低疲勞
-        gaze_low = []
-        for i in range(10):
-            gaze_low.append({"word": f"w{i}", "index": i, "confidence": "high", "timestamp_ms": 1000 + i * 150})
-        res_low = self.inspector.analyze(gaze_low, lang="en")
-        self.assertEqual(res_low["user_profile"]["fatigue_level"], "low")
-
-        # Case B: 後半段注視點變多/拉長（模擬後半段疲勞加工速度變慢）-> 高疲勞
-        # 前半段: 5個單字，每個停留 1 tick
-        # 後半段: 5個單字，每個停留 4 ticks (大於 1.20 比例)
-        gaze_high = []
-        t = 1000
-        for i in range(5):
-            gaze_high.append({"word": f"w{i}", "index": i, "confidence": "high", "timestamp_ms": t})
-            t += 150
-        for i in range(5, 10):
-            # 連續 4 次命中同一個單字，使該 fixation 停留時長拉長
-            for tick in range(4):
-                gaze_high.append({"word": f"w{i}", "index": i, "confidence": "high", "timestamp_ms": t})
-                t += 120
-            t += 150
-
-        res_high = self.inspector.analyze(gaze_high, lang="en")
-        self.assertEqual(res_high["user_profile"]["fatigue_level"], "high")
-
-    def test_video_mode_tick_estimation(self):
-        """測試低取樣率/影片離線模式 (約 800ms) 下的動態 Tick 與聚合判定。"""
-        gaze_history = [
-            {"word": "word0", "index": 0, "confidence": "high", "timestamp_ms": 0},
-            {"word": "word0", "index": 0, "confidence": "high", "timestamp_ms": 800},
-            {"word": "word1", "index": 1, "confidence": "high", "timestamp_ms": 1600},
-            {"word": "word2", "index": 2, "confidence": "high", "timestamp_ms": 2400},
-            {"word": "word3", "index": 3, "confidence": "high", "timestamp_ms": 3200},
-            {"word": "word4", "index": 4, "confidence": "high", "timestamp_ms": 4000},
-        ]
-        result = self.inspector.analyze(gaze_history, lang="en")
-        summary = result["summary"]
-        
-        # 總注視次數應為 5 (word0 的 2 個 hits 被聚合，因為 800ms < threshold = max(350, 800*1.5=1200ms))
-        self.assertEqual(summary["total_fixations"], 5)
-        # 總注視時間 (total_dwell_time_ms) 應為 6 * 200ms = 1200ms
-        self.assertEqual(summary["total_dwell_time_ms"], 1200)
-        # 平均注視時間應為 1200 / 5 = 240ms
-        self.assertEqual(summary["avg_fixation_duration_ms"], 240.0)
+def _sequential_events(
+    word_count: int = 30,
+    *,
+    samples_per_word: int = 2,
+    tick_ms: float = 125.0,
+    confidence: float | str = "high",
+) -> list[dict]:
+    events = []
+    timestamp = 0.0
+    for index in range(word_count):
+        for _ in range(samples_per_word):
+            events.append(
+                {
+                    "word": f"word{index}",
+                    "index": index,
+                    "timestamp_ms": timestamp,
+                    "confidence": confidence,
+                }
+            )
+            timestamp += tick_ms
+    return events
 
 
+class CognitiveInspectorV2Tests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.inspector = CognitiveInspector(sample_rate_hz=8)
 
-class TestCognitiveInspectorIntegration(unittest.TestCase):
-    def setUp(self):
-        self._temp_dir = tempfile.TemporaryDirectory(prefix="lexigaze-inspector-")
-        self.addCleanup(self._temp_dir.cleanup)
-        self.reports_dir = Path(self._temp_dir.name)
-        self._reports_patcher = patch(
-            "web.routes.inspector.REPORTS_DIR",
-            self.reports_dir,
+    def test_empty_session_abstains_instead_of_scoring_zero_ability(self) -> None:
+        result = self.inspector.analyze([])
+        self.assertEqual(result["assessment_version"], ASSESSMENT_VERSION)
+        self.assertEqual(result["data_quality"]["status"], "insufficient")
+        self.assertIsNone(result["user_profile"]["reading_ability_score"])
+        self.assertIsNone(result["user_profile"]["english_proficiency_score"])
+        self.assertEqual(
+            result["claims"]["cognitive_ability"]["status"], "not_estimated"
         )
-        self._reports_patcher.start()
-        self.addCleanup(self._reports_patcher.stop)
-        self.app = create_app({
-            "TESTING": True,
-            "LEXIGAZE_BLUEPRINTS": ("inspector",),
-        })
+
+    def test_one_gaze_trace_never_becomes_english_or_attention_score(self) -> None:
+        indices = [0, 1, 2, 1, 3, 0, 4, 5, 4, 6, 7, 2]
+        events = [
+            {
+                "word": "common" if index % 2 else "sesquipedalian",
+                "index": index,
+                "timestamp_ms": position * 125,
+                "confidence": "high",
+            }
+            for position, index in enumerate(indices)
+        ]
+        result = self.inspector.analyze(events, lang="en")
+        self.assertGreater(result["summary"]["regression_count"], 0)
+        self.assertEqual(result["claims"]["attention"]["status"], "not_estimated")
+        self.assertEqual(
+            result["claims"]["english_proficiency"]["status"], "not_estimated"
+        )
+        self.assertIsNone(result["user_profile"]["attention_index"])
+
+    def test_equivalent_sampling_rates_produce_equivalent_dwell(self) -> None:
+        slow_samples = _sequential_events(25, samples_per_word=2, tick_ms=125.0)
+        fast_samples = _sequential_events(25, samples_per_word=4, tick_ms=62.5)
+        slow = CognitiveInspector(sample_rate_hz=8).analyze(slow_samples)
+        fast = CognitiveInspector(sample_rate_hz=16).analyze(fast_samples)
+        self.assertEqual(slow["summary"]["total_fixations"], 25)
+        self.assertEqual(fast["summary"]["total_fixations"], 25)
+        self.assertAlmostEqual(
+            slow["summary"]["median_fixation_duration_ms"],
+            fast["summary"]["median_fixation_duration_ms"],
+            delta=0.1,
+        )
+        self.assertAlmostEqual(
+            slow["summary"]["total_dwell_time_ms"],
+            fast["summary"]["total_dwell_time_ms"],
+            delta=1,
+        )
+
+    def test_tracking_confidence_changes_quality_not_raw_behavior(self) -> None:
+        high = self.inspector.analyze(_sequential_events(confidence=0.95))
+        low = self.inspector.analyze(_sequential_events(confidence=0.1))
+        self.assertEqual(high["summary"], low["summary"])
+        self.assertGreater(high["data_quality"]["score"], low["data_quality"]["score"])
+        self.assertIn("low_mean_tracking_confidence", low["data_quality"]["reasons"])
+
+    def test_full_text_wpm_requires_explicit_elapsed_and_completion(self) -> None:
+        events = _sequential_events(30)
+        no_context = self.inspector.analyze(events)
+        incomplete = self.inspector.analyze(
+            events,
+            context={"text_word_count": 120, "elapsed_time_ms": 60_000},
+        )
+        complete = self.inspector.analyze(
+            events,
+            context={
+                "text_word_count": 120,
+                "elapsed_time_ms": 60_000,
+                "completed_text": True,
+                "comprehension": {"correct": 2, "total": 3},
+            },
+        )
+        self.assertIsNone(no_context["summary"]["words_per_minute"])
+        self.assertIsNone(incomplete["summary"]["words_per_minute"])
+        self.assertEqual(complete["summary"]["words_per_minute"], 120.0)
+        self.assertEqual(
+            complete["claims"]["reading_fluency"]["status"],
+            "provisional_session_estimate",
+        )
+
+    def test_observed_word_rate_is_not_labeled_as_full_text_wpm(self) -> None:
+        result = self.inspector.analyze(_sequential_events(20))
+        self.assertIsNotNone(result["summary"]["observed_word_rate_wpm"])
+        self.assertIsNone(result["summary"]["words_per_minute"])
+        self.assertEqual(result["summary"]["words_per_minute_basis"], "not_available")
+
+    def test_non_monotonic_timestamps_reduce_quality(self) -> None:
+        events = _sequential_events(20)
+        events[8]["timestamp_ms"], events[9]["timestamp_ms"] = (
+            events[9]["timestamp_ms"],
+            events[8]["timestamp_ms"],
+        )
+        result = self.inspector.analyze(events)
+        self.assertFalse(result["data_quality"]["checks"]["timestamps_monotonic"])
+        self.assertIn(
+            "timestamps_were_not_monotonic", result["data_quality"]["reasons"]
+        )
+
+    def test_sparse_video_sampling_is_flagged_not_silently_capped(self) -> None:
+        events = _sequential_events(12, samples_per_word=1, tick_ms=800)
+        result = self.inspector.analyze(events)
+        self.assertIn(
+            "sampling_too_sparse_for_fixation_timing", result["data_quality"]["reasons"]
+        )
+        self.assertGreaterEqual(result["summary"]["median_fixation_duration_ms"], 800)
+
+    def test_rare_word_dwell_is_only_a_session_signal(self) -> None:
+        words = [
+            "the",
+            "garden",
+            "water",
+            "people",
+            "simple",
+            "system",
+            "common",
+            "house",
+            "sesquipedalian",
+            "antediluvian",
+            "perspicacious",
+            "defenestration",
+            "pulchritudinous",
+            "circumlocution",
+        ]
+        events = []
+        timestamp = 0
+        for index, word in enumerate(words):
+            repeats = 4 if index >= 8 else 2
+            for _ in range(repeats):
+                events.append(
+                    {
+                        "word": word,
+                        "index": index,
+                        "timestamp_ms": timestamp,
+                        "confidence": "high",
+                    }
+                )
+                timestamp += 125
+        result = self.inspector.analyze(events)
+        lexical = result["claims"]["lexical_processing_signal"]
+        self.assertEqual(lexical["status"], "session_observation")
+        self.assertIsInstance(lexical["rarity_dwell_association"], float)
+        self.assertEqual(
+            result["claims"]["english_proficiency"]["status"], "not_estimated"
+        )
+
+
+class CognitiveInspectorApiTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory(prefix="lexigaze-inspector-v2-")
+        self.addCleanup(self.temp_dir.cleanup)
+        self.reports_dir = Path(self.temp_dir.name)
+        patcher = patch("web.routes.inspector.REPORTS_DIR", self.reports_dir)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.app = create_app({"TESTING": True, "LEXIGAZE_BLUEPRINTS": ("inspector",)})
         self.client = self.app.test_client()
-        self.reports_to_clean = []
 
-    def tearDown(self):
-        # 清除測試時產生的 Markdown 報告檔案
-        for p in self.reports_to_clean:
-            path = Path(p)
-            if path.exists():
-                path.unlink()
+    def test_analyze_endpoint_accepts_measurement_context(self) -> None:
+        response = self.client.post(
+            "/api/inspector/analyze",
+            json={
+                "gaze_history": _sequential_events(30),
+                "lang": "en",
+                "context": {
+                    "text_word_count": 150,
+                    "elapsed_time_ms": 60_000,
+                    "completed_text": True,
+                    "comprehension": {"correct": 3, "total": 3},
+                },
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        analysis = response.get_json()["analysis"]
+        self.assertEqual(analysis["summary"]["words_per_minute"], 150.0)
+        self.assertIn("claims", analysis)
 
-    def test_flask_analyze_endpoint(self):
-        """測試 POST /api/inspector/analyze 端點整合。"""
-        payload = {
-            "gaze_history": [
-                {"word": "Neuro", "index": 0, "confidence": "high", "timestamp_ms": 1000},
-                {"word": "Symbolic", "index": 1, "confidence": "high", "timestamp_ms": 1150}
-            ],
-            "lang": "en"
-        }
-        res = self.client.post("/api/inspector/analyze", 
-                               data=json.dumps(payload),
-                               content_type="application/json")
-        self.assertEqual(res.status_code, 200)
-        data = res.get_json()
-        self.assertTrue(data["ok"])
-        self.assertIn("analysis", data)
-        self.assertIn("user_profile", data["analysis"])
-        self.assertIn("summary", data["analysis"])
+    def test_analyze_rejects_non_object_context(self) -> None:
+        response = self.client.post(
+            "/api/inspector/analyze",
+            json={"gaze_history": [], "context": "not-an-object"},
+        )
+        self.assertEqual(response.status_code, 400)
 
-    def test_flask_report_endpoint_persisted(self):
-        """測試 POST /api/inspector/report 生成報告端點，並驗證 Markdown 檔案是否成功寫入磁碟。"""
-        payload = {
-            "gaze_history": [
-                {"word": "Neuro", "index": 0, "confidence": "high", "timestamp_ms": 1000},
-                {"word": "Symbolic", "index": 1, "confidence": "high", "timestamp_ms": 1150}
-            ],
-            "participant_id": "test_integration_user",
-            "lang": "en",
-            "persist": True
-        }
-        res = self.client.post("/api/inspector/report", 
-                               data=json.dumps(payload),
-                               content_type="application/json")
-        self.assertEqual(res.status_code, 200)
-        data = res.get_json()
-        self.assertTrue(data["ok"])
-        self.assertIn("report_md", data)
-        self.assertIn("report_path", data["analysis"])
-        
-        # 驗證實體檔案
-        rel_path = data["analysis"]["report_path"]
-        abs_path = self.reports_dir / Path(rel_path).name
-        self.assertTrue(abs_path.exists())
-        
-        # 標記以供 tearDown 清理
-        self.reports_to_clean.append(abs_path)
+    def test_report_is_transparent_and_can_be_persisted(self) -> None:
+        response = self.client.post(
+            "/api/inspector/report",
+            json={
+                "gaze_history": _sequential_events(30),
+                "participant_id": "v2-user",
+                "lang": "en",
+                "context": {
+                    "text_word_count": 120,
+                    "elapsed_time_ms": 60_000,
+                    "completed_text": True,
+                },
+                "persist": True,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("不是智力", payload["report_md"])
+        self.assertIn("CEFR", payload["report_md"])
+        report_name = Path(payload["analysis"]["report_path"]).name
+        persisted = self.reports_dir / report_name
+        self.assertTrue(persisted.exists())
+        self.assertIn(
+            "abstain_without_validity_evidence", persisted.read_text(encoding="utf-8")
+        )
 
-        # 讀取檔案，驗證包含受試者 ID
-        content = abs_path.read_text(encoding="utf-8")
-        self.assertIn("test_integration_user", content)
-        self.assertIn("認知能力指標評估", content)
+    def test_report_lifecycle(self) -> None:
+        created = self.client.post(
+            "/api/inspector/report",
+            json={
+                "gaze_history": _sequential_events(10),
+                "participant_id": "lifecycle-v2",
+                "persist": True,
+            },
+        ).get_json()
+        filename = Path(created["analysis"]["report_path"]).name
+        listed = self.client.get("/api/inspector/reports").get_json()["reports"]
+        self.assertIn(filename, [report["filename"] for report in listed])
+        self.assertEqual(
+            self.client.get(f"/api/inspector/reports/{filename}").status_code, 200
+        )
+        self.assertEqual(
+            self.client.delete(f"/api/inspector/reports/{filename}").status_code, 200
+        )
+        self.assertFalse((self.reports_dir / filename).exists())
 
-    def test_flask_reports_lifecycle_endpoints(self):
-        """測試認知診斷報告完整的生命週期 API：建立 -> 列表 -> 讀取 -> 刪除。"""
-        # 1. 建立並儲存報告
-        payload = {
-            "gaze_history": [
-                {"word": "Test", "index": 0, "confidence": "high", "timestamp_ms": 1000}
-            ],
-            "participant_id": "lifecycle_test_user",
-            "lang": "en",
-            "persist": True
-        }
-        res = self.client.post("/api/inspector/report", 
-                               data=json.dumps(payload),
-                               content_type="application/json")
-        self.assertEqual(res.status_code, 200)
-        data = res.get_json()
-        self.assertTrue(data["ok"])
-        report_path = data["analysis"]["report_path"]
-        filename = Path(report_path).name
-        
-        # 2. 列表報告，應包含剛剛建立的報告
-        res_list = self.client.get("/api/inspector/reports")
-        self.assertEqual(res_list.status_code, 200)
-        list_data = res_list.get_json()
-        self.assertTrue(list_data["ok"])
-        reports = list_data["reports"]
-        filenames = [r["filename"] for r in reports]
-        self.assertIn(filename, filenames)
-        
-        # 3. 讀取報告內容
-        res_get = self.client.get(f"/api/inspector/reports/{filename}")
-        self.assertEqual(res_get.status_code, 200)
-        get_data = res_get.get_json()
-        self.assertTrue(get_data["ok"])
-        self.assertIn("lifecycle_test_user", get_data["markdown"])
-        
-        # 4. 刪除報告
-        res_del = self.client.delete(f"/api/inspector/reports/{filename}")
-        self.assertEqual(res_del.status_code, 200)
-        del_data = res_del.get_json()
-        self.assertTrue(del_data["ok"])
-        
-        # 驗證實體檔案已被刪除
-        abs_path = self.reports_dir / Path(report_path).name
-        self.assertFalse(abs_path.exists())
+    def test_report_normalizes_non_string_and_unsafe_participant_ids(self) -> None:
+        numeric = self.client.post(
+            "/api/inspector/report",
+            json={
+                "gaze_history": _sequential_events(10),
+                "participant_id": 42,
+                "persist": True,
+            },
+        )
+        self.assertEqual(numeric.status_code, 200)
+        numeric_name = Path(numeric.get_json()["analysis"]["report_path"]).name
+        self.assertTrue(numeric_name.startswith("42_"))
 
-    def test_flask_analyze_invalid_payload(self):
-        """測試傳入無效 Gaze 格式時的 API 錯誤處理機制。"""
-        res = self.client.post("/api/inspector/analyze", 
-                               data=json.dumps({"gaze_history": "not_an_array"}),
-                               content_type="application/json")
-        self.assertEqual(res.status_code, 400)
-        data = res.get_json()
-        self.assertFalse(data["ok"])
-        self.assertIn("error", data)
+        unsafe = self.client.post(
+            "/api/inspector/report",
+            json={
+                "gaze_history": _sequential_events(10),
+                "participant_id": "../",
+                "persist": True,
+            },
+        )
+        self.assertEqual(unsafe.status_code, 200)
+        unsafe_name = Path(unsafe.get_json()["analysis"]["report_path"]).name
+        self.assertTrue(unsafe_name.startswith("anonymous_"))
+
+    def test_invalid_gaze_payload_is_rejected(self) -> None:
+        response = self.client.post(
+            "/api/inspector/analyze", json={"gaze_history": "not-an-array"}
+        )
+        self.assertEqual(response.status_code, 400)
+
+
+class ReaderAssessmentUiCopyTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        template_path = (
+            Path(__file__).resolve().parents[1]
+            / "web"
+            / "templates"
+            / "word_track.html"
+        )
+        cls.template = template_path.read_text(encoding="utf-8")
+
+    def test_active_inspector_copy_does_not_make_legacy_diagnostic_claims(self) -> None:
+        forbidden_claims = (
+            "基於眼動序列，分析使用者的閱讀理解力、英語熟練度與疲勞程度。",
+            "開始診斷認知能力",
+            "跨階段認知負載與排版分析",
+            "適應性多輪認知診斷測驗",
+            "認知負荷評估",
+            "高認知負擔詞彙",
+            "回答兩題理解選擇題",
+            "認知與排版適應性評估完成",
+            "眼動軌跡與認知回視重建",
+        )
+        for claim in forbidden_claims:
+            with self.subTest(claim=claim):
+                self.assertNotIn(claim, self.template)
+
+    def test_active_inspector_copy_discloses_scope_and_limitations(self) -> None:
+        self.assertIn("閱讀測量證據", self.template)
+        self.assertIn("不推論智力、注意力、疲勞或英語程度", self.template)
+        self.assertIn("實驗性多輪閱讀評量", self.template)
+        self.assertIn("只有在全文完成且時間資訊完整時才顯示全文 WPM", self.template)
+        self.assertIn("這是文本模型輸出，不是使用者認知負荷或能力測量", self.template)
+        self.assertIn("回答三題理解選擇題", self.template)
+        self.assertIn("在文件上標示處理需求", self.template)
+        self.assertIn(
+            "顏色只標示座標移動方向，不代表理解困難、注意力或認知狀態", self.template
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

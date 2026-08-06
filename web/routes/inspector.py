@@ -1,33 +1,55 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
+import secrets
 import time
 from datetime import datetime
 from pathlib import Path
+
 from flask import Blueprint, jsonify, request
 
 from core.cognitive_inspector import CognitiveInspector, generate_markdown_report
+from core.cognitive_inspector.adaptive import (
+    CALIBRATION_STATUS,
+    ITEM_BANK_VERSION,
+    MAX_ROUNDS,
+    MIN_ROUNDS,
+    PROTOCOL_VERSION,
+    adaptive_analysis,
+    generate_adaptive_report,
+    initial_passage,
+    public_passage,
+    score_passage,
+    select_next_passage,
+    should_stop,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 REPORTS_DIR = ROOT / "docs" / "cognitive_reports"
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 inspector_bp = Blueprint("inspector", __name__, url_prefix="/api/inspector")
+_ADAPTIVE_SIGNING_SECRET = secrets.token_bytes(32)
 
 @inspector_bp.post("/analyze")
 def analyze():
-    """
-    分析眼動歷史軌跡，回傳能力與負荷指標畫像。
-    """
+    """Summarize observable reading-session evidence and data quality."""
     body = request.get_json(force=True) or {}
     gaze_history = body.get("gaze_history", [])
     lang = body.get("lang", "en")
+    context = body.get("context", {})
 
     if not isinstance(gaze_history, list):
         return jsonify({"ok": False, "error": "'gaze_history' 必須是陣列"}), 400
 
+    if not isinstance(context, dict):
+        return jsonify({"ok": False, "error": "'context' must be an object"}), 400
+
     inspector = CognitiveInspector()
-    result = inspector.analyze(gaze_history, lang=lang)
+    result = inspector.analyze(gaze_history, lang=lang, context=context)
 
     return jsonify({
         "ok": True,
@@ -36,26 +58,31 @@ def analyze():
 
 @inspector_bp.post("/report")
 def generate_report():
-    """
-    產生精緻的 Markdown 閱讀能力診斷報告，並可選擇性持久化儲存。
-    """
+    """Generate an evidence-bounded Markdown report for one reading session."""
     body = request.get_json(force=True) or {}
     gaze_history = body.get("gaze_history", [])
-    participant_id = body.get("participant_id", "anonymous").strip() or "anonymous"
+    participant_raw = body.get("participant_id", "anonymous")
+    participant_id = str(participant_raw).strip() or "anonymous"
     lang = body.get("lang", "en")
     persist = bool(body.get("persist", False))
+    context = body.get("context", {})
 
     if not isinstance(gaze_history, list):
         return jsonify({"ok": False, "error": "'gaze_history' 必須是陣列"}), 400
 
+    if not isinstance(context, dict):
+        return jsonify({"ok": False, "error": "'context' must be an object"}), 400
+
     inspector = CognitiveInspector()
-    result = inspector.analyze(gaze_history, lang=lang)
+    result = inspector.analyze(gaze_history, lang=lang, context=context)
     
     report_md = generate_markdown_report(result, participant_id)
 
     if persist:
         timestamp = int(time.time())
-        safe_id = "".join([c for c in participant_id if c.isalnum() or c in ("-", "_")]).strip()
+        safe_id = "".join(
+            c for c in participant_id if c.isalnum() or c in ("-", "_")
+        ).strip() or "anonymous"
         filename = f"{safe_id}_{timestamp}.md"
         out_path = REPORTS_DIR / filename
         with open(out_path, "w", encoding="utf-8") as fh:
@@ -70,9 +97,7 @@ def generate_report():
 
 @inspector_bp.get("/reports")
 def list_reports():
-    """
-    列出所有已儲存的 Markdown 認知診斷報告。
-    """
+    """List persisted Markdown evidence reports."""
     reports = []
     for f in REPORTS_DIR.glob("*.md"):
         try:
@@ -184,8 +209,9 @@ def generate_agentic_quiz():
     Generate an agentic cognitive reading quiz using the Gemini API,
     focusing on sentences where the user struggled or spent the most time.
     """
-    import os
     import json
+    import os
+
     import requests
     from dotenv import load_dotenv
 
@@ -646,8 +672,197 @@ ADAPTIVE_PARAGRAPHS = {
     }
 }
 
+def _encode_adaptive_result(payload: dict) -> str:
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    signature = hmac.new(_ADAPTIVE_SIGNING_SECRET, raw, hashlib.sha256).digest()
+    encoded_payload = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+    encoded_signature = base64.urlsafe_b64encode(signature).decode("ascii").rstrip("=")
+    return f"{encoded_payload}.{encoded_signature}"
+
+
+def _decode_adaptive_result(token: str) -> dict:
+    try:
+        encoded_payload, encoded_signature = token.split(".", 1)
+        raw = base64.urlsafe_b64decode(encoded_payload + "=" * (-len(encoded_payload) % 4))
+        signature = base64.urlsafe_b64decode(
+            encoded_signature + "=" * (-len(encoded_signature) % 4)
+        )
+    except (AttributeError, ValueError, TypeError):
+        raise ValueError("invalid adaptive result token") from None
+    expected = hmac.new(_ADAPTIVE_SIGNING_SECRET, raw, hashlib.sha256).digest()
+    if not hmac.compare_digest(signature, expected):
+        raise ValueError("adaptive result token verification failed")
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise ValueError("invalid adaptive result payload") from None
+    if not isinstance(payload, dict):
+        raise TypeError("invalid adaptive result payload")
+    return payload
+
+
+def _verified_adaptive_history(raw_history: object) -> list[dict]:
+    if not isinstance(raw_history, list):
+        raise TypeError("history must be an array")
+    verified = []
+    for position, record in enumerate(raw_history, start=1):
+        if not isinstance(record, dict):
+            raise TypeError(f"history item {position} must be an object")
+        payload = _decode_adaptive_result(str(record.get("result_token", "")))
+        if payload.get("passage_id") != record.get("passage_id"):
+            raise ValueError(f"history item {position} passage does not match its token")
+        merged = dict(payload)
+        merged["round"] = position
+        merged["result_token"] = record.get("result_token")
+        for key in (
+            "wpm",
+            "regression_rate",
+            "avg_fixation_duration_ms",
+            "data_quality_status",
+        ):
+            if key in record:
+                merged[key] = record[key]
+        merged["quiz_score"] = payload.get("correct")
+        merged["quiz_total"] = payload.get("total")
+        verified.append(merged)
+    return verified
+
+
+def _adaptive_round_response(
+    passage: dict, *, assessment_id: str, round_number: int
+) -> dict:
+    return {
+        "ok": True,
+        "assessment_id": assessment_id,
+        "round": round_number,
+        "min_rounds": MIN_ROUNDS,
+        "max_rounds": MAX_ROUNDS,
+        "protocol_version": PROTOCOL_VERSION,
+        "item_bank_version": ITEM_BANK_VERSION,
+        "calibration_status": CALIBRATION_STATUS,
+        **public_passage(passage),
+    }
+
+
 @inspector_bp.post("/adaptive/start")
 def adaptive_start():
+    body = request.get_json(force=True) or {}
+    assessment_id = str(body.get("assessment_id") or secrets.token_hex(12))[:128]
+    passage = initial_passage(assessment_id)
+    return jsonify(
+        _adaptive_round_response(passage, assessment_id=assessment_id, round_number=1)
+    )
+
+
+@inspector_bp.post("/adaptive/score")
+def adaptive_score():
+    body = request.get_json(force=True) or {}
+    try:
+        scored = score_passage(
+            str(body.get("passage_id", "")), body.get("responses", {})
+        )
+    except (TypeError, ValueError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    signed_payload = {
+        "passage_id": scored["passage_id"],
+        "correct": scored["correct"],
+        "total": scored["total"],
+        "item_results": [
+            {
+                "question_id": result["question_id"],
+                "correct": result["correct"],
+            }
+            for result in scored["item_results"]
+        ],
+    }
+    return jsonify(
+        {
+            "ok": True,
+            "round_result": scored,
+            "result_token": _encode_adaptive_result(signed_payload),
+        }
+    )
+
+
+@inspector_bp.post("/adaptive/next")
+def adaptive_next():
+    body = request.get_json(force=True) or {}
+    assessment_id = str(body.get("assessment_id") or "anonymous-assessment")[:128]
+    try:
+        history = _verified_adaptive_history(body.get("history", []))
+    except (TypeError, ValueError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    if should_stop(history):
+        return jsonify(
+            {
+                "ok": True,
+                "is_finished": True,
+                "rounds_completed": len(history),
+                "analysis": adaptive_analysis(history),
+            }
+        )
+    passage = select_next_passage(history, assessment_id)
+    if passage is None:
+        return jsonify({"ok": True, "is_finished": True, "rounds_completed": len(history)})
+    return jsonify(
+        _adaptive_round_response(
+            passage, assessment_id=assessment_id, round_number=len(history) + 1
+        )
+    )
+
+
+@inspector_bp.post("/adaptive/report")
+def adaptive_report():
+    body = request.get_json(force=True) or {}
+    participant_raw = body.get("participant_id", "anonymous")
+    participant_id = str(participant_raw).strip() or "anonymous"
+    persist = bool(body.get("persist", False))
+    try:
+        history = _verified_adaptive_history(body.get("history", []))
+    except (TypeError, ValueError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    analysis = adaptive_analysis(history)
+    report_md = generate_adaptive_report(analysis, participant_id, history)
+    report_path = None
+    if persist:
+        timestamp = int(time.time())
+        safe_id = "".join(
+            character
+            for character in participant_id
+            if character.isalnum() or character in ("-", "_")
+        ).strip() or "anonymous"
+        filename = f"adaptive_v2_{safe_id}_{timestamp}.md"
+        out_path = REPORTS_DIR / filename
+        out_path.write_text(report_md, encoding="utf-8")
+        report_path = f"docs/cognitive_reports/{filename}"
+    observations = analysis["observations"]
+    model = analysis["experimental_model"]
+    comprehension_rate = (
+        round((observations["correct"] / observations["total"]) * 100.0, 1)
+        if observations["total"]
+        else None
+    )
+    return jsonify(
+        {
+            "ok": True,
+            "report_md": report_md,
+            "analysis": analysis,
+            "report_path": report_path,
+            "summary": {
+                "comprehension_rate": comprehension_rate,
+                "experimental_theta": model["theta"],
+                "posterior_sd": model["posterior_sd"],
+                "claim_status": analysis["claims"]["english_proficiency"]["status"],
+                "optimal_font_size": None,
+                "optimal_line_width": None,
+                "optimal_line_height": None,
+                "typography_status": "not_estimated",
+            },
+        }
+    )
+
+
+def _legacy_adaptive_start_disabled():
     """
     初始化適應性閱讀測試，回傳 Round 1 基線設定。
     """
@@ -668,12 +883,12 @@ def adaptive_start():
         "quiz": baseline["quiz"]
     })
 
-@inspector_bp.post("/adaptive/next")
-def adaptive_next():
+def _legacy_adaptive_next_disabled():
     """
     根據使用者之前的閱讀效能與測驗答題狀況，動態生成/決定下一輪的文本與視覺排版。
     """
     import os
+
     import requests
     from dotenv import load_dotenv
 
@@ -829,8 +1044,9 @@ Return the response in structured JSON format matching this exact schema:
                 res_data = json.loads(_clean_json_response(text_response))
                 
                 # Perform Pydantic runtime schema validation
+                from typing import Dict, List
+
                 from pydantic import BaseModel
-                from typing import List, Dict
                 
                 class QuizItem(BaseModel):
                     question: str
@@ -872,12 +1088,12 @@ Return the response in structured JSON format matching this exact schema:
         "quiz": fallback_data["quiz"]
     })
 
-@inspector_bp.post("/adaptive/report")
-def adaptive_report():
+def _legacy_adaptive_report_disabled():
     """
     彙整 3 輪適應性測驗的眼動指標與答題表現，利用 AI 生成全面性排版優化與閱讀能力診斷報告。
     """
     import os
+
     import requests
     from dotenv import load_dotenv
 

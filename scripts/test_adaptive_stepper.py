@@ -1,172 +1,222 @@
-import json
-import os
+"""Tests for the v2 adaptive reading-assessment protocol."""
+
+from __future__ import annotations
+
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
+from core.cognitive_inspector.adaptive import (
+    MAX_ROUNDS,
+    MIN_ROUNDS,
+    PASSAGE_BY_ID,
+    PASSAGES,
+    STANDARD_LAYOUT,
+    estimate_theta,
+    validate_item_bank,
+)
 from web import create_app
-from web.routes.inspector import _clean_json_response
 
 
-class TestAdaptiveStepper(unittest.TestCase):
-    def setUp(self):
-        # Standalone runs must not consume a developer's configured quota.
-        self._env_patcher = patch.dict(os.environ, {"GEMINI_API_KEY": ""})
-        self._env_patcher.start()
-        self.addCleanup(self._env_patcher.stop)
-        self.app = create_app({
-            "TESTING": True,
-            "LEXIGAZE_BLUEPRINTS": ("inspector",),
-        })
+def _answers(passage_id: str, *, correct: bool = True) -> dict[str, str]:
+    responses = {}
+    for item in PASSAGE_BY_ID[passage_id]["questions"]:
+        if correct:
+            responses[item["question_id"]] = item["answer"]
+        else:
+            responses[item["question_id"]] = next(
+                option for option in item["options"] if option != item["answer"]
+            )
+    return responses
+
+
+class AdaptiveEngineTests(unittest.TestCase):
+    def test_item_bank_has_balanced_coverage_and_no_public_key_leak(self) -> None:
+        audit = validate_item_bank()
+        self.assertTrue(audit["ok"], audit["errors"])
+        self.assertEqual(audit["passage_count"], 6)
+        self.assertEqual(audit["question_count"], 18)
+        self.assertEqual(set(audit["construct_distribution"].values()), {6})
+
+    def test_all_correct_response_pattern_has_higher_theta(self) -> None:
+        correct_history = []
+        incorrect_history = []
+        for passage in PASSAGES:
+            correct_history.append(
+                {
+                    "passage_id": passage["passage_id"],
+                    "item_results": [
+                        {"question_id": item["question_id"], "correct": True}
+                        for item in passage["questions"]
+                    ],
+                }
+            )
+            incorrect_history.append(
+                {
+                    "passage_id": passage["passage_id"],
+                    "item_results": [
+                        {"question_id": item["question_id"], "correct": False}
+                        for item in passage["questions"]
+                    ],
+                }
+            )
+        self.assertGreater(
+            estimate_theta(correct_history)["theta"],
+            estimate_theta(incorrect_history)["theta"],
+        )
+
+
+class AdaptiveApiTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory(prefix="lexigaze-adaptive-v2-")
+        self.addCleanup(self.temp_dir.cleanup)
+        self.reports_dir = Path(self.temp_dir.name)
+        patcher = patch("web.routes.inspector.REPORTS_DIR", self.reports_dir)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.app = create_app({"TESTING": True, "LEXIGAZE_BLUEPRINTS": ("inspector",)})
         self.client = self.app.test_client()
 
-    def test_clean_json_response_helper(self):
-        """測試 _clean_json_response 能否安全剝離 <thought> 標籤與 markdown 語法。"""
-        # Case 1: 正常 JSON 應保持原樣
-        raw1 = '{"key": "value"}'
-        self.assertEqual(_clean_json_response(raw1), '{"key": "value"}')
+    def _start(self, assessment_id: str = "test-assessment") -> dict:
+        response = self.client.post(
+            "/api/inspector/adaptive/start",
+            json={"assessment_id": assessment_id, "lang": "en"},
+        )
+        self.assertEqual(response.status_code, 200)
+        return response.get_json()
 
-        # Case 2: 包含 markdown 包裝的 JSON
-        raw2 = '```json\n{"key": "value"}\n```'
-        self.assertEqual(_clean_json_response(raw2), '{"key": "value"}')
+    def _score(self, passage_id: str, *, correct: bool = True) -> dict:
+        response = self.client.post(
+            "/api/inspector/adaptive/score",
+            json={
+                "passage_id": passage_id,
+                "responses": _answers(passage_id, correct=correct),
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        return response.get_json()
 
-        # Case 3: 包含 <thought> 標籤的 JSON
-        raw3 = '<thought>I am thinking here</thought>{"key": "value"}'
-        self.assertEqual(_clean_json_response(raw3), '{"key": "value"}')
+    def test_start_hides_answers_and_explanations(self) -> None:
+        payload = self._start()
+        self.assertEqual(payload["min_rounds"], MIN_ROUNDS)
+        self.assertEqual(payload["max_rounds"], MAX_ROUNDS)
+        self.assertEqual(payload["calibration_status"], "expert_seed_only_uncalibrated")
+        self.assertEqual(
+            {key: payload[key] for key in STANDARD_LAYOUT}, STANDARD_LAYOUT
+        )
+        for question in payload["quiz"]:
+            self.assertNotIn("answer", question)
+            self.assertNotIn("explanation", question)
+            self.assertIn("construct", question)
 
-        # Case 4: 包含換行、大小寫 <Thought> 標籤與 markdown 的複雜 JSON
-        raw4 = '<Thought>\nLet me think...\n</Thought>```json\n{"key": "value"}\n```'
-        self.assertEqual(_clean_json_response(raw4), '{"key": "value"}')
+    def test_server_scores_complete_responses_and_rejects_missing_items(self) -> None:
+        start = self._start()
+        scored = self._score(start["passage_id"], correct=True)
+        self.assertEqual(scored["round_result"]["correct"], 3)
+        self.assertEqual(scored["round_result"]["total"], 3)
+        self.assertTrue(scored["result_token"])
 
-    def test_adaptive_stepper_flow(self):
-        """測試適應性測驗完整端到端流程：Start -> Next (Round 2) -> Next (Round 3) -> Next (Finish) -> Report。"""
-        
-        # 1. 啟動測試 (Round 1)
-        res_start = self.client.post("/api/inspector/adaptive/start", 
-                                     data=json.dumps({"lang": "en"}),
-                                     content_type="application/json")
-        self.assertEqual(res_start.status_code, 200)
-        start_data = res_start.get_json()
-        self.assertTrue(start_data["ok"])
-        self.assertEqual(start_data["round"], 1)
-        self.assertEqual(start_data["difficulty"], "easy")
-        self.assertEqual(start_data["font_size"], 16)
-        self.assertIn("quiz", start_data)
+        first_question = start["quiz"][0]
+        incomplete = self.client.post(
+            "/api/inspector/adaptive/score",
+            json={
+                "passage_id": start["passage_id"],
+                "responses": {
+                    first_question["question_id"]: next(iter(first_question["options"]))
+                },
+            },
+        )
+        self.assertEqual(incomplete.status_code, 400)
 
-        # 模擬 Round 1 閱讀表現 (回答正確，低回看)
-        history = [
-            {
-                "round": 1,
-                "difficulty": "easy",
-                "font_size": 16,
-                "line_width": 650,
-                "line_height": 1.6,
-                "quiz_score": 2,
-                "quiz_total": 2,
-                "regression_rate": 0.05,
-                "wpm": 240.0
-            }
-        ]
+    def test_signed_adaptive_flow_holds_layout_constant_and_finishes(self) -> None:
+        assessment_id = "flow-constant-layout"
+        current = self._start(assessment_id)
+        history = []
+        seen_passages = set()
+        while True:
+            self.assertEqual(
+                {key: current[key] for key in STANDARD_LAYOUT}, STANDARD_LAYOUT
+            )
+            self.assertNotIn(current["passage_id"], seen_passages)
+            seen_passages.add(current["passage_id"])
+            scored = self._score(current["passage_id"], correct=True)
+            history.append(
+                {
+                    "passage_id": current["passage_id"],
+                    "result_token": scored["result_token"],
+                    "wpm": 180.0,
+                    "regression_rate": 0.08,
+                    "data_quality_status": "good",
+                }
+            )
+            next_response = self.client.post(
+                "/api/inspector/adaptive/next",
+                json={"assessment_id": assessment_id, "history": history},
+            )
+            self.assertEqual(next_response.status_code, 200)
+            next_payload = next_response.get_json()
+            if next_payload.get("is_finished"):
+                break
+            current = next_payload
+        self.assertGreaterEqual(len(history), MIN_ROUNDS)
+        self.assertLessEqual(len(history), MAX_ROUNDS)
 
-        # 2. 請求 Round 2 參數
-        res_r2 = self.client.post("/api/inspector/adaptive/next",
-                                  data=json.dumps({
-                                      "lang": "en",
-                                      "current_round": 1,
-                                      "history": history
-                                  }),
-                                  content_type="application/json")
-        self.assertEqual(res_r2.status_code, 200)
-        r2_data = res_r2.get_json()
-        self.assertTrue(r2_data["ok"])
-        self.assertEqual(r2_data["round"], 2)
-        # 由於 Round 1 答對且回看低，Round 2 難度應升為 medium
-        self.assertEqual(r2_data["difficulty"], "medium")
-        import os
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if api_key:
-            self.assertTrue(12 <= r2_data["font_size"] <= 24)
-        else:
-            self.assertEqual(r2_data["font_size"], 14) # medium English font size is 14
+        report_response = self.client.post(
+            "/api/inspector/adaptive/report",
+            json={
+                "assessment_id": assessment_id,
+                "participant_id": "adaptive-v2-user",
+                "history": history,
+                "persist": True,
+            },
+        )
+        self.assertEqual(report_response.status_code, 200)
+        report = report_response.get_json()
+        self.assertEqual(report["summary"]["claim_status"], "not_estimated")
+        self.assertEqual(report["summary"]["typography_status"], "not_estimated")
+        self.assertIsNone(report["summary"]["optimal_font_size"])
+        self.assertIn("不是 CEFR", report["report_md"])
+        self.assertTrue((self.reports_dir / Path(report["report_path"]).name).exists())
 
-        # 模擬 Round 2 閱讀表現 (回答正確，低回看)
-        history.append({
-            "round": 2,
-            "difficulty": "medium",
-            "font_size": 14,
-            "line_width": 550,
-            "line_height": 1.5,
-            "quiz_score": 2,
-            "quiz_total": 2,
-            "regression_rate": 0.08,
-            "wpm": 210.0
-        })
+    def test_tampered_round_token_is_rejected(self) -> None:
+        start = self._start("tamper-test")
+        scored = self._score(start["passage_id"])
+        token = scored["result_token"]
+        tampered = token[:-1] + ("A" if token[-1] != "A" else "B")
+        response = self.client.post(
+            "/api/inspector/adaptive/next",
+            json={
+                "assessment_id": "tamper-test",
+                "history": [
+                    {"passage_id": start["passage_id"], "result_token": tampered}
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 400)
 
-        # 3. 請求 Round 3 參數
-        res_r3 = self.client.post("/api/inspector/adaptive/next",
-                                  data=json.dumps({
-                                      "lang": "en",
-                                      "current_round": 2,
-                                      "history": history
-                                  }),
-                                  content_type="application/json")
-        self.assertEqual(res_r3.status_code, 200)
-        r3_data = res_r3.get_json()
-        self.assertTrue(r3_data["ok"])
-        self.assertEqual(r3_data["round"], 3)
-        # 由於 Round 2 答對，Round 3 難度應升為 hard
-        self.assertEqual(r3_data["difficulty"], "hard")
-        import os
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if api_key:
-            self.assertTrue(12 <= r3_data["font_size"] <= 24)
-        else:
-            self.assertEqual(r3_data["font_size"], 12) # hard English font size is 12
+    def test_client_cannot_swap_passage_id_after_scoring(self) -> None:
+        start = self._start("swap-test")
+        scored = self._score(start["passage_id"])
+        other_passage = next(
+            passage["passage_id"]
+            for passage in PASSAGES
+            if passage["passage_id"] != start["passage_id"]
+        )
+        response = self.client.post(
+            "/api/inspector/adaptive/next",
+            json={
+                "assessment_id": "swap-test",
+                "history": [
+                    {
+                        "passage_id": other_passage,
+                        "result_token": scored["result_token"],
+                    }
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 400)
 
-        # 模擬 Round 3 閱讀表現 (回答錯誤，高回看)
-        history.append({
-            "round": 3,
-            "difficulty": "hard",
-            "font_size": 12,
-            "line_width": 450,
-            "line_height": 1.4,
-            "quiz_score": 0,
-            "quiz_total": 2,
-            "regression_rate": 0.35,
-            "wpm": 90.0
-        })
-
-        # 4. 結束測驗判定
-        res_fin = self.client.post("/api/inspector/adaptive/next",
-                                   data=json.dumps({
-                                       "lang": "en",
-                                       "current_round": 3,
-                                       "history": history
-                                   }),
-                                   content_type="application/json")
-        self.assertEqual(res_fin.status_code, 200)
-        fin_data = res_fin.get_json()
-        self.assertTrue(fin_data["ok"])
-        self.assertTrue(fin_data["is_finished"])
-
-        # 5. 產生綜合報告與排版建議
-        res_rep = self.client.post("/api/inspector/adaptive/report",
-                                   data=json.dumps({
-                                       "lang": "en",
-                                       "history": history,
-                                       "participant_id": "tester-stepper",
-                                       "persist": False
-                                   }),
-                                   content_type="application/json")
-        self.assertEqual(res_rep.status_code, 200)
-        rep_data = res_rep.get_json()
-        self.assertTrue(rep_data["ok"])
-        self.assertIn("report_md", rep_data)
-        
-        # 驗證最佳版面排版建議：應取閱讀效率（WPM）最高、回看率低的 round (即 Round 1 或 2，而非 Round 3 艱深且高認知負荷的 hard 版面)
-        summary = rep_data["summary"]
-        self.assertEqual(summary["optimal_font_size"], 16) # Round 1 efficiency: 240 * (2/2) * 0.95 = 228; Round 2: 210 * 1 * 0.92 = 193.2; Round 1 is optimal
-        self.assertEqual(summary["optimal_line_width"], 650)
-        self.assertEqual(summary["optimal_line_height"], 1.6)
 
 if __name__ == "__main__":
     unittest.main()
