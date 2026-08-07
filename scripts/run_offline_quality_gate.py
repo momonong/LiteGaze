@@ -42,6 +42,7 @@ TEST_TARGETS = (
     "scripts.test_text_model_generalization",
     "scripts.test_provenance_fusion",
     "scripts.test_quality_aware_fusion_v2",
+    "scripts.test_subject_holdout_gaze_diversity",
     "scripts.test_onestop_confirmation_preparation",
     "scripts.test_fusion_routes",
 )

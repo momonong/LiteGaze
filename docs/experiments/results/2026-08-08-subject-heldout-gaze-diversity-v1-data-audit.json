@@ -1,0 +1,176 @@
+{
+  "created_at": "2026-08-07T22:53:22.776400+00:00",
+  "data_audit": {
+    "duplicate_reference_rows": 4,
+    "image_shape": [
+      1,
+      36,
+      60
+    ],
+    "samples_per_subject": 3000,
+    "source_file_count": 534,
+    "source_sha256": "cef00ac1806c6d5ea416d71c975f503fd17cb0eac090ff9ad1f39aeb4764ecf0",
+    "split_overlap_count": 0,
+    "status": "passed",
+    "subject_count": 15,
+    "subjects": {
+      "p00": {
+        "days": 39,
+        "duplicate_reference_rows": 0,
+        "left_samples": 1500,
+        "maximum_day_samples": 125,
+        "minimum_day_samples": 18,
+        "right_samples": 1500,
+        "samples": 3000,
+        "unique_sample_identities": 3000
+      },
+      "p01": {
+        "days": 67,
+        "duplicate_reference_rows": 0,
+        "left_samples": 1500,
+        "maximum_day_samples": 103,
+        "minimum_day_samples": 1,
+        "right_samples": 1500,
+        "samples": 3000,
+        "unique_sample_identities": 3000
+      },
+      "p02": {
+        "days": 39,
+        "duplicate_reference_rows": 0,
+        "left_samples": 1500,
+        "maximum_day_samples": 143,
+        "minimum_day_samples": 17,
+        "right_samples": 1500,
+        "samples": 3000,
+        "unique_sample_identities": 3000
+      },
+      "p03": {
+        "days": 65,
+        "duplicate_reference_rows": 0,
+        "left_samples": 1500,
+        "maximum_day_samples": 164,
+        "minimum_day_samples": 3,
+        "right_samples": 1500,
+        "samples": 3000,
+        "unique_sample_identities": 3000
+      },
+      "p04": {
+        "days": 25,
+        "duplicate_reference_rows": 0,
+        "left_samples": 1500,
+        "maximum_day_samples": 194,
+        "minimum_day_samples": 3,
+        "right_samples": 1500,
+        "samples": 3000,
+        "unique_sample_identities": 3000
+      },
+      "p05": {
+        "days": 38,
+        "duplicate_reference_rows": 0,
+        "left_samples": 1500,
+        "maximum_day_samples": 224,
+        "minimum_day_samples": 5,
+        "right_samples": 1500,
+        "samples": 3000,
+        "unique_sample_identities": 3000
+      },
+      "p06": {
+        "days": 62,
+        "duplicate_reference_rows": 0,
+        "left_samples": 1500,
+        "maximum_day_samples": 166,
+        "minimum_day_samples": 2,
+        "right_samples": 1500,
+        "samples": 3000,
+        "unique_sample_identities": 3000
+      },
+      "p07": {
+        "days": 56,
+        "duplicate_reference_rows": 0,
+        "left_samples": 1500,
+        "maximum_day_samples": 155,
+        "minimum_day_samples": 12,
+        "right_samples": 1500,
+        "samples": 3000,
+        "unique_sample_identities": 3000
+      },
+      "p08": {
+        "days": 47,
+        "duplicate_reference_rows": 0,
+        "left_samples": 1500,
+        "maximum_day_samples": 262,
+        "minimum_day_samples": 6,
+        "right_samples": 1500,
+        "samples": 3000,
+        "unique_sample_identities": 3000
+      },
+      "p09": {
+        "days": 20,
+        "duplicate_reference_rows": 0,
+        "left_samples": 1500,
+        "maximum_day_samples": 486,
+        "minimum_day_samples": 10,
+        "right_samples": 1500,
+        "samples": 3000,
+        "unique_sample_identities": 3000
+      },
+      "p10": {
+        "days": 16,
+        "duplicate_reference_rows": 0,
+        "left_samples": 1500,
+        "maximum_day_samples": 502,
+        "minimum_day_samples": 12,
+        "right_samples": 1500,
+        "samples": 3000,
+        "unique_sample_identities": 3000
+      },
+      "p11": {
+        "days": 19,
+        "duplicate_reference_rows": 0,
+        "left_samples": 1500,
+        "maximum_day_samples": 330,
+        "minimum_day_samples": 19,
+        "right_samples": 1500,
+        "samples": 3000,
+        "unique_sample_identities": 3000
+      },
+      "p12": {
+        "days": 7,
+        "duplicate_reference_rows": 0,
+        "left_samples": 1500,
+        "maximum_day_samples": 1431,
+        "minimum_day_samples": 37,
+        "right_samples": 1500,
+        "samples": 3000,
+        "unique_sample_identities": 3000
+      },
+      "p13": {
+        "days": 12,
+        "duplicate_reference_rows": 4,
+        "left_samples": 1500,
+        "maximum_day_samples": 910,
+        "minimum_day_samples": 40,
+        "right_samples": 1500,
+        "samples": 3000,
+        "unique_sample_identities": 2996
+      },
+      "p14": {
+        "days": 7,
+        "duplicate_reference_rows": 0,
+        "left_samples": 1500,
+        "maximum_day_samples": 720,
+        "minimum_day_samples": 240,
+        "right_samples": 1500,
+        "samples": 3000,
+        "unique_sample_identities": 3000
+      }
+    },
+    "total_samples": 45000,
+    "unique_sample_identities": 44996
+  },
+  "model_runtime_imported": false,
+  "protocol_commit": "1c66f88c4aa852d3d466527305fd91b3cf70fc9e",
+  "protocol_id": "subject-heldout-gaze-diversity-v1",
+  "protocol_sha256": "6203b63cb1eb1620bd42d410cc7dd3403ec31ac19a161d91f01ce0b050c49fd9",
+  "schema_version": 1
+}
