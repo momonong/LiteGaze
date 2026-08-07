@@ -1,0 +1,188 @@
+{
+  "schema_version": 1,
+  "protocol_id": "quality-aware-text-fusion-v2",
+  "frozen_date": "2026-08-07",
+  "branch": "experiment/quality-aware-text-fusion-v2",
+  "status": "frozen_before_benchmark",
+  "objective": "Test whether occurrence-aware alignment and conservative quality-aware late fusion degrade more safely than static fusion when gaze evidence is noisy or missing, without changing the webcam model or production default.",
+  "claim_boundary": {
+    "engineering_robustness_only": true,
+    "real_webcam_generalization_claimed": false,
+    "cognitive_or_english_ability_claimed": false,
+    "synthetic_corruption_is_not_participant_evidence": true,
+    "future_independent_real_capture_required": true
+  },
+  "production_policy": {
+    "candidate_mode": "shadow_only",
+    "production_default_may_change": false,
+    "legacy_outputs_must_remain_available": true
+  },
+  "candidate": {
+    "event_identity_precedence": [
+      "occurrence_id",
+      "page_num_and_word_index",
+      "ordered_same-token_occurrence",
+      "legacy_normalized_word"
+    ],
+    "text_signal": {
+      "field": "load_score",
+      "range": [
+        0.0,
+        1.0
+      ],
+      "request_local_normalization_allowed": false,
+      "role": "stable_text_prior",
+      "provenance_candidate_artifact_role": "future_shadow_input_only"
+    },
+    "gaze_score": {
+      "dwell_calibration_ms": [
+        50.0,
+        3000.0
+      ],
+      "fixation_count_cap": 6.0,
+      "dwell_weight": 0.75,
+      "fixation_weight": 0.25
+    },
+    "quality": {
+      "components": [
+        "mapping_confidence",
+        "tracking_coverage",
+        "stability",
+        "calibration_quality"
+      ],
+      "aggregation": "geometric_mean",
+      "gaze_weight_power": 1.5,
+      "confidence_values": {
+        "high": 1.0,
+        "medium": 0.55,
+        "low": 0.15,
+        "unknown": 0.0
+      },
+      "missing_gaze_weight": 0.0,
+      "text_out_of_distribution_abstain_below_quality": 0.45
+    },
+    "fusion": {
+      "formula": "gaze_weight * gaze_score + (1 - gaze_weight) * text_score",
+      "missing_gaze_behavior": "return_text_score_exactly",
+      "outputs": [
+        "text_score",
+        "gaze_score",
+        "gaze_quality",
+        "gaze_weight",
+        "fused_score",
+        "modality_disagreement",
+        "abstain",
+        "reason"
+      ]
+    }
+  },
+  "synthetic_benchmark": {
+    "seed": 20260807,
+    "sessions_per_condition": 64,
+    "tokens_per_session": 96,
+    "latent_target_distribution": "beta(2.2, 2.2)",
+    "text_noise_sigma": 0.13,
+    "repeated_token_fraction": 0.2,
+    "conditions": {
+      "clean": {
+        "mapping_confidence": 0.95,
+        "tracking_coverage": 0.98,
+        "stability": 0.95,
+        "calibration_quality": 0.95,
+        "gaze_noise_sigma": 0.06,
+        "gaze_bias": 0.0,
+        "missing_probability": 0.02
+      },
+      "drift": {
+        "mapping_confidence": 0.8,
+        "tracking_coverage": 0.9,
+        "stability": 0.75,
+        "calibration_quality": 0.55,
+        "gaze_noise_sigma": 0.14,
+        "gaze_bias": 0.18,
+        "missing_probability": 0.08
+      },
+      "jitter": {
+        "mapping_confidence": 0.65,
+        "tracking_coverage": 0.85,
+        "stability": 0.35,
+        "calibration_quality": 0.75,
+        "gaze_noise_sigma": 0.22,
+        "gaze_bias": 0.0,
+        "missing_probability": 0.12
+      },
+      "dropout": {
+        "mapping_confidence": 0.75,
+        "tracking_coverage": 0.4,
+        "stability": 0.65,
+        "calibration_quality": 0.8,
+        "gaze_noise_sigma": 0.12,
+        "gaze_bias": 0.03,
+        "missing_probability": 0.6
+      },
+      "missing": {
+        "mapping_confidence": 0.0,
+        "tracking_coverage": 0.0,
+        "stability": 0.0,
+        "calibration_quality": 0.0,
+        "gaze_noise_sigma": 0.0,
+        "gaze_bias": 0.0,
+        "missing_probability": 1.0
+      }
+    },
+    "quality_observation_noise_sigma": 0.03,
+    "baselines": [
+      "text_only",
+      "gaze_only_with_neutral_missing_value",
+      "static_60_percent_gaze_with_text_fallback"
+    ],
+    "metrics": [
+      "mean_absolute_error",
+      "condition_mean_absolute_error",
+      "mean_gaze_weight",
+      "missing_fallback_max_absolute_delta",
+      "occurrence_collision_count"
+    ]
+  },
+  "decision_gate": {
+    "occurrence_collision_count_equals": 0,
+    "missing_fallback_max_absolute_delta_at_most": 1e-12,
+    "mean_gaze_weight_order": [
+      "clean",
+      "drift",
+      "jitter",
+      "dropout",
+      "missing"
+    ],
+    "candidate_aggregate_mae_less_than_static": true,
+    "candidate_mae_less_than_static_in": [
+      "drift",
+      "jitter",
+      "dropout"
+    ],
+    "candidate_clean_mae_may_exceed_static_by_at_most": 0.01,
+    "missing_candidate_equals_text_only": true,
+    "pass_action": "retain_shadow_candidate_and_freeze_real-capture_v2_manifest",
+    "fail_action": "record_failure_without_parameter_changes"
+  },
+  "leakage_controls": {
+    "question_answer_dataset_used": false,
+    "participant_data_used": false,
+    "public_eye_tracking_outcomes_used": false,
+    "existing_provo_geco_onestop_outcomes_used_for_parameter_selection": false,
+    "parameters_frozen_before_benchmark": true,
+    "benchmark_seed_frozen": true,
+    "post_result_parameter_tuning_allowed": false
+  },
+  "compute": {
+    "device": "cpu",
+    "gpu_allowed": false,
+    "torch_allowed": false,
+    "network_allowed": false
+  },
+  "mutation_policy": {
+    "benchmark_output_directory": "docs/experiments/results",
+    "production_model_or_default_must_not_change": true,
+    "after_result": "Record the frozen outcome exactly; any changed formula, threshold, corruption generator, or gate requires protocol v3 before rerun."
+  }
+}
