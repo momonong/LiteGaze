@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>LexiGaze｜受試者閱讀評量</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='participant_assessment.css') }}">
+  <script defer src="{{ url_for('static', filename='participant_assessment.js') }}"></script>
+</head>
+<body>
+  <header class="study-header">
+    <a class="brand" href="/study" aria-label="回到研究首頁">
+      <span class="brand-mark">L</span>
+      <span><strong>LexiGaze</strong><small>Participant assessment</small></span>
+    </a>
+    <div class="participant-chip">
+      <small>匿名受試者</small>
+      <strong id="participantId">—</strong>
+    </div>
+  </header>
+
+  <main>
+    <div id="alert" class="alert hidden" role="alert"></div>
+
+    <section class="intro-card" aria-labelledby="assessmentTitle">
+      <div>
+        <p class="eyebrow">受試者專用介面</p>
+        <h1 id="assessmentTitle">英文閱讀理解評量</h1>
+        <p>每輪先閱讀一篇短文，再回答三題。文章排版固定，題目會依前一輪作答結果調整；通常需 4–6 輪。</p>
+      </div>
+      <div class="privacy-note">
+        <strong>影像不落地</strong>
+        <span>閱讀期間的相機畫面只逐幀處理，不錄影、不寫入磁碟；系統只保留簽章答題結果與彙整品質指標。</span>
+      </div>
+    </section>
+
+    <section id="setupPanel" class="panel" aria-labelledby="setupTitle">
+      <div class="panel-heading">
+        <div><span class="step-label">準備</span><h2 id="setupTitle">確認環境與眼動連線</h2></div>
+        <span id="modelStatus" class="status-pill">尚未檢查</span>
+      </div>
+      <ul class="check-list">
+        <li>請維持與校準時相同的螢幕、相機位置和坐姿。</li>
+        <li>請關閉通知；閱讀時可自然移動頭部，但避免搬動裝置。</li>
+        <li>可隨時停止或回研究首頁；未完成不會被解讀為能力較差。</li>
+      </ul>
+      <div class="button-row">
+        <button id="cameraBtn" class="button secondary" type="button">檢查相機與模型</button>
+        <button id="beginBtn" class="button primary" type="button" disabled>開始評量</button>
+        <button id="leaveBtn" class="button ghost" type="button">暫停並返回</button>
+      </div>
+      <video id="cameraPreview" class="camera-preview hidden" muted playsinline aria-label="相機預覽"></video>
+      <canvas id="captureCanvas" class="hidden" width="320" height="240"></canvas>
+    </section>
+
+    <section id="readingPanel" class="panel hidden" aria-labelledby="roundTitle">
+      <div class="panel-heading">
+        <div>
+          <span id="roundLabel" class="step-label">第 1 輪</span>
+          <h2 id="roundTitle">閱讀文章</h2>
+        </div>
+        <div class="round-meta"><span id="difficulty">—</span><span id="timer">00:00</span></div>
+      </div>
+      <div id="passage" class="passage" lang="en" aria-live="polite"></div>
+      <div id="readingHint" class="inline-note">按下「開始閱讀」後計時；讀完再按「完成閱讀」。</div>
+      <div class="button-row">
+        <button id="startReadingBtn" class="button primary" type="button">開始閱讀</button>
+        <button id="finishReadingBtn" class="button success hidden" type="button">完成閱讀</button>
+      </div>
+    </section>
+
+    <section id="quizPanel" class="panel hidden" aria-labelledby="quizTitle">
+      <div class="panel-heading">
+        <div><span class="step-label">理解題</span><h2 id="quizTitle">請依剛才文章作答</h2></div>
+        <span id="qualityStatus" class="status-pill">處理中</span>
+      </div>
+      <form id="quizForm"></form>
+      <div class="button-row">
+        <button id="submitQuizBtn" class="button primary" type="button">送出本輪答案</button>
+      </div>
+    </section>
+
+    <section id="resultPanel" class="panel result-panel hidden" aria-labelledby="resultTitle">
+      <p class="eyebrow">流程完成</p>
+      <h2 id="resultTitle">謝謝你完成這次技術性評量</h2>
+      <p id="resultSummary"></p>
+      <div class="boundary-box">
+        本結果只描述這次未校準 pilot 題庫上的作答表現，不是 CEFR、英文能力診斷、一般閱讀能力或認知能力測量。
+      </div>
+      <div class="button-row">
+        <a class="button primary" href="/study">回到研究首頁與退出說明</a>
+      </div>
+    </section>
+
+    <p id="liveStatus" class="sr-only" aria-live="polite"></p>
+  </main>
+</body>
+</html>

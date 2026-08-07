@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "protocol_id": "lexigaze-reader-pilot",
+  "protocol_version": "2026-08-07.v1",
+  "consent_version": "2026-08-07.v1",
+  "collection_status": "dry_run_only",
+  "title_zh": "LexiGaze 英文閱讀與眼動技術試行研究",
+  "title_en": "LexiGaze English Reading and Gaze Technical Pilot",
+  "study_type": "minimal-risk_behavioral_software_pilot",
+  "estimated_duration_minutes": 40,
+  "population": {
+    "minimum_age": 18,
+    "minors_enrolled": false,
+    "exact_age_collected": false
+  },
+  "purpose_zh": "檢查網路攝影機眼動校正、英文閱讀理解題與資料品質流程是否可穩定運作。這不是醫療、智力、注意力、疲勞或正式英語能力診斷。",
+  "procedures_zh": [
+    "閱讀研究說明、完成理解確認並自主決定是否參與。",
+    "允許瀏覽器使用網路攝影機，依畫面指示完成眼動校正。",
+    "閱讀 4 至 6 篇英文短文並回答每篇 3 題理解題。",
+    "查看完成與撤回資訊；整體流程約 40 分鐘，可隨時休息或停止。"
+  ],
+  "risks_zh": [
+    "長時間看螢幕可能造成短暫眼睛疲勞、乾澀或不適。",
+    "攝影機畫面含臉部影像；若資料保護失敗，可能產生隱私風險。",
+    "閱讀或答題表現可能讓人感到挫折，但本研究不提供能力或臨床診斷。"
+  ],
+  "risk_controls_zh": [
+    "可隨時暫停或退出，不影響任何權益，也不需說明原因。",
+    "使用系統產生的受試者代碼，不在 LexiGaze 研究資料中保存姓名、電子郵件、IP 位址或瀏覽器永久裝置 ID；網路服務商的必要中繼資料另行揭露。",
+    "v1 不錄製或保存完整校正影片；若未來需要影片資料集，必須另訂目的、同意版本與倫理審查。",
+    "閱讀推論影格不寫入磁碟；校準成功或失敗立即清除影像，中斷時最遲依核定時限自動清除。",
+    "正式收案必須使用 HTTPS、加密儲存與版本化同意紀錄。"
+  ],
+  "benefits_zh": "沒有保證的直接利益。參與可能協助改進研究流程與未來的閱讀輔助技術。",
+  "data_categories": [
+    {
+      "id": "consent_receipt",
+      "required": true,
+      "description_zh": "受試者代碼、同意書版本與雜湊、同意時間、勾選項目與理解確認結果。"
+    },
+    {
+      "id": "temporary_calibration_images",
+      "required": true,
+      "description_zh": "校正時擷取的臉部影格與處理後影像；只用於校正與品質檢查，正式研究最長保存時間由啟動設定揭露。"
+    },
+    {
+      "id": "derived_gaze_and_quality",
+      "required": true,
+      "description_zh": "去識別化的視線座標、目標座標、追蹤品質、校正誤差與裝置類別。"
+    },
+    {
+      "id": "reading_observations",
+      "required": true,
+      "description_zh": "文章與題目版本、作答正誤、閱讀時間、描述性眼動摘要與資料品質。"
+    },
+    {
+      "id": "transient_reading_frames",
+      "required": true,
+      "description_zh": "閱讀時逐幀傳送的相機影像只在記憶體中做視線推論，不寫入研究儲存空間；系統只保留衍生摘要。"
+    },
+    {
+      "id": "network_service_metadata",
+      "required": true,
+      "description_zh": "若使用核准的 HTTPS 網路服務，服務商仍可能處理連線時間、來源網路位址與狀態碼等必要中繼資料；正式同意頁會揭露服務商。"
+    }
+  ],
+  "required_consent_statements": [
+    {
+      "id": "research_understood",
+      "text_zh": "我了解這是研究／技術試行，不是醫療、智力、注意力、疲勞或正式英語能力診斷。"
+    },
+    {
+      "id": "procedures_understood",
+      "text_zh": "我已閱讀研究目的、約 40 分鐘的程序、可能不適、資料類別與無保證直接利益。"
+    },
+    {
+      "id": "camera_understood",
+      "text_zh": "我了解校正會處理含臉部的攝影機影格，以及資料外洩的隱私風險。"
+    },
+    {
+      "id": "voluntary_understood",
+      "text_zh": "我了解參與完全自願，可拒絕或隨時停止，不受處罰或損失既有權益。"
+    },
+    {
+      "id": "withdrawal_understood",
+      "text_zh": "我了解撤回方式，以及資料完成不可逆去識別化或納入彙總分析後可能無法再定位刪除。"
+    },
+    {
+      "id": "questions_opportunity",
+      "text_zh": "我知道正式收案前會提供研究者與受試者權益聯絡方式，並有機會先提問。"
+    }
+  ],
+  "optional_scopes": [],
+  "comprehension_checks": [
+    {
+      "id": "voluntary",
+      "question_zh": "如果我做到一半不想繼續，可以怎麼做？",
+      "options": {
+        "stop_without_penalty": "隨時停止，不受處罰",
+        "must_finish": "一定要完成全部流程"
+      },
+      "correct": "stop_without_penalty"
+    },
+    {
+      "id": "raw_video_not_collected",
+      "question_zh": "v1 會錄製或保存完整校正影片嗎？",
+      "options": {
+        "not_collected": "不會；未來若要收集必須另行同意與審查",
+        "collected": "會，而且會無限期保存"
+      },
+      "correct": "not_collected"
+    },
+    {
+      "id": "no_diagnosis",
+      "question_zh": "這個研究會提供哪一種結果？",
+      "options": {
+        "session_evidence": "本次題組與追蹤品質的研究證據",
+        "diagnosis": "正式智力、注意力或 CEFR 診斷"
+      },
+      "correct": "session_evidence"
+    }
+  ],
+  "withdrawal_policy_zh": "在資料完成不可逆去識別化或納入無法回溯個人的彙總結果前，可使用撤回碼要求停止收集並刪除仍可定位的研究資料。是否保留退出前資料必須依正式核准的研究計畫與同意內容執行。",
+  "analysis_boundaries": [
+    "不以固定題目內容調整模型後再回報同一題目的成效。",
+    "正式分析前凍結 participant 與 item/text holdout。",
+    "未完成真實題目校準、信度、公平性與外部效度前，不產生英語、CEFR、閱讀或認知能力標籤。"
+  ],
+  "activation_requirements": [
+    "collection_status=approved_for_pilot",
+    "LEXIGAZE_STUDY_MODE=pilot",
+    "LEXIGAZE_PUBLIC_STUDY_MODE=1",
+    "LEXIGAZE_ETHICS_STATUS=approved 或 exempt_determination",
+    "LEXIGAZE_ETHICS_REFERENCE",
+    "LEXIGAZE_INVESTIGATOR_NAME",
+    "LEXIGAZE_INVESTIGATOR_EMAIL",
+    "LEXIGAZE_PARTICIPANT_RIGHTS_CONTACT",
+    "LEXIGAZE_RESEARCHER_API_KEY",
+    "LEXIGAZE_ADAPTIVE_SIGNING_KEY (at least 32 characters)",
+    "LEXIGAZE_EXTERNAL_ANCHOR_ID",
+    "LEXIGAZE_EXTERNAL_ANCHOR_AUTHORIZED=1",
+    "LEXIGAZE_NETWORK_PROCESSOR",
+    "LEXIGAZE_NETWORK_PROCESSOR_APPROVED=1",
+    "LEXIGAZE_REQUEST_BODY_LOGGING_DISABLED=1",
+    "LEXIGAZE_STORAGE_ENCRYPTED=1",
+    "LEXIGAZE_PUBLIC_BASE_URL=https://...",
+    "LEXIGAZE_DATA_LOCATION",
+    "LEXIGAZE_DATA_RETENTION_DAYS",
+    "LEXIGAZE_RAW_FRAME_RETENTION_HOURS"
+  ]
+}

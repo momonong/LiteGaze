@@ -5254,8 +5254,17 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            assessment_id: adaptiveAssessmentId,
+            round: adaptiveCurrentConfig.round,
+            round_token: adaptiveCurrentConfig.round_token,
             passage_id: adaptiveCurrentConfig.passage_id,
-            responses
+            responses,
+            metrics: {
+              wpm: adaptiveCurrentConfig.metrics.wpm,
+              regression_rate: adaptiveCurrentConfig.metrics.regression_rate,
+              avg_fixation_duration_ms: adaptiveCurrentConfig.metrics.avg_fixation_duration_ms,
+              data_quality_status: adaptiveCurrentConfig.metrics.data_quality_status
+            }
           })
         });
         const scoreData = await scoreResponse.json();

@@ -86,12 +86,21 @@ class AdaptiveApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         return response.get_json()
 
-    def _score(self, passage_id: str, *, correct: bool = True) -> dict:
+    def _score(self, current: dict, *, correct: bool = True) -> dict:
+        passage_id = current["passage_id"]
         response = self.client.post(
             "/api/inspector/adaptive/score",
             json={
+                "assessment_id": current["assessment_id"],
+                "round": current["round"],
+                "round_token": current["round_token"],
                 "passage_id": passage_id,
                 "responses": _answers(passage_id, correct=correct),
+                "metrics": {
+                    "wpm": 180.0,
+                    "regression_rate": 0.08,
+                    "data_quality_status": "good",
+                },
             },
         )
         self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
@@ -112,7 +121,7 @@ class AdaptiveApiTests(unittest.TestCase):
 
     def test_server_scores_complete_responses_and_rejects_missing_items(self) -> None:
         start = self._start()
-        scored = self._score(start["passage_id"], correct=True)
+        scored = self._score(start, correct=True)
         self.assertEqual(scored["round_result"]["correct"], 3)
         self.assertEqual(scored["round_result"]["total"], 3)
         self.assertTrue(scored["result_token"])
@@ -121,6 +130,9 @@ class AdaptiveApiTests(unittest.TestCase):
         incomplete = self.client.post(
             "/api/inspector/adaptive/score",
             json={
+                "assessment_id": start["assessment_id"],
+                "round": start["round"],
+                "round_token": start["round_token"],
                 "passage_id": start["passage_id"],
                 "responses": {
                     first_question["question_id"]: next(iter(first_question["options"]))
@@ -140,7 +152,7 @@ class AdaptiveApiTests(unittest.TestCase):
             )
             self.assertNotIn(current["passage_id"], seen_passages)
             seen_passages.add(current["passage_id"])
-            scored = self._score(current["passage_id"], correct=True)
+            scored = self._score(current, correct=True)
             history.append(
                 {
                     "passage_id": current["passage_id"],
@@ -181,7 +193,7 @@ class AdaptiveApiTests(unittest.TestCase):
 
     def test_tampered_round_token_is_rejected(self) -> None:
         start = self._start("tamper-test")
-        scored = self._score(start["passage_id"])
+        scored = self._score(start)
         token = scored["result_token"]
         tampered = token[:-1] + ("A" if token[-1] != "A" else "B")
         response = self.client.post(
@@ -197,7 +209,7 @@ class AdaptiveApiTests(unittest.TestCase):
 
     def test_client_cannot_swap_passage_id_after_scoring(self) -> None:
         start = self._start("swap-test")
-        scored = self._score(start["passage_id"])
+        scored = self._score(start)
         other_passage = next(
             passage["passage_id"]
             for passage in PASSAGES

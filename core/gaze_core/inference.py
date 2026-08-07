@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 import threading
 from pathlib import Path
@@ -25,6 +26,7 @@ _preprocessor_lock = threading.Lock()
 _model_cache_lock = threading.Lock()
 _preprocessor = None
 _model_cache = {}
+MAX_INFERENCE_IMAGE_BYTES = 10 * 1024 * 1024
 
 
 def get_preprocessor():
@@ -40,9 +42,10 @@ def get_preprocessor():
     return _preprocessor
 
 
-def get_base_model():
+def get_base_model(*, allow_cuda: bool = True):
+    cache_key = "base_model_auto" if allow_cuda else "base_model_cpu"
     with _model_cache_lock:
-        base_model = _model_cache.get("base_model")
+        base_model = _model_cache.get(cache_key)
         if base_model is None:
             import torch
 
@@ -52,7 +55,7 @@ def get_base_model():
             )
 
             device = "cpu"
-            if cuda_runtime_available(torch):
+            if allow_cuda and cuda_runtime_available(torch):
                 try:
                     t = torch.zeros((1, 3, 224, 224), device="cuda")
                     conv = torch.nn.Conv2d(3, 16, kernel_size=16, stride=16).to("cuda")
@@ -63,13 +66,17 @@ def get_base_model():
 
             previous_matmul_precision = enable_process_wide_cuda_tf32(torch, device)
             try:
-                base_model = UniGazeFeatureWrapper(load_unigaze_b16(device)).to(device).eval()
+                base_model = (
+                    UniGazeFeatureWrapper(load_unigaze_b16(device)).to(device).eval()
+                )
             except Exception:
                 restore_matmul_precision(torch, previous_matmul_precision)
                 device = "cpu"
-                base_model = UniGazeFeatureWrapper(load_unigaze_b16(device)).to(device).eval()
+                base_model = (
+                    UniGazeFeatureWrapper(load_unigaze_b16(device)).to(device).eval()
+                )
 
-            _model_cache["base_model"] = base_model
+            _model_cache[cache_key] = base_model
         return base_model
 
 
@@ -87,19 +94,21 @@ def predict(root: Path, payload: dict) -> tuple[dict, int]:
 
     # 2. Decode the incoming webcam frame
     image_data = payload.get("image_data", "")
-    if not image_data:
+    if not isinstance(image_data, str) or not image_data:
         return {"ok": False, "error": "missing image_data"}, 400
 
     if "," in image_data:
         image_data = image_data.split(",", 1)[1]
 
     try:
-        raw = base64.b64decode(image_data)
+        raw = base64.b64decode(image_data, validate=True)
+        if not raw or len(raw) > MAX_INFERENCE_IMAGE_BYTES:
+            return {"ok": False, "error": "image payload size is invalid"}, 413
         np_arr = np.frombuffer(raw, dtype=np.uint8)
         img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
         if img is None:
             raise ValueError("cannot decode image")
-    except Exception as exc:
+    except (binascii.Error, TypeError, ValueError) as exc:
         return {"ok": False, "error": f"failed to decode image: {exc}"}, 400
 
     # 3. Extract baseline prediction using UniGaze neural network
@@ -118,7 +127,7 @@ def predict(root: Path, payload: dict) -> tuple[dict, int]:
             raise
 
         # Feed image tensor to neural network
-        base_model = get_base_model()
+        base_model = get_base_model(allow_cuda=payload.get("allow_cuda") is not False)
         device = next(base_model.parameters()).device
         image_tensor = to_unigaze_tensor(processed.image_rgb).unsqueeze(0).to(device)
 
@@ -141,11 +150,13 @@ def predict(root: Path, payload: dict) -> tuple[dict, int]:
             if "stages" in cal_data:
                 stages = cal_data["stages"]
             else:
-                stages = [{
-                    "stage": 1,
-                    "W": cal_data["W"],
-                    "poly_degree": cal_data.get("poly_degree", 2)
-                }]
+                stages = [
+                    {
+                        "stage": 1,
+                        "W": cal_data["W"],
+                        "poly_degree": cal_data.get("poly_degree", 2),
+                    }
+                ]
 
             p_curr, y_curr = gaze[0], gaze[1]
             for stage_meta in stages:
@@ -174,14 +185,16 @@ def predict(root: Path, payload: dict) -> tuple[dict, int]:
                     if deg == 1:
                         feat = np.array([y_curr, p_curr, 1.0])
                     else:
-                        feat = np.array([
-                            y_curr,
-                            p_curr,
-                            y_curr * y_curr,
-                            p_curr * p_curr,
-                            y_curr * p_curr,
-                            1.0,
-                        ])
+                        feat = np.array(
+                            [
+                                y_curr,
+                                p_curr,
+                                y_curr * y_curr,
+                                p_curr * p_curr,
+                                y_curr * p_curr,
+                                1.0,
+                            ]
+                        )
 
                 pred = feat @ W_stage
                 y_curr = float(pred[0])

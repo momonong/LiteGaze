@@ -39,6 +39,38 @@ const motionCalibrationBlocks = [
   },
 ];
 
+const STUDY_STORAGE_KEY = "lexigaze.participantStudy.v1";
+const studyMode = new URLSearchParams(window.location.search).get("study") === "1";
+let studyContext = null;
+if (studyMode) {
+  try {
+    studyContext = JSON.parse(sessionStorage.getItem(STUDY_STORAGE_KEY) || "null");
+  } catch (_) {
+    studyContext = null;
+  }
+  if (!studyContext?.study_session_id || !studyContext?.access_token || studyContext.mode !== "pilot") {
+    window.location.replace("/study");
+  }
+}
+
+function withStudyContext(body = {}) {
+  if (!studyMode || !studyContext) return body;
+  return {
+    ...body,
+    study_session_id: studyContext.study_session_id,
+    study_access_token: studyContext.access_token,
+  };
+}
+
+function studyHeaders(headers = {}) {
+  if (!studyMode || !studyContext) return headers;
+  return {
+    ...headers,
+    Authorization: `Bearer ${studyContext.access_token}`,
+    "X-Lexigaze-Study-Session": studyContext.study_session_id,
+  };
+}
+
 class LowPassFilter {
   constructor(alpha) { this.alpha = alpha; this.value = null; }
   filter(value) {
@@ -147,8 +179,8 @@ function escHtml(s) {
 async function postJson(url, body, signal) {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    headers: studyHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(withStudyContext(body)),
     signal,
   });
   const data = await res.json();
@@ -232,6 +264,7 @@ async function refreshHealth() {
 }
 
 async function refreshDatasets() {
+  if (studyMode) return;
   const res = await fetch("/api/gaze/datasets");
   const data = await res.json();
   els.selectDataset.innerHTML = "";
@@ -266,7 +299,7 @@ async function reportMotionAudit(sessionId) {
 }
 
 async function refreshModels() {
-  const res = await fetch("/api/gaze/models");
+  const res = await fetch("/api/gaze/models", { headers: studyHeaders() });
   const data = await res.json();
   els.selectBaseModel.innerHTML = '<option value="before">原始模型 / before</option>';
   data.models.forEach((model) => {
@@ -278,7 +311,7 @@ async function refreshModels() {
 }
 
 async function refreshTestModels() {
-  const res = await fetch("/api/gaze/models");
+  const res = await fetch("/api/gaze/models", { headers: studyHeaders() });
   const data = await res.json();
   els.testModeSelect.innerHTML = '<option value="before">原始模型</option>';
   data.models.forEach((model) => {
@@ -290,6 +323,7 @@ async function refreshTestModels() {
 }
 
 async function refreshDatasetsList() {
+  if (studyMode) return;
   const res = await fetch("/api/gaze/datasets");
   const data = await res.json();
   els.datasetsList.innerHTML = "";
@@ -314,6 +348,7 @@ async function refreshDatasetsList() {
 }
 
 async function refreshModelsList() {
+  if (studyMode) return;
   const res = await fetch("/api/gaze/models");
   const data = await res.json();
   els.modelsList.innerHTML = "";
@@ -341,7 +376,7 @@ async function refreshModelsList() {
 }
 
 async function createSession() {
-  const participantId = els.participantName.value.trim() || "anonymous";
+  const participantId = studyMode ? studyContext.participant_id : (els.participantName.value.trim() || "anonymous");
   state.captureRunId = globalThis.crypto?.randomUUID
     ? `capture-${globalThis.crypto.randomUUID()}`
     : `capture-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -395,7 +430,6 @@ async function saveSample(point, pointIndex, repeatIndex, captureContext, settle
   try {
     const res = await fetch("/api/gaze/sample", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         session_id: state.sessionId,
         image_data: captureFrame(),
@@ -411,7 +445,9 @@ async function saveSample(point, pointIndex, repeatIndex, captureContext, settle
         point_index: pointIndex,
         repeat_index: repeatIndex,
         ...captureContext,
+        ...withStudyContext(),
       }),
+      headers: studyHeaders({ "Content-Type": "application/json" }),
     });
     const data = await res.json();
     if (data.face_detected === false) {
@@ -434,7 +470,7 @@ async function collect() {
   els.target.style.display = "";
   els.target.classList.remove("hidden");
 
-  const recordVideo = els.recordVideo && els.recordVideo.checked;
+  const recordVideo = !studyMode && els.recordVideo && els.recordVideo.checked;
   if (recordVideo) {
     state.recordedBlobs = [];
     state.timelineTargets = [];
@@ -571,8 +607,12 @@ async function collect() {
     } else {
       log("收集完成，可以訓練模型");
       els.phase.textContent = "收集完成";
-      await refreshDatasets();
-      if (collectMode === "motion_robust") await reportMotionAudit(state.sessionId);
+      if (studyMode) {
+        await finalizeStudyCalibration();
+      } else {
+        await refreshDatasets();
+        if (collectMode === "motion_robust") await reportMotionAudit(state.sessionId);
+      }
     }
   } catch (err) {
     log(`收集失敗: ${err.message}`);
@@ -585,6 +625,20 @@ async function collect() {
     els.calibrationBtn.disabled = false;
     els.target.style.zIndex = "";
   }
+}
+
+async function finalizeStudyCalibration() {
+  els.phase.textContent = "伺服器品質檢查與 CPU 個人化中";
+  log("校正採集結束；正在執行伺服器品質閘門。影像會在個人化完成後清除。");
+  const response = await postJson(
+    `/api/study/sessions/${encodeURIComponent(studyContext.study_session_id)}/calibration/complete`,
+    { gaze_session_id: state.sessionId },
+  );
+  studyContext.model_name = response.session?.linked_data?.model_name || null;
+  sessionStorage.setItem(STUDY_STORAGE_KEY, JSON.stringify(studyContext));
+  els.phase.textContent = "校正完成，影像已清除";
+  log(`品質閘門通過：${response.quality.sample_count} 筆；個人化模型使用 ${response.quality.training.device || "CPU"}。`);
+  window.setTimeout(() => window.location.assign("/study/assessment?study=1"), 900);
 }
 
 async function train() {
@@ -934,6 +988,28 @@ els.renameDialog.addEventListener("click", (e) => {
 
 moveTarget([0.5, 0.5]);
 refreshHealth();
-refreshDatasets();
-refreshModels();
+if (studyMode) {
+  document.body.classList.add("study-participant-mode");
+  const banner = document.getElementById("studyModeBanner");
+  if (banner) banner.classList.remove("hidden");
+  els.participantName.value = studyContext.participant_id;
+  els.participantName.readOnly = true;
+  els.collectMode.value = "motion_robust";
+  els.collectMode.disabled = true;
+  els.repeatCount.value = "1";
+  els.repeatCount.disabled = true;
+  els.recordVideo.checked = false;
+  els.recordVideo.disabled = true;
+  els.trainBtn.classList.add("hidden");
+  els.testBtn.classList.add("hidden");
+  els.toggleSettings.classList.add("hidden");
+  els.btnUploadOffline.classList.add("hidden");
+  document.getElementById("offlineVideoPanel")?.classList.add("hidden");
+  document.getElementById("backLink").href = "/study";
+  els.calibrationBtn.textContent = "開始受試者校正";
+  log(`受試者模式：${studyContext.participant_id}。完整影片錄製已停用。`);
+} else {
+  refreshDatasets();
+  refreshModels();
+}
 startCamera().then(() => log("攝影機已就緒")).catch((err) => log(`攝影機啟動失敗: ${err.message}`));

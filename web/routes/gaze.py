@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
+import secrets
 import time
 import traceback
 from pathlib import Path
 
 import cv2
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from core.gaze_core.inference import predict
 from core.gaze_core.model_registry import (
@@ -22,14 +24,204 @@ from core.gaze_core.sample_store import (
     ensure_sessions_dir,
     get_preprocessor,
     list_datasets,
+    read_session_metadata,
     rename_dataset,
+    safe_session_dir,
     save_sample,
 )
 from core.gaze_core.training import train_placeholder
+from core.participant_study import (
+    ParticipantStudyStore,
+    StudyError,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 gaze_bp = Blueprint("gaze", __name__, url_prefix="/api/gaze")
 gaze_api_bp = Blueprint("gaze_api", __name__, url_prefix="/api")
+
+
+def _truthy(value: object) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _setting(name: str, default: str = "") -> str:
+    if name in current_app.config:
+        return str(current_app.config.get(name) or default).strip()
+    return str(os.environ.get(name, default)).strip()
+
+
+def _public_study_mode() -> bool:
+    return _truthy(_setting("LEXIGAZE_PUBLIC_STUDY_MODE"))
+
+
+def _study_store() -> ParticipantStudyStore:
+    root = Path(current_app.config.get("LEXIGAZE_STUDY_ROOT") or ROOT)
+    store = ParticipantStudyStore(root, settings=current_app.config)
+    store.enforce_expired_calibration_retention()
+    return store
+
+
+def _study_access_token(body: dict | None = None) -> str:
+    authorization = request.headers.get("Authorization", "")
+    if authorization.lower().startswith("bearer "):
+        return authorization[7:].strip()
+    return str((body or {}).get("study_access_token") or "").strip()
+
+
+def _study_session_id(body: dict | None = None) -> str:
+    return str(
+        (body or {}).get("study_session_id")
+        or request.headers.get("X-Lexigaze-Study-Session")
+        or ""
+    ).strip()
+
+
+def _researcher_authorized() -> bool:
+    expected = _setting("LEXIGAZE_RESEARCHER_API_KEY")
+    supplied = request.headers.get("X-Lexigaze-Researcher-Key", "")
+    return bool(expected) and secrets.compare_digest(supplied, expected)
+
+
+def _admin_blocked_response():
+    return jsonify(
+        {
+            "ok": False,
+            "error": "researcher operation is disabled on the public study surface",
+        }
+    ), 403
+
+
+def _participant_session(
+    body: dict | None = None,
+) -> tuple[ParticipantStudyStore, dict]:
+    study_session_id = _study_session_id(body)
+    access_token = _study_access_token(body)
+    if not study_session_id or not access_token:
+        raise StudyError("study session credential is required")
+    store = _study_store()
+    return store, store.get_session(study_session_id, access_token)
+
+
+def _create_gaze_session(body: dict) -> tuple[dict, int]:
+    study_session_id = _study_session_id(body)
+    if not study_session_id:
+        if _public_study_mode():
+            return {
+                "ok": False,
+                "error": "public collection requires a study session",
+            }, 403
+        return (
+            create_session(
+                ROOT,
+                body.get("participant_id", "anonymous"),
+                capture_run_id=body.get("capture_run_id"),
+                capture_source=body.get("capture_source", "direct-frame"),
+                source_session_id=body.get("source_session_id"),
+            ),
+            200,
+        )
+    try:
+        store, participant = _participant_session(body)
+        if participant["mode"] != "pilot":
+            raise StudyError("dry runs cannot create gaze datasets")
+        if participant["state"] != "system_check_passed":
+            raise StudyError("study system check must pass before calibration")
+        result = create_session(
+            ROOT,
+            participant["participant_id"],
+            capture_run_id=body.get("capture_run_id"),
+            capture_source="study-direct-frame",
+            study_metadata={
+                "study_session_id": participant["study_session_id"],
+                "study_protocol_id": participant["protocol_id"],
+                "study_protocol_version": participant["protocol_version"],
+                "study_consent_version": store.protocol["consent_version"],
+                "study_consent_digest_sha256": store.public_protocol[
+                    "consent_digest_sha256"
+                ],
+                "study_mode": participant["mode"],
+            },
+        )
+        try:
+            store.start_calibration(
+                participant["study_session_id"],
+                _study_access_token(body),
+                result["session_id"],
+            )
+        except StudyError:
+            delete_dataset(ROOT, result["session_id"])
+            raise
+        result.update(
+            {
+                "participant_id": participant["participant_id"],
+                "study_session_id": participant["study_session_id"],
+                "study_mode": True,
+            }
+        )
+        return result, 200
+    except StudyError as exc:
+        return {"ok": False, "error": str(exc)}, 403
+
+
+def _save_gaze_sample(body: dict) -> tuple[dict, int]:
+    session_id = body.get("session_id", "")
+    try:
+        metadata = read_session_metadata(ROOT, session_id)
+    except (FileNotFoundError, ValueError, json.JSONDecodeError):
+        return {"ok": False, "error": "session not found"}, 404
+    linked_study_id = str(metadata.get("study_session_id") or "")
+    if linked_study_id:
+        if _study_session_id(body) != linked_study_id:
+            return {"ok": False, "error": "study session does not match dataset"}, 403
+        try:
+            _, participant = _participant_session(body)
+        except StudyError as exc:
+            return {"ok": False, "error": str(exc)}, 403
+        if participant["state"] != "calibration_in_progress":
+            return {"ok": False, "error": "calibration is not active"}, 409
+        if participant.get("linked_data", {}).get("gaze_session_id") != session_id:
+            return {
+                "ok": False,
+                "error": "gaze session is not linked to participant",
+            }, 403
+    elif _public_study_mode():
+        return {"ok": False, "error": "non-study samples are disabled"}, 403
+    return save_sample(ROOT, body)
+
+
+def _participant_model_list() -> tuple[dict, int]:
+    try:
+        _, participant = _participant_session()
+    except StudyError as exc:
+        return {"ok": False, "error": str(exc)}, 403
+    model_name = str(participant.get("linked_data", {}).get("model_name") or "")
+    visible = [model for model in list_models(ROOT) if model.get("name") == model_name]
+    return {"ok": True, "models": visible}, 200
+
+
+def _predict_response(body: dict) -> tuple[dict, int]:
+    if _public_study_mode():
+        body = dict(body)
+        body["allow_cuda"] = False
+        try:
+            _, participant = _participant_session(body)
+        except StudyError as exc:
+            return {"ok": False, "error": str(exc)}, 403
+        allowed_model = str(participant.get("linked_data", {}).get("model_name") or "")
+        if not allowed_model or body.get("model_name") != allowed_model:
+            return {
+                "ok": False,
+                "error": "model is not linked to this study session",
+            }, 403
+        if participant["state"] not in {
+            "calibration_complete",
+            "assessment_in_progress",
+        }:
+            return {
+                "ok": False,
+                "error": "study session is not ready for prediction",
+            }, 409
+    return predict(ROOT, body)
 
 
 @gaze_bp.get("/health")
@@ -40,37 +232,37 @@ def health():
 
 @gaze_bp.get("/models")
 def models():
+    if _public_study_mode() and not _researcher_authorized():
+        response, status = _participant_model_list()
+        return jsonify(response), status
     return jsonify({"ok": True, "models": list_models(ROOT)})
 
 
 @gaze_bp.get("/datasets")
 def datasets():
+    if _public_study_mode() and not _researcher_authorized():
+        return _admin_blocked_response()
     return jsonify({"ok": True, "datasets": list_datasets(ROOT)})
 
 
 @gaze_bp.post("/session")
 def session():
     body = request.get_json(force=True) or {}
-    return jsonify(
-        create_session(
-            ROOT,
-            body.get("participant_id", "anonymous"),
-            capture_run_id=body.get("capture_run_id"),
-            capture_source=body.get("capture_source", "direct-frame"),
-            source_session_id=body.get("source_session_id"),
-        )
-    )
+    response, status = _create_gaze_session(body)
+    return jsonify(response), status
 
 
 @gaze_bp.post("/sample")
 def sample():
     body = request.get_json(force=True) or {}
-    response, status = save_sample(ROOT, body)
+    response, status = _save_gaze_sample(body)
     return jsonify(response), status
 
 
 @gaze_bp.post("/train")
 def train():
+    if _public_study_mode() and not _researcher_authorized():
+        return _admin_blocked_response()
     body = request.get_json(force=True) or {}
     response, status = train_placeholder(ROOT, body)
     return jsonify(response), status
@@ -79,12 +271,14 @@ def train():
 @gaze_bp.post("/predict")
 def predict_gaze():
     body = request.get_json(force=True) or {}
-    response, status = predict(ROOT, body)
+    response, status = _predict_response(body)
     return jsonify(response), status
 
 
 @gaze_bp.route("/datasets/<session_id>", methods=["DELETE", "PUT"])
 def dataset_ops(session_id):
+    if _public_study_mode() and not _researcher_authorized():
+        return _admin_blocked_response()
     if request.method == "DELETE":
         return jsonify(delete_dataset(ROOT, session_id))
     body = request.get_json(force=True) or {}
@@ -97,7 +291,12 @@ def dataset_ops(session_id):
 @gaze_bp.post("/datasets/<session_id>/reprocess")
 def reprocess_dataset(session_id):
     """Re-run MediaPipe on raw frames for sessions that had face detection failures."""
-    session_dir = ensure_sessions_dir(ROOT) / session_id
+    if _public_study_mode() and not _researcher_authorized():
+        return _admin_blocked_response()
+    try:
+        session_dir = safe_session_dir(ROOT, session_id, require_exists=True)
+    except (FileNotFoundError, ValueError):
+        return jsonify({"ok": False, "error": "session not found"}), 404
     manifest_path = session_dir / "manifest.jsonl"
     if not session_dir.exists() or not manifest_path.exists():
         return jsonify({"ok": False, "error": "session not found"}), 404
@@ -130,7 +329,9 @@ def reprocess_dataset(session_id):
                 cv2.imwrite(str(crop_path), processed.crop_bgr)
                 cv2.imwrite(str(norm_path), processed.image_bgr)
                 rec["crop_path"] = crop_path.relative_to(session_dir).as_posix()
-                rec["normalized_face_path"] = norm_path.relative_to(session_dir).as_posix()
+                rec["normalized_face_path"] = norm_path.relative_to(
+                    session_dir
+                ).as_posix()
                 rec["head_pose_pitch_yaw"] = processed.head_pose_pitch_yaw.tolist()
                 rec["face_bbox"] = processed.face_bbox
                 rec.pop("warning", None)
@@ -146,7 +347,14 @@ def reprocess_dataset(session_id):
             + "\n",
             encoding="utf-8",
         )
-        return jsonify({"ok": True, "fixed": fixed, "still_failed": still_failed, "total": len(updated)})
+        return jsonify(
+            {
+                "ok": True,
+                "fixed": fixed,
+                "still_failed": still_failed,
+                "total": len(updated),
+            }
+        )
     except Exception as exc:
         traceback.print_exc()
         return jsonify({"ok": False, "error": str(exc)}), 500
@@ -154,6 +362,8 @@ def reprocess_dataset(session_id):
 
 @gaze_bp.get("/datasets/<session_id>/motion-audit")
 def motion_audit(session_id):
+    if _public_study_mode() and not _researcher_authorized():
+        return _admin_blocked_response()
     sessions_dir = ensure_sessions_dir(ROOT)
     session_dir = (sessions_dir / session_id).resolve()
     if session_dir.parent != sessions_dir.resolve() or not session_dir.is_dir():
@@ -165,9 +375,10 @@ def motion_audit(session_id):
     return jsonify({"ok": True, **audit_payload(samples, diagnostics)})
 
 
-
 @gaze_bp.route("/models/<model_name>", methods=["DELETE", "PUT"])
 def model_ops(model_name):
+    if _public_study_mode() and not _researcher_authorized():
+        return _admin_blocked_response()
     if request.method == "DELETE":
         return jsonify(delete_model(ROOT, model_name))
     body = request.get_json(force=True) or {}
@@ -185,6 +396,9 @@ def api_health():
 
 @gaze_api_bp.get("/list_models")
 def api_list_models():
+    if _public_study_mode() and not _researcher_authorized():
+        response, status = _participant_model_list()
+        return jsonify(response), status
     models_data = []
     for model in list_models(ROOT):
         models_data.append(
@@ -199,32 +413,29 @@ def api_list_models():
 
 @gaze_api_bp.get("/list_datasets")
 def api_list_datasets():
+    if _public_study_mode() and not _researcher_authorized():
+        return _admin_blocked_response()
     return jsonify({"ok": True, "datasets": list_datasets(ROOT)})
 
 
 @gaze_api_bp.post("/session")
 def api_session():
     body = request.get_json(force=True) or {}
-    return jsonify(
-        create_session(
-            ROOT,
-            body.get("participant_id", "anonymous"),
-            capture_run_id=body.get("capture_run_id"),
-            capture_source=body.get("capture_source", "direct-frame"),
-            source_session_id=body.get("source_session_id"),
-        )
-    )
+    response, status = _create_gaze_session(body)
+    return jsonify(response), status
 
 
 @gaze_api_bp.post("/sample")
 def api_sample():
     body = request.get_json(force=True) or {}
-    response, status = save_sample(ROOT, body)
+    response, status = _save_gaze_sample(body)
     return jsonify(response), status
 
 
 @gaze_api_bp.post("/train")
 def api_train():
+    if _public_study_mode() and not _researcher_authorized():
+        return _admin_blocked_response()
     try:
         body = request.get_json(force=True) or {}
         response, status = train_placeholder(ROOT, body)
@@ -238,7 +449,7 @@ def api_train():
 def api_predict():
     try:
         body = request.get_json(force=True) or {}
-        response, status = predict(ROOT, body)
+        response, status = _predict_response(body)
         return jsonify(response), status
     except Exception as exc:
         traceback.print_exc()
@@ -247,6 +458,8 @@ def api_predict():
 
 @gaze_bp.post("/save_pairs")
 def save_pairs():
+    if _public_study_mode() and not _researcher_authorized():
+        return _admin_blocked_response()
     body = request.get_json(force=True) or {}
     session_id = body.get("session_id", "")
     pairs = body.get("pairs", [])
@@ -259,13 +472,18 @@ def save_pairs():
     file_path = gt_dir / f"{session_id}.json"
     try:
         with file_path.open("w", encoding="utf-8") as f:
-            json.dump({
-                "session_id": session_id,
-                "timestamp_created": time.time(),
-                "viewport_width": body.get("viewport_width", 1920),
-                "viewport_height": body.get("viewport_height", 1080),
-                "pairs": pairs
-            }, f, indent=2, ensure_ascii=False)
+            json.dump(
+                {
+                    "session_id": session_id,
+                    "timestamp_created": time.time(),
+                    "viewport_width": body.get("viewport_width", 1920),
+                    "viewport_height": body.get("viewport_height", 1080),
+                    "pairs": pairs,
+                },
+                f,
+                indent=2,
+                ensure_ascii=False,
+            )
         return jsonify({"ok": True, "saved_to": str(file_path.relative_to(ROOT))})
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 500

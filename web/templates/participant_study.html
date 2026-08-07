@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="referrer" content="no-referrer" />
+  <title>LexiGaze 受試者研究流程</title>
+  <link rel="stylesheet" href="/static/participant_study.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/study" aria-label="LexiGaze 研究首頁">
+      <span class="brand-mark">LG</span>
+      <span><strong>LexiGaze</strong><small>Participant Study</small></span>
+    </a>
+    <div id="modeBadge" class="mode-badge loading">讀取研究狀態中</div>
+  </header>
+
+  <main class="page-shell">
+    <noscript><div class="alert danger">此研究流程需要 JavaScript 才能記錄同意與狀態。</div></noscript>
+    <div id="globalAlert" class="alert hidden" role="alert"></div>
+
+    <section class="hero">
+      <p class="eyebrow">PARTICIPANT-FIRST PROTOCOL</p>
+      <h1 id="studyTitle">英文閱讀與眼動技術試行研究</h1>
+      <p id="studyPurpose" class="hero-copy">正在載入版本化研究說明……</p>
+      <div class="hero-meta">
+        <span id="protocolVersion">Protocol —</span>
+        <span id="estimatedTime">約 — 分鐘</span>
+        <span>限 18 歲以上成人</span>
+      </div>
+    </section>
+
+    <nav class="stepper" aria-label="研究流程">
+      <button class="step active" data-step="consent"><span>1</span>研究說明與同意</button>
+      <button class="step" data-step="check"><span>2</span>系統檢查</button>
+      <button class="step" data-step="calibration"><span>3</span>眼動校正</button>
+      <button class="step" data-step="assessment"><span>4</span>閱讀評量</button>
+      <button class="step" data-step="complete"><span>5</span>完成與撤回</button>
+    </nav>
+
+    <section id="consentPanel" class="panel">
+      <div class="panel-heading">
+        <div><p class="section-kicker">STEP 1</p><h2>先理解，再決定</h2></div>
+        <span id="consentVersion" class="version-pill">Consent —</span>
+      </div>
+
+      <div id="dryRunNotice" class="alert info">
+        目前是技術 dry run：可以演練同意、狀態與撤回，但不會開啟相機、保存臉部影像或產生真人研究資料。
+      </div>
+
+      <div class="two-column">
+        <article class="info-card">
+          <h3>你會做什麼</h3>
+          <ol id="proceduresList"></ol>
+        </article>
+        <article class="info-card">
+          <h3>可能風險與控制</h3>
+          <ul id="risksList"></ul>
+        </article>
+      </div>
+
+      <article class="info-card wide">
+        <h3>會收集哪些資料</h3>
+        <div id="dataCategories" class="data-grid"></div>
+        <p id="governanceSummary" class="small-note"></p>
+      </article>
+
+      <article class="info-card wide">
+        <h3>自願參與、退出與聯絡</h3>
+        <p id="withdrawalPolicy"></p>
+        <p id="contactsSummary" class="small-note"></p>
+      </article>
+
+      <form id="consentForm" novalidate>
+        <fieldset>
+          <legend>必要確認</legend>
+          <div id="requiredStatements" class="check-list"></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>理解確認</legend>
+          <p class="field-help">答錯不會留下能力紀錄；系統只會指出需要重新閱讀的研究資訊。</p>
+          <div id="comprehensionChecks" class="question-list"></div>
+        </fieldset>
+
+        <fieldset id="optionalFieldset">
+          <legend>獨立選擇</legend>
+          <div id="optionalScopes" class="check-list optional"></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>參與條件</legend>
+          <label class="check-row"><input type="checkbox" id="adultConfirmed" /> <span>我確認自己已滿 18 歲；系統不會要求或保存確切生日。</span></label>
+          <label class="check-row"><input type="checkbox" id="privateSpaceConfirmed" /> <span>我會在能保護自己與旁人隱私的空間使用攝影機。</span></label>
+          <label id="inviteField" class="field hidden">邀請碼<input id="inviteCode" autocomplete="off" spellcheck="false" /></label>
+        </fieldset>
+
+        <div class="decision-row">
+          <button type="button" id="declineBtn" class="button ghost">我不參與</button>
+          <button type="submit" id="enrollBtn" class="button primary">開始技術 dry run</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="workflowPanel" class="panel hidden">
+      <div class="panel-heading">
+        <div><p class="section-kicker">ACTIVE SESSION</p><h2>受試者流程</h2></div>
+        <div class="participant-chip"><span id="participantId">P-—</span><small id="sessionState">—</small></div>
+      </div>
+
+      <div id="receiptBox" class="receipt-box">
+        <div><strong>請保存撤回資訊</strong><p>撤回碼只在本次建立時顯示；正式研究可用它要求刪除仍可定位的資料。</p></div>
+        <code id="withdrawalCode">WD-—</code>
+        <button id="downloadReceiptBtn" class="button secondary">下載同意憑證</button>
+      </div>
+
+      <div class="workflow-grid">
+        <article class="workflow-card" data-state="check">
+          <span class="card-number">02</span><h3>系統檢查</h3>
+          <p>確認安全連線、攝影機 API、螢幕空間與網路狀態。dry run 不會要求攝影機權限。</p>
+          <ul id="systemCheckResults" class="status-list"></ul>
+          <button id="runSystemCheckBtn" class="button primary">執行系統檢查</button>
+        </article>
+        <article class="workflow-card" data-state="calibration">
+          <span class="card-number">03</span><h3>眼動校正</h3>
+          <p>正式流程使用 5 個姿勢區塊與固定目標，完成後由伺服器檢查樣本、臉部偵測與動作覆蓋。</p>
+          <button id="calibrationBtn" class="button secondary" disabled>尚未解鎖</button>
+        </article>
+        <article class="workflow-card" data-state="assessment">
+          <span class="card-number">04</span><h3>閱讀評量</h3>
+          <p>固定排版完成 4–6 篇短文與理解題；結果只描述 pilot 題組證據，不產生能力診斷。</p>
+          <button id="assessmentBtn" class="button secondary" disabled>尚未解鎖</button>
+        </article>
+        <article class="workflow-card" data-state="complete">
+          <span class="card-number">05</span><h3>完成與說明</h3>
+          <p>顯示完成憑證、研究限制、資料權利與撤回方式，不顯示智力或英語能力標籤。</p>
+          <button id="completeBtn" class="button secondary" disabled>尚未解鎖</button>
+        </article>
+      </div>
+
+      <div id="completionBox" class="completion-box hidden">
+        <h3>流程完成</h3>
+        <p>謝謝你完成流程。本次只證明研究軟體步驟可運作，不代表任何智力、注意力、疲勞、CEFR 或整體英語能力結果。</p>
+      </div>
+    </section>
+
+    <section class="panel withdrawal-panel">
+      <div class="panel-heading"><div><p class="section-kicker">DATA RIGHTS</p><h2>撤回或停止</h2></div></div>
+      <p>你可以立即停止目前流程。若稍後要撤回仍可定位的資料，輸入研究 session ID 與撤回碼；系統會回傳刪除憑證。</p>
+      <div class="withdraw-form">
+        <label class="field">Study session ID<input id="withdrawSessionId" autocomplete="off" /></label>
+        <label class="field">撤回碼<input id="withdrawCodeInput" autocomplete="off" /></label>
+        <button id="withdrawBtn" class="button danger">撤回並刪除可定位資料</button>
+      </div>
+      <pre id="withdrawResult" class="result-box hidden"></pre>
+    </section>
+  </main>
+
+  <footer>LexiGaze participant-study protocol · <span id="footerProtocol">—</span></footer>
+  <script src="/static/participant_study.js" defer></script>
+</body>
+</html>
