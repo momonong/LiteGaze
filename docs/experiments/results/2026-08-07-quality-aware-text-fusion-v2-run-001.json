@@ -1,0 +1,130 @@
+{
+  "aggregate": {
+    "candidate_minus_static_mae": -0.0020894962832532504,
+    "gaze_only_neutral_missing_mae": 0.14500200405266914,
+    "quality_aware_candidate_mae": 0.08996326048061608,
+    "static_fusion_mae": 0.09205275676386933,
+    "text_only_mae": 0.10160964769478019
+  },
+  "compute": {
+    "cuda_visible_devices": "-1",
+    "device": "cpu",
+    "gpu_used": false,
+    "network_used": false,
+    "torch_imported_after": false,
+    "torch_imported_before": false
+  },
+  "conditions": {
+    "clean": {
+      "candidate_minus_static_mae": -0.004647527321901927,
+      "gaze_only_neutral_missing_mae": 0.05065910615646191,
+      "mean_gaze_weight": 0.9126359376832172,
+      "missing_rows": 142,
+      "quality_aware_candidate_mae": 0.04627483048356543,
+      "rows": 6144,
+      "static_fusion_mae": 0.050922357805467354,
+      "text_only_mae": 0.10163025347303885
+    },
+    "drift": {
+      "candidate_minus_static_mae": 0.0044826459418163545,
+      "gaze_only_neutral_missing_mae": 0.18060701537804316,
+      "mean_gaze_weight": 0.5823330067361523,
+      "missing_rows": 499,
+      "quality_aware_candidate_mae": 0.11811766209930902,
+      "rows": 6144,
+      "static_fusion_mae": 0.11363501615749266,
+      "text_only_mae": 0.10192039553110448
+    },
+    "dropout": {
+      "candidate_minus_static_mae": -0.0003984135883965262,
+      "gaze_only_neutral_missing_mae": 0.1471744062333843,
+      "mean_gaze_weight": 0.19915989513622664,
+      "missing_rows": 3682,
+      "quality_aware_candidate_mae": 0.08888821981575741,
+      "rows": 6144,
+      "static_fusion_mae": 0.08928663340415394,
+      "text_only_mae": 0.10088201692281525
+    },
+    "jitter": {
+      "candidate_minus_static_mae": -0.009884186447784118,
+      "gaze_only_neutral_missing_mae": 0.165880102690894,
+      "mean_gaze_weight": 0.4260924739729952,
+      "missing_rows": 739,
+      "quality_aware_candidate_mae": 0.09560821642004678,
+      "rows": 6144,
+      "static_fusion_mae": 0.1054924028678309,
+      "text_only_mae": 0.10268819896254067
+    },
+    "missing": {
+      "candidate_minus_static_mae": 0.0,
+      "gaze_only_neutral_missing_mae": 0.18068938980456228,
+      "mean_gaze_weight": 0.0,
+      "missing_rows": 6144,
+      "quality_aware_candidate_mae": 0.10092737358440178,
+      "rows": 6144,
+      "static_fusion_mae": 0.10092737358440178,
+      "text_only_mae": 0.10092737358440178
+    }
+  },
+  "configuration": {
+    "candidate": {
+      "gaze_weight_power": 1.5,
+      "mode": "shadow_only",
+      "quality_aggregation": "geometric_mean"
+    },
+    "condition_count": 5,
+    "seed": 20260807,
+    "sessions_per_condition": 64,
+    "tokens_per_session": 96,
+    "total_rows": 30720
+  },
+  "created_at": "2026-08-07T06:32:16.331867+00:00",
+  "decision": {
+    "production_model_changed": false,
+    "real_webcam_generalization_claimed": false,
+    "status": "record_failure_without_parameter_changes"
+  },
+  "experiment": "quality-aware-text-fusion-v2-corruption-benchmark",
+  "gates": {
+    "candidate_aggregate_mae_less_than_static": true,
+    "candidate_clean_within_static_margin": true,
+    "candidate_drift_mae_less_than_static": false,
+    "candidate_dropout_mae_less_than_static": true,
+    "candidate_jitter_mae_less_than_static": true,
+    "mean_gaze_weight_order_met": true,
+    "missing_candidate_equals_text_only": true,
+    "missing_fallback_within_tolerance": true,
+    "occurrence_collision_count_equals_zero": true,
+    "passed": false
+  },
+  "implementation_sha256": "1eb9c2bd1176f94dac9845068f352ec03788c539145c4fa4d28940360aea7678",
+  "leakage_controls": {
+    "benchmark_seed_frozen": true,
+    "existing_provo_geco_onestop_outcomes_used_for_parameter_selection": false,
+    "parameters_frozen_before_benchmark": true,
+    "participant_data_used": false,
+    "post_result_parameter_tuning_allowed": false,
+    "public_eye_tracking_outcomes_used": false,
+    "question_answer_dataset_used": false
+  },
+  "missing_fallback_max_absolute_delta": 0.0,
+  "observed_mean_gaze_weight_order": {
+    "clean": 0.9126359376832172,
+    "drift": 0.5823330067361523,
+    "dropout": 0.19915989513622664,
+    "jitter": 0.4260924739729952,
+    "missing": 0.0
+  },
+  "occurrence_probe": {
+    "input_occurrences": 96,
+    "legacy_word_collision_count": 91,
+    "occurrence_aggregates": 96,
+    "occurrence_collision_count": 0,
+    "unique_aligned_occurrences": 96
+  },
+  "protocol_commit": "cd1ca19d614e9e7b4a2dfc6e9b5a538100a1ca53",
+  "protocol_id": "quality-aware-text-fusion-v2",
+  "protocol_sha256": "ff864584d70d7f623c5459cd2b0fcdd08f99f79d67838eba397f569c2d5a6903",
+  "run_id": "run-001",
+  "schema_version": 1
+}

@@ -32,9 +32,10 @@
   // ── Gaze Buffer & History ─────────────────────────────────────────────
   // Accumulates per-word dwell and fixation counts during a reading session.
   // Flushed to POST /api/fuse when the user triggers "Export" or session ends.
-  const gazeBuffer = {};   // { wordKey: { word, dwell_count, fixation_count, confidence } }
-  const gazeHistory = [];  // Chronological trace: [ { word, index, confidence, timestamp_ms } ]
-  let _lastGazeWord = null;  // tracks previous word to detect new fixations
+  const gazeBuffer = {};   // occurrence-keyed; repeated spellings stay independent
+  const gazeHistory = [];  // chronological occurrence trace
+  const trackingStats = { inference_samples: 0, mapped_samples: 0 };
+  let _lastGazeOccurrence = null;  // tracks the previous occurrence, not spelling
 
   // ── Mouse Cursor Ground Truth Tracking ──────────────────────────────
   const cursorGazePairs = [];
@@ -45,37 +46,67 @@
     lastMouseY = e.clientY;
   });
 
-  function recordGazeHit(word, confidence, index) {
-    const key = word.toLowerCase();
+  function recordGazeHit(word, confidence, index, pageNum) {
+    const hasIndex = Number.isInteger(index) && index >= 0;
+    const normalizedPage = Number.isInteger(pageNum) && pageNum >= 0 ? pageNum : 0;
+    const key = hasIndex
+      ? `page:${normalizedPage}:word:${index}`
+      : `legacy-word:${word.toLowerCase()}`;
     if (!gazeBuffer[key]) {
-      gazeBuffer[key] = { word, dwell_count: 0, fixation_count: 0, confidence };
+      gazeBuffer[key] = {
+        occurrence_id: key,
+        word,
+        word_index: hasIndex ? index : null,
+        page_num: hasIndex ? normalizedPage : null,
+        dwell_count: 0,
+        fixation_count: 0,
+        hit_count: 0,
+        confidence,
+        confidence_counts: { high: 0, medium: 0, low: 0, unknown: 0 },
+        first_timestamp_ms: Date.now(),
+        last_timestamp_ms: Date.now(),
+      };
     }
     gazeBuffer[key].dwell_count += 1;
-    if (_lastGazeWord !== key) {
+    gazeBuffer[key].hit_count += 1;
+    gazeBuffer[key].last_timestamp_ms = Date.now();
+    if (_lastGazeOccurrence !== key) {
       gazeBuffer[key].fixation_count += 1;
-      _lastGazeWord = key;
+      _lastGazeOccurrence = key;
     }
     const rank = { high: 2, medium: 1, low: 0 };
+    const confidenceKey = Object.hasOwn(rank, confidence) ? confidence : "unknown";
+    gazeBuffer[key].confidence_counts[confidenceKey] += 1;
     if ((rank[confidence] || 0) > (rank[gazeBuffer[key].confidence] || 0)) {
       gazeBuffer[key].confidence = confidence;
     }
+    trackingStats.mapped_samples += 1;
 
     // Append to chronological sequence log
     gazeHistory.push({
-      word: word,
-      index: typeof index === "number" ? index : -1,
-      confidence: confidence,
-      timestamp_ms: Date.now()
+      occurrence_id: key,
+      word,
+      word_index: hasIndex ? index : null,
+      page_num: hasIndex ? normalizedPage : null,
+      confidence,
+      timestamp_ms: Date.now(),
     });
   }
 
   function flushGazeBuffer() {
     return Object.values(gazeBuffer).map(entry => ({
+      occurrence_id:  entry.occurrence_id,
       word:           entry.word,
+      word_index:     entry.word_index,
+      page_num:       entry.page_num,
       confidence:     entry.confidence,
+      confidence_counts: { ...entry.confidence_counts },
       dwell_count:    entry.dwell_count,
       fixation_count: entry.fixation_count,
-      timestamp_ms:   Date.now(),
+      hit_count:      entry.hit_count,
+      first_timestamp_ms: entry.first_timestamp_ms,
+      last_timestamp_ms: entry.last_timestamp_ms,
+      timestamp_ms:   entry.last_timestamp_ms,
     }));
   }
 
@@ -85,12 +116,15 @@
 
   function clearGazeBuffer() {
     Object.keys(gazeBuffer).forEach(k => delete gazeBuffer[k]);
-    _lastGazeWord = null;
+    _lastGazeOccurrence = null;
     gazeHistory.length = 0;
+    trackingStats.inference_samples = 0;
+    trackingStats.mapped_samples = 0;
   }
 
   window.gazeBuffer        = gazeBuffer;
   window.gazeHistory       = gazeHistory;
+  window.lexiGazeTrackingStats = trackingStats;
   window.flushGazeBuffer   = flushGazeBuffer;
   window.flushGazeHistory  = flushGazeHistory;
   window.clearGazeBuffer   = clearGazeBuffer;
@@ -341,6 +375,7 @@
 
         const point = applyDebounce(x, y);
         if (point) {
+          trackingStats.inference_samples += 1;
           if (els.gazeCursor) {
             els.gazeCursor.style.left = `${point.x}px`;
             els.gazeCursor.style.top = `${point.y}px`;
@@ -393,6 +428,12 @@
           persist:          persist,
           cognitive_result: cognitiveResult || {},
           gaze_events:      events,
+          quality_context: {
+            tracking_coverage: trackingStats.inference_samples > 0
+              ? trackingStats.mapped_samples / trackingStats.inference_samples
+              : 0,
+            ...(window.lexiGazeQualityContext || {}),
+          },
         }),
       });
       const data = await res.json();

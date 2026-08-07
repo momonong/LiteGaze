@@ -26,8 +26,9 @@ SCRIPTS_DIR = ROOT / "scripts" / "fusion"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from orchestrator import (
+from orchestrator import (  # noqa: E402
     PRODUCTION_INELIGIBLE_METHODS,
+    QUALITY_AWARE_SHADOW_METHOD,
     W_DWELL,
     W_FIXATION,
     W_LOAD,
@@ -61,12 +62,22 @@ def fuse():
       "gaze_events": [                    // 前端 gazeBuffer 序列化
         {
           "word":           "neuro-symbolic",
+          "occurrence_id":  "page:1:word:42",
+          "word_index":     42,
+          "page_num":       1,
           "confidence":     "high",
+          "confidence_counts": {"high": 4, "medium": 1, "low": 0},
           "dwell_count":    5,            // × 120ms = dwell_ms
           "fixation_count": 2,
           "timestamp_ms":   1749912000123
         }
-      ]
+      ],
+      "method": "quality_aware_v2_shadow", // explicit experimental opt-in only
+      "quality_context": {
+        "tracking_coverage": 0.9,
+        "stability": 0.8,
+        "calibration_quality": 0.85
+      }
     }
 
     Response:
@@ -90,6 +101,7 @@ def fuse():
     cognitive_result = body.get("cognitive_result") or {}
     gaze_events      = body.get("gaze_events") or []
     method           = body.get("method", "linear")
+    quality_context  = body.get("quality_context") or {}
 
     method_key = str(method).strip().lower()
     if method_key in PRODUCTION_INELIGIBLE_METHODS:
@@ -104,6 +116,8 @@ def fuse():
         return jsonify({"ok": False, "error": "'gaze_events' 必須是陣列"}), 400
     if not isinstance(cognitive_result, dict):
         return jsonify({"ok": False, "error": "'cognitive_result' 必須是物件"}), 400
+    if not isinstance(quality_context, dict):
+        return jsonify({"ok": False, "error": "'quality_context' 必須是物件"}), 400
 
     # Fallback: if cognitive_result is missing or empty, dynamically reconstruct text from gaze events and run pipeline
     if not cognitive_result or "word_analysis" not in cognitive_result:
@@ -128,7 +142,20 @@ def fuse():
                 print(f"[fusion] Warning: Failed to run fallback CognitiveLoadPipeline: {exc}")
 
     # Run fusion
-    rds_results = compute_rds(gaze_events, cognitive_result, method=method_key)
+    try:
+        rds_results = compute_rds(
+            gaze_events,
+            cognitive_result,
+            method=method_key,
+            quality_context=quality_context,
+        )
+    except ValueError as exc:
+        return jsonify({
+            "ok": False,
+            "error": "invalid_fusion_input",
+            "method": method_key,
+            "detail": str(exc),
+        }), 400
 
     elapsed_ms = int((time.time() - t0) * 1000)
 
@@ -136,6 +163,10 @@ def fuse():
     attention_words  = [r["word"] for r in rds_results if r["rds_level"] == "attention"]
 
     summary = {
+        "fusion_method":       method_key,
+        "candidate_status":    (
+            "shadow_only" if method_key == QUALITY_AWARE_SHADOW_METHOD else None
+        ),
         "total_words_tracked":  len(rds_results),
         "gaze_events_ingested": len(gaze_events),
         "difficulty_count":     len(difficulty_words),
@@ -148,11 +179,22 @@ def fuse():
 
     # Optional: persist to docs/fusion_reports/<session_id>.json
     if persist and session_id:
-        _persist_report(session_id, rds_results, cognitive_result, summary, elapsed_ms)
+        _persist_report(
+            session_id,
+            rds_results,
+            cognitive_result,
+            summary,
+            elapsed_ms,
+            method_key,
+        )
 
     return jsonify({
         "ok":         True,
         "session_id": session_id,
+        "fusion_method": method_key,
+        "candidate_status": (
+            "shadow_only" if method_key == QUALITY_AWARE_SHADOW_METHOD else None
+        ),
         "elapsed_ms": elapsed_ms,
         "summary":    summary,
         "rds":        rds_results,
@@ -166,10 +208,15 @@ def _persist_report(
     cognitive_result: dict,
     summary: dict,
     elapsed_ms: int,
+    method: str,
 ) -> Path:
     report = {
         "session_id":       session_id,
         "fusion_version":   "1.0",
+        "fusion_method":    method,
+        "candidate_status": (
+            "shadow_only" if method == QUALITY_AWARE_SHADOW_METHOD else None
+        ),
         "generated_at":     time.strftime("%Y-%m-%dT%H:%M:%S"),
         "elapsed_ms":       elapsed_ms,
         "weights":          {"dwell": W_DWELL, "fixation": W_FIXATION, "load": W_LOAD},

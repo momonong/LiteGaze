@@ -39,6 +39,11 @@ REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from core.cognition.quality_fusion import (
+    confidence_quality,
+    fuse_quality_aware,
+    stable_gaze_score,
+)
 from scripts.fusion_module import LexiGazeFusion
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -162,6 +167,7 @@ PRODUCTION_INELIGIBLE_METHODS = {
 }
 
 DWELL_MS_PER_COUNT = 120  # 前端以 120 ms 輪詢，每次命中代表約 120 ms 停留
+QUALITY_AWARE_SHADOW_METHOD = "quality_aware_v2_shadow"
 
 
 def _classify_rds(rds: float) -> str:
@@ -174,34 +180,225 @@ def _classify_rds(rds: float) -> str:
 
 def aggregate_gaze_events(events: list[dict]) -> dict[str, dict]:
     """
-    將多行 gaze_event 按 word（小寫）彙整，累加 dwell_ms 和 fixation_count。
+    依 occurrence identity 彙整 gaze events。
+
+    新格式以 ``occurrence_id`` 或 page/index 為主，因此文章中的兩個 ``the``
+    不會再被合併。沒有 occurrence metadata 的舊記錄仍退回 normalized word，
+    以保留歷史報告的可重現性。
     """
     agg: dict[str, dict] = {}
     for ev in events:
-        key = ev.get("word", "").lower()
-        if not key:
+        word = str(ev.get("word", "")).strip()
+        normalized_word = word.lower()
+        if not normalized_word:
             continue
+        occurrence_id, word_index, page_num, identity_source = _event_identity(ev)
+        key = occurrence_id or f"legacy-word:{normalized_word}"
         if key not in agg:
             agg[key] = {
-                "word": ev.get("word", key),
+                "occurrence_id": key,
+                "identity_source": identity_source,
+                "word": word,
+                "normalized_word": normalized_word,
+                "word_index": word_index,
+                "page_num": page_num,
                 "dwell_ms": 0,
                 "fixation_count": 0,
                 "hit_count": 0,
-                "confidence_counts": {"high": 0, "medium": 0, "low": 0},
+                "confidence_counts": {
+                    "high": 0,
+                    "medium": 0,
+                    "low": 0,
+                    "unknown": 0,
+                },
             }
-        agg[key]["dwell_ms"]       += int(ev.get("dwell_count", 1)) * DWELL_MS_PER_COUNT
-        agg[key]["fixation_count"] += int(ev.get("fixation_count", 0))
-        agg[key]["hit_count"]      += 1
-        conf = ev.get("confidence", "low")
-        if conf in agg[key]["confidence_counts"]:
-            agg[key]["confidence_counts"][conf] += 1
+        dwell_count = max(int(ev.get("dwell_count", 1)), 0)
+        dwell_ms = ev.get("dwell_ms")
+        agg[key]["dwell_ms"] += (
+            max(int(dwell_ms), 0)
+            if dwell_ms is not None
+            else dwell_count * DWELL_MS_PER_COUNT
+        )
+        agg[key]["fixation_count"] += max(int(ev.get("fixation_count", 0)), 0)
+        event_hit_count = max(int(ev.get("hit_count", dwell_count or 1)), 0)
+        agg[key]["hit_count"] += event_hit_count
+
+        supplied_counts = ev.get("confidence_counts")
+        if isinstance(supplied_counts, dict):
+            for label, raw_count in supplied_counts.items():
+                confidence_label = str(label).strip().lower()
+                if confidence_label not in agg[key]["confidence_counts"]:
+                    confidence_label = "unknown"
+                agg[key]["confidence_counts"][confidence_label] += max(
+                    int(raw_count), 0
+                )
+        else:
+            confidence_label = str(ev.get("confidence", "unknown")).strip().lower()
+            if confidence_label not in agg[key]["confidence_counts"]:
+                confidence_label = "unknown"
+            agg[key]["confidence_counts"][confidence_label] += event_hit_count
     return agg
+
+
+def _event_identity(event: dict) -> tuple[str | None, int | None, int | None, str]:
+    occurrence_id = str(event.get("occurrence_id", "")).strip()
+    word_index = _optional_nonnegative_int(
+        event.get("word_index", event.get("index"))
+    )
+    page_num = _optional_nonnegative_int(event.get("page_num"))
+    if occurrence_id:
+        return occurrence_id, word_index, page_num, "occurrence_id"
+    if word_index is not None:
+        normalized_page = page_num if page_num is not None else 0
+        return (
+            f"page:{normalized_page}:word:{word_index}",
+            word_index,
+            normalized_page,
+            "page_word_index",
+        )
+    return None, None, None, "legacy_normalized_word"
+
+
+def _optional_nonnegative_int(value: object) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def align_gaze_occurrences(
+    word_analysis: list[dict],
+    aggregated: dict[str, dict],
+) -> list[dict]:
+    """Align each analysis token to at most one indexed gaze occurrence."""
+    records = list(aggregated.values())
+    explicit = {record["occurrence_id"]: record for record in records}
+    by_pair = {
+        (record["page_num"], record["word_index"]): record
+        for record in records
+        if record["word_index"] is not None
+    }
+    by_word_and_index: dict[tuple[str, int], list[dict]] = {}
+    ordered_by_word: dict[str, list[dict]] = {}
+    legacy_by_word: dict[str, dict] = {}
+    for record in records:
+        normalized = record["normalized_word"]
+        if record["identity_source"] == "legacy_normalized_word":
+            legacy_by_word[normalized] = record
+            continue
+        ordered_by_word.setdefault(normalized, []).append(record)
+        if record["word_index"] is not None:
+            by_word_and_index.setdefault(
+                (normalized, record["word_index"]), []
+            ).append(record)
+    for candidates in ordered_by_word.values():
+        candidates.sort(
+            key=lambda record: (
+                record["page_num"] if record["page_num"] is not None else 10**9,
+                record["word_index"] if record["word_index"] is not None else 10**9,
+                record["occurrence_id"],
+            )
+        )
+
+    used: set[str] = set()
+    aligned: list[dict] = []
+    for analysis_index, item in enumerate(word_analysis):
+        word = str(item.get("word", ""))
+        normalized = word.lower()
+        candidate: dict | None = None
+        alignment_source = "missing"
+
+        explicit_id = str(item.get("occurrence_id", "")).strip()
+        if (
+            explicit_id
+            and explicit_id in explicit
+            and explicit_id not in used
+        ):
+            candidate = explicit[explicit_id]
+            alignment_source = "occurrence_id"
+
+        item_word_index = _optional_nonnegative_int(
+            item.get("word_index", item.get("position"))
+        )
+        item_page_num = _optional_nonnegative_int(item.get("page_num"))
+        if candidate is None and item_word_index is not None and item_page_num is not None:
+            paired = by_pair.get((item_page_num, item_word_index))
+            candidate = (
+                paired
+                if paired is not None and paired["occurrence_id"] not in used
+                else None
+            )
+            if candidate is not None:
+                alignment_source = "page_word_index"
+
+        if candidate is None and item_word_index is not None:
+            indexed = [
+                record
+                for record in by_word_and_index.get(
+                    (normalized, item_word_index), []
+                )
+                if record["occurrence_id"] not in used
+            ]
+            if len(indexed) == 1:
+                candidate = indexed[0]
+                alignment_source = "word_index"
+
+        if candidate is None:
+            candidate = next(
+                (
+                    record
+                    for record in ordered_by_word.get(normalized, [])
+                    if record["occurrence_id"] not in used
+                ),
+                None,
+            )
+            if candidate is not None:
+                alignment_source = "ordered_same_token_occurrence"
+
+        if candidate is None and normalized in legacy_by_word:
+            candidate = legacy_by_word[normalized]
+            alignment_source = "legacy_normalized_word"
+
+        if candidate is None:
+            aligned.append(_empty_gaze_occurrence(item, analysis_index))
+            continue
+        if candidate["identity_source"] != "legacy_normalized_word":
+            used.add(candidate["occurrence_id"])
+        aligned.append({**candidate, "alignment_source": alignment_source})
+    return aligned
+
+
+def _empty_gaze_occurrence(item: dict, analysis_index: int) -> dict:
+    return {
+        "occurrence_id": f"analysis:{analysis_index}",
+        "identity_source": "missing",
+        "alignment_source": "missing",
+        "word": str(item.get("word", "")),
+        "normalized_word": str(item.get("word", "")).lower(),
+        "word_index": _optional_nonnegative_int(
+            item.get("word_index", item.get("position"))
+        ),
+        "page_num": _optional_nonnegative_int(item.get("page_num")),
+        "dwell_ms": 0,
+        "fixation_count": 0,
+        "hit_count": 0,
+        "confidence_counts": {
+            "high": 0,
+            "medium": 0,
+            "low": 0,
+            "unknown": 0,
+        },
+    }
 
 
 def compute_rds(
     gaze_events: list[dict],
     cognitive_result: dict,
     method: str = "linear",
+    quality_context: dict | None = None,
 ) -> list[dict]:
     """
     主要融合函式。
@@ -217,31 +414,62 @@ def compute_rds(
         raise ValueError(PRODUCTION_INELIGIBLE_METHODS[method_lower])
 
     word_analysis = cognitive_result.get("word_analysis", [])
-    aggregated    = aggregate_gaze_events(gaze_events)
+    aggregated = aggregate_gaze_events(gaze_events)
 
     if not word_analysis:
         print("[Orchestrator] ⚠ 沒有有效的認知分析單字序列")
         return []
 
-    # 提取序列資料
-    words_seq = [item.get("word", "") for item in word_analysis]
-    load_seq  = [float(item.get("load_score", 0.0)) for item in word_analysis]
-
-    # 對齊眼動資料
-    dwell_seq = []
-    fix_seq   = []
-    for w in words_seq:
-        key = w.lower()
-        if key in aggregated:
-            dwell_seq.append(float(aggregated[key]["dwell_ms"]))
-            fix_seq.append(float(aggregated[key]["fixation_count"]))
-        else:
-            dwell_seq.append(0.0)
-            fix_seq.append(0.0)
+    load_seq = [float(item.get("load_score", 0.0)) for item in word_analysis]
+    aligned_gaze = align_gaze_occurrences(word_analysis, aggregated)
+    dwell_seq = [float(record["dwell_ms"]) for record in aligned_gaze]
+    fix_seq = [float(record["fixation_count"]) for record in aligned_gaze]
 
     # 執行融合
     fusion = LexiGazeFusion()
-    if method_lower == "linear":
+    quality_results = None
+    if method_lower == QUALITY_AWARE_SHADOW_METHOD:
+        context = quality_context or {}
+        required_quality = (
+            "tracking_coverage",
+            "stability",
+            "calibration_quality",
+        )
+        missing_quality = [key for key in required_quality if key not in context]
+        if missing_quality:
+            raise ValueError(
+                "quality-aware shadow fusion requires quality_context fields: "
+                + ", ".join(missing_quality)
+            )
+        quality_results = []
+        for item, gaze_record, text_score in zip(
+            word_analysis, aligned_gaze, load_seq, strict=True
+        ):
+            gaze_available = gaze_record["hit_count"] > 0
+            gaze_score = (
+                stable_gaze_score(
+                    gaze_record["dwell_ms"], gaze_record["fixation_count"]
+                )
+                if gaze_available
+                else None
+            )
+            quality_results.append(
+                fuse_quality_aware(
+                    text_score=text_score,
+                    gaze_score=gaze_score,
+                    mapping_confidence=confidence_quality(
+                        gaze_record["confidence_counts"]
+                    ),
+                    tracking_coverage=float(context["tracking_coverage"]),
+                    stability=float(context["stability"]),
+                    calibration_quality=float(context["calibration_quality"]),
+                    text_in_distribution=bool(
+                        item.get("in_distribution", True)
+                    ),
+                )
+            )
+        rds_seq = [result.fused_score for result in quality_results]
+    elif method_lower == "linear":
         rds_seq = fusion.fuse_linear(dwell_seq, fix_seq, load_seq)
     elif method_lower == "multiplicative":
         rds_seq = fusion.fuse_multiplicative(dwell_seq, fix_seq, load_seq)
@@ -279,25 +507,24 @@ def compute_rds(
     results: list[dict] = []
     for i, item in enumerate(word_analysis):
         w = item.get("word", "")
-        key = w.lower()
-        agg = aggregated.get(key, {
-            "dwell_ms": 0,
-            "fixation_count": 0,
-            "hit_count": 0,
-            "confidence_counts": {"high": 0, "medium": 0, "low": 0}
-        })
+        agg = aligned_gaze[i]
 
         rds = round(float(rds_seq[i]), 4)
         dwell_norm = (agg["dwell_ms"]       - min_dwell) / range_dwell
         fix_norm   = (agg["fixation_count"] - min_fix)   / range_fix
 
-        results.append({
+        result = {
             # ── 融合核心輸出 ──
             "word":            w,
             "rds":             rds,
             "rds_level":       _classify_rds(rds),
+            "rds_method":      method_lower,
 
             # ── 眼動感知端 ──
+            "occurrence_id":   agg["occurrence_id"],
+            "word_index":      agg["word_index"],
+            "page_num":        agg["page_num"],
+            "alignment_source": agg["alignment_source"],
             "dwell_ms":        agg["dwell_ms"],
             "dwell_norm":      round(dwell_norm, 4),
             "fixation_count":  agg["fixation_count"],
@@ -317,7 +544,11 @@ def compute_rds(
             "word_length":     item.get("word_length", None),
             "aoa_score":       item.get("aoa_score", None),
             "pos_score":       item.get("pos_score", None),
-        })
+        }
+        if quality_results is not None:
+            result["candidate_status"] = "shadow_only"
+            result["quality_aware_v2"] = quality_results[i].to_dict()
+        results.append(result)
 
     # 依 RDS 由高到低排序
     results.sort(key=lambda x: x["rds"], reverse=True)
