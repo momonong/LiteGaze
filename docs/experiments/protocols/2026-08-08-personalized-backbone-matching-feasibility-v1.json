@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "protocol_id": "personalized-backbone-matching-feasibility-v1",
+  "frozen_date": "2026-08-08",
+  "status_at_freeze": "geco_aggregate_backbone_results_previously_seen_but_nested_personalized_results_unopened",
+  "purpose": "Test whether a small, uncertainty-aware user calibration can select between frozen causal language-model backbones and improve reading-time ranking on both an unseen participant and unseen texts.",
+  "claim_scope": {
+    "study_role": "exploratory_feasibility_only",
+    "reason_not_confirmatory": "GECO aggregate GPT-2 and Pythia results were inspected in the parent experiment before this protocol was frozen.",
+    "allowed_claim": "A calibration-and-abstention procedure did or did not show enough nested-held-out utility to justify outcome-blind expansion of the candidate bank.",
+    "forbidden_claims": [
+      "The selected language model identifies a participant's cognitive ability.",
+      "The selected language model identifies English proficiency, CEFR, attention, fatigue, or a stable reader type.",
+      "GECO can provide final confirmation for production personalization."
+    ],
+    "confirmation_required": "A newly collected participant cohort and frozen unseen passage families must confirm any favorable result."
+  },
+  "source_policy": {
+    "mode": "exact_allowlist",
+    "public_ungated_only": true,
+    "base_or_pretrained_only": true,
+    "instruction_or_chat_models_allowed": false,
+    "trust_remote_code": false,
+    "safetensors_required_for_new_downloads": true,
+    "excluded_model_id_prefixes": [
+      "Qwen/",
+      "deepseek-ai/",
+      "THUDM/",
+      "baichuan-inc/",
+      "01-ai/",
+      "uer/"
+    ],
+    "derivatives_of_excluded_bases_allowed": false
+  },
+  "dataset": {
+    "name": "GECO English L2",
+    "path": "data/geco/L2ReadingData.csv",
+    "sha256": "cd551640cfd122b5e360d70c12998798125e7485c6deb900bc71b8e591c59b87",
+    "expected_rows": 534154,
+    "expected_participants": 19,
+    "expected_texts": 588,
+    "expected_items": 56411,
+    "reader_group": "bilingual",
+    "stimulus_language": "English",
+    "median_words_per_text": 96.0,
+    "question_answer_dataset_used": false
+  },
+  "frozen_backbones": [
+    {
+      "key": "gpt2",
+      "model_id": "gpt2",
+      "revision": "607a30d783dfa663caf39e06633721c8d4cfcd7e",
+      "developer": "OpenAI",
+      "license": "MIT",
+      "role": "default_incumbent",
+      "feature_path": "data/geco/text_modeling/pythia-geco-l2-replication-v2/gpt2.features.csv",
+      "feature_sha256": "63de8ae14e679a4a54706e90532ddc6e66f51e6fd268d67fd4b61a2bee91a167",
+      "metadata_sha256": "414edc22e2e80264d16d6d79cbdcb25237e764eec778400ba1355bd52d3dd465"
+    },
+    {
+      "key": "pythia_410m_deduped_full",
+      "model_id": "EleutherAI/pythia-410m-deduped",
+      "revision": "c4fc8d586d62df497f1f9b69d66d3ca419992d3e",
+      "developer": "EleutherAI",
+      "license": "Apache-2.0",
+      "role": "sole_feasibility_challenger",
+      "feature_path": "data/geco/text_modeling/pythia-geco-l2-replication-v2/pythia_410m_deduped_full.features.csv",
+      "feature_sha256": "e0fe4361535bf7658634e7aa11f66d1c4f0389285081a89c2ff6752b83b5a2ff",
+      "metadata_sha256": "c97c242daf3b4009b59c6976db219dbe385e66017c0a57b2f34e8503efba5f4e"
+    }
+  ],
+  "analysis": {
+    "primary_outcome": {
+      "name": "total_reading_time",
+      "source_column": "WORD_TOTAL_READING_TIME",
+      "filter": "finite_and_strictly_positive",
+      "target_transform": "log1p"
+    },
+    "first_word_of_each_text_excluded": true,
+    "model_feature_set": [
+      "log_char_length",
+      "zipf_frequency",
+      "relative_position",
+      "starts_upper",
+      "ends_punctuation",
+      "prev_log_char_length",
+      "prev_zipf_frequency",
+      "subtoken_count",
+      "causal_surprisal",
+      "prev_causal_surprisal"
+    ],
+    "ridge_alpha": 1.0,
+    "outer_holdout": {
+      "groups": "complete_Text_ID",
+      "folds": 5,
+      "seed": 20260808
+    },
+    "participant_holdout": "leave_one_participant_out_inside_every_outer_text_fold",
+    "fit_rows": "participants_other_than_the_target_participant_and_Text_ID_outside_the_outer_evaluation_fold",
+    "calibration_rows": "target_participant_and_Text_ID_outside_the_outer_evaluation_fold",
+    "evaluation_rows": "target_participant_and_Text_ID_inside_the_outer_evaluation_fold",
+    "required_leakage_checks": {
+      "target_participant_rows_in_fit": 0,
+      "evaluation_Text_ID_in_fit": 0,
+      "evaluation_Text_ID_in_calibration": 0
+    },
+    "calibration_text_selection": {
+      "method": "deterministic_sha256_order_by_seed_participant_outer_fold_and_Text_ID",
+      "budgets": [5, 10, 20, 40, 80, "all"],
+      "primary_budget": 10,
+      "estimated_primary_words_from_corpus_median": 960
+    },
+    "selection_rule": {
+      "primary": "Select Pythia only when the 95 percent paired bootstrap interval of per-calibration-text Spearman differences is strictly above zero; otherwise abstain to GPT-2.",
+      "calibration_bootstrap_samples": 2000,
+      "default_on_uncertainty": "gpt2",
+      "secondary_unconstrained_selector": "calibration_mean_argmax",
+      "secondary_oracle": "evaluation_argmax_not_deployable"
+    },
+    "evaluation_metric": "Spearman_rho_between_predicted_and_observed_log1p_total_reading_time",
+    "aggregation": {
+      "cell": "participant_by_outer_fold",
+      "participant": "mean_across_outer_folds",
+      "fold": "mean_across_participants",
+      "participant_bootstrap_samples": 10000,
+      "participant_bootstrap_seed": 20260908
+    }
+  },
+  "decision_gate": {
+    "applies_to": "primary_uncertainty_aware_selector_at_10_calibration_texts",
+    "all_required": {
+      "participant_bootstrap_ci_95_low_selected_minus_gpt2_greater_than": 0.0,
+      "minimum_positive_outer_folds": 4,
+      "minimum_fraction_participants_with_positive_mean_delta": 0.6,
+      "minimum_fraction_cells_with_challenger_selected": 0.05,
+      "all_leakage_checks_pass": true
+    },
+    "pass_action": "Permit label-free smoke testing and feature extraction for the frozen expansion bank, then run only an explicitly exploratory nested comparison. Production remains unchanged pending new-cohort confirmation.",
+    "fail_action": "Do not download or run additional backbones. Retain GPT-2 and prioritize better participant calibration data rather than increasing candidate multiplicity.",
+    "production_change_allowed": false
+  },
+  "conditional_expansion_bank": [
+    {
+      "priority": 1,
+      "key": "smollm2_360m",
+      "model_id": "HuggingFaceTB/SmolLM2-360M",
+      "revision": "f8027fd0eaeea54caa13c31d31b9fdc459c38b49",
+      "developer": "Hugging FaceTB",
+      "license": "Apache-2.0",
+      "official_source": "https://huggingface.co/HuggingFaceTB/SmolLM2-360M"
+    },
+    {
+      "priority": 2,
+      "key": "olmo2_0425_1b",
+      "model_id": "allenai/OLMo-2-0425-1B",
+      "revision": "a1847dff35000b4271fa70afc5db10fd29fedbdf",
+      "developer": "Allen Institute for AI",
+      "license": "Apache-2.0",
+      "official_source": "https://huggingface.co/allenai/OLMo-2-0425-1B"
+    },
+    {
+      "priority": 3,
+      "key": "granite_3_1_2b_base",
+      "model_id": "ibm-granite/granite-3.1-2b-base",
+      "revision": "bcf4e33e7debde263041db41869f9cdbeaae3f01",
+      "developer": "IBM",
+      "license": "Apache-2.0",
+      "official_source": "https://huggingface.co/ibm-granite/granite-3.1-2b-base"
+    }
+  ],
+  "candidate_exclusions": [
+    {
+      "model": "bigscience/bloom-560m",
+      "reason": "The BLOOM RAIL model card lists evaluating or scoring individuals as out of scope for the license/use policy."
+    },
+    {
+      "model": "meta-llama/Llama-3.2-1B",
+      "reason": "Gated access conflicts with the frozen public-ungated reproducibility policy."
+    },
+    {
+      "model": "google/gemma-3-1b-pt",
+      "reason": "Gated access and click-through terms conflict with the frozen public-ungated reproducibility policy."
+    }
+  ],
+  "compute": {
+    "feasibility_device": "cpu",
+    "maximum_feasibility_wall_minutes": 30,
+    "maximum_cpu_threads": 4,
+    "feasibility_gpu_hours": 0.0,
+    "conditional_expansion_maximum_gpu_hours": 0.25,
+    "conditional_expansion_maximum_peak_cuda_reserved_gib": 12.0,
+    "one_backbone_loaded_at_a_time": true,
+    "training_allowed": false,
+    "fine_tuning_allowed": false
+  },
+  "mutation_policy": {
+    "after_personalized_outcome_access": "Do not change models, feature set, folds, calibration budgets, selector, bootstrap, thresholds, or decision gate in v1.",
+    "unfavorable_result": "Report unchanged and stop conditional model expansion.",
+    "favorable_result": "Report as exploratory and require a newly collected cohort for confirmation.",
+    "question_answer_data": "Do not use any fixed question-answer set for fitting, selection, or evaluation."
+  }
+}
