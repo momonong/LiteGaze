@@ -1,0 +1,184 @@
+{
+  "schema_version": 1,
+  "protocol_id": "non-cn-text-backbone-provo-development-v1",
+  "frozen_date": "2026-08-08",
+  "status_at_freeze": "new_backbone_outcome_blind",
+  "purpose": "Compare a fixed, non-Chinese-source causal-language-model allowlist as frozen word-level feature extractors without promoting a winner from a historically inspected corpus.",
+  "source_policy": {
+    "mode": "exact_allowlist",
+    "trust_remote_code": false,
+    "public_ungated_only": true,
+    "base_or_pretrained_only": true,
+    "instruction_or_chat_models_allowed": false,
+    "excluded_model_id_prefixes": [
+      "Qwen/",
+      "deepseek-ai/",
+      "THUDM/",
+      "baichuan-inc/",
+      "01-ai/",
+      "uer/"
+    ],
+    "derivatives_of_excluded_bases_allowed": false,
+    "allowlist": [
+      {
+        "key": "gpt2",
+        "model_id": "gpt2",
+        "revision": "607a30d783dfa663caf39e06633721c8d4cfcd7e",
+        "developer": "OpenAI",
+        "license": "MIT",
+        "role": "frozen_historical_baseline"
+      },
+      {
+        "key": "pythia_410m_deduped_step1000",
+        "model_id": "EleutherAI/pythia-410m-deduped",
+        "revision": "a3b3aff9a656ab34fec3474eb60bb5b487639539",
+        "developer": "EleutherAI",
+        "license": "Apache-2.0",
+        "role": "approximately_2.1b_training_token_challenger"
+      },
+      {
+        "key": "pythia_410m_deduped_full",
+        "model_id": "EleutherAI/pythia-410m-deduped",
+        "revision": "c4fc8d586d62df497f1f9b69d66d3ca419992d3e",
+        "developer": "EleutherAI",
+        "license": "Apache-2.0",
+        "role": "same_architecture_full_training_control"
+      },
+      {
+        "key": "smollm2_360m",
+        "model_id": "HuggingFaceTB/SmolLM2-360M",
+        "revision": "f8027fd0eaeea54caa13c31d31b9fdc459c38b49",
+        "developer": "Hugging Face",
+        "license": "Apache-2.0",
+        "role": "modern_compact_english_challenger"
+      },
+      {
+        "key": "olmo2_1b",
+        "model_id": "allenai/OLMo-2-0425-1B",
+        "revision": "a1847dff35000b4271fa70afc5db10fd29fedbdf",
+        "developer": "Ai2",
+        "license": "Apache-2.0",
+        "role": "fully_open_modern_challenger"
+      }
+    ]
+  },
+  "dataset": {
+    "name": "Provo Corpus",
+    "path": "data/provo/raw/Provo_Corpus-Eyetracking_Data.csv",
+    "sha256": "38aedcb29bc9171009916eb2bcc2375729f104a2a1005c64a563da94b611b9e7",
+    "expected_participants": 84,
+    "expected_texts": 55,
+    "expected_items": 2743,
+    "role": "historically_inspected_development_only",
+    "question_answer_dataset_used": false
+  },
+  "feature_extraction": {
+    "context_direction": "left_only",
+    "surprisal_unit": "nats",
+    "word_surprisal_aggregation": "subtoken_sum",
+    "special_tokens": false,
+    "first_word_of_each_text_excluded": true,
+    "language_model_fine_tuning": false,
+    "outcomes_read_during_extraction": false,
+    "cache_by_source_model_revision_and_extractor_hash": true
+  },
+  "smoke_gate": {
+    "texts": 3,
+    "required_item_coverage": 1.0,
+    "finite_context_scored_features_required": true,
+    "minimum_tokens_per_word": 1,
+    "maximum_peak_cuda_reserved_gib": 12.0,
+    "failure_action": "record_failure_and_do_not_run_that_backbone_on_full_provo"
+  },
+  "analysis": {
+    "primary_outcome": {
+      "name": "total_reading_time",
+      "source_column": "IA_DWELL_TIME"
+    },
+    "secondary_outcomes": [
+      {
+        "name": "gaze_duration",
+        "source_column": "IA_FIRST_RUN_DWELL_TIME"
+      },
+      {
+        "name": "first_fixation_duration",
+        "source_column": "IA_FIRST_FIXATION_DURATION"
+      }
+    ],
+    "target_transform": "log1p",
+    "outer_holdout": "complete_Text_ID",
+    "outer_folds": 5,
+    "seed": 20260808,
+    "ridge_alpha": 1.0,
+    "bootstrap_samples": 10000,
+    "feature_sets": {
+      "m0_lexical_shared": [
+        "log_char_length",
+        "zipf_frequency",
+        "relative_position",
+        "starts_upper",
+        "ends_punctuation",
+        "prev_log_char_length",
+        "prev_zipf_frequency"
+      ],
+      "m0_tokenization": [
+        "log_char_length",
+        "zipf_frequency",
+        "relative_position",
+        "starts_upper",
+        "ends_punctuation",
+        "prev_log_char_length",
+        "prev_zipf_frequency",
+        "subtoken_count"
+      ],
+      "m1_causal_surprisal": [
+        "log_char_length",
+        "zipf_frequency",
+        "relative_position",
+        "starts_upper",
+        "ends_punctuation",
+        "prev_log_char_length",
+        "prev_zipf_frequency",
+        "subtoken_count",
+        "causal_surprisal",
+        "prev_causal_surprisal"
+      ]
+    },
+    "target_shuffle_sentinel_model": "m1_causal_surprisal"
+  },
+  "interpretation": {
+    "primary_increment": "m1_causal_surprisal_minus_m0_tokenization",
+    "incremental_gate": {
+      "participant_bootstrap_ci_95_low_greater_than": 0.0,
+      "text_bootstrap_ci_95_low_greater_than": 0.0,
+      "minimum_positive_outer_folds": 4
+    },
+    "cross_backbone_comparison": "paired held-out m1_causal_surprisal Spearman differences relative to gpt2",
+    "maximum_non_gpt2_shortlist_size": 2,
+    "shortlist_is_confirmatory": false,
+    "production_model_change_allowed": false,
+    "required_next_evidence": "freeze a GECO L2 replication protocol before inspecting challenger outcomes there; later confirm once on the independent v3 word-review cohort"
+  },
+  "compute": {
+    "device": "cuda",
+    "dtype": "bfloat16",
+    "one_backbone_loaded_at_a_time": true,
+    "training_allowed": false,
+    "fine_tuning_allowed": false,
+    "maximum_total_inference_gpu_hours": 1.5,
+    "record": [
+      "load_seconds",
+      "inference_seconds",
+      "tokens_scored",
+      "tokens_per_second",
+      "peak_cuda_allocated_bytes",
+      "peak_cuda_reserved_bytes"
+    ]
+  },
+  "mutation_policy": {
+    "after_new_backbone_outcome_access": "Do not change candidates, revisions, features, folds, alpha, outcomes, thresholds, or gates in v1.",
+    "model_load_or_alignment_failure": "Record the failure unchanged; fixes require v2 before evaluating that model.",
+    "unfavorable_result": "Report it unchanged; do not tune on Provo, GECO, OneStop, or a fixed QA set.",
+    "source_policy_violation": "Stop before model download or inference."
+  }
+}
