@@ -63,6 +63,12 @@ separates contextual probability from a tokenizer merely splitting rare words
 into more pieces. Cross-backbone comparisons use paired held-out M1 predictions
 under identical folds, alpha, outcomes, and preprocessing.
 
+One planned mechanistic contrast compares the Pythia `step1000` M1 predictions
+against the fully trained Pythia M1 predictions. Because architecture,
+tokenizer, and data family are held constant, this tests the preregistered
+hypothesis that substantially more language-model training need not improve fit
+to human reading.
+
 ## Smoke, GPU, and stopping rules
 
 Three passages are scored before a full run. A backbone advances only with

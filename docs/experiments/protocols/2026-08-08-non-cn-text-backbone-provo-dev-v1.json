@@ -154,6 +154,12 @@
       "minimum_positive_outer_folds": 4
     },
     "cross_backbone_comparison": "paired held-out m1_causal_surprisal Spearman differences relative to gpt2",
+    "planned_training_contrast": {
+      "first": "pythia_410m_deduped_step1000",
+      "second": "pythia_410m_deduped_full",
+      "direction": "first_minus_second",
+      "purpose": "isolate approximately 2.1B versus approximately 300B observed training tokens within one architecture"
+    },
     "maximum_non_gpt2_shortlist_size": 2,
     "shortlist_rule": {
       "must_pass_incremental_gate": true,
