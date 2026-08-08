@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from core.cognition.generalization import safe_spearman
 from scripts.run_personalized_backbone_matching import (
     build_nested_masks,
     grouped_spearman,
+    _read_feature_table,
     load_protocol,
     make_decision,
     select_with_abstention,
@@ -27,6 +29,25 @@ PROTOCOL_PATH = (
 
 
 class PersonalizedBackboneMatchingTests(unittest.TestCase):
+    def test_feature_reader_preserves_literal_null_label(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="lexigaze-backbone-cache-") as name:
+            path = Path(name) / "features.csv"
+            path.write_text(
+                "Text_ID,IA_ID,IA_LABEL,causal_surprisal\n"
+                "t0,1,null,\n"
+                "t0,2,word,1.25\n",
+                encoding="utf-8",
+            )
+
+            observed = _read_feature_table(
+                path,
+                ("Text_ID", "IA_ID", "IA_LABEL", "causal_surprisal"),
+            )
+
+        self.assertEqual(observed.loc[0, "IA_LABEL"], "null")
+        self.assertTrue(np.isnan(observed.loc[0, "causal_surprisal"]))
+        self.assertAlmostEqual(observed.loc[1, "causal_surprisal"], 1.25)
+
     def test_protocol_is_exploratory_cpu_only_and_source_restricted(self) -> None:
         protocol = load_protocol(PROTOCOL_PATH)
 

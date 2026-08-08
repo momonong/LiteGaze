@@ -138,6 +138,26 @@ def _metadata_path(feature_path: Path) -> Path:
     return feature_path.with_name(feature_path.name.removesuffix(suffix) + ".metadata.json")
 
 
+def _read_feature_table(
+    feature_path: Path,
+    columns: Sequence[str],
+) -> pd.DataFrame:
+    """Read labels literally while preserving numeric empty cells as missing."""
+    features = pd.read_csv(
+        feature_path,
+        usecols=list(columns),
+        dtype={"Text_ID": str, "IA_ID": int, "IA_LABEL": str},
+        keep_default_na=False,
+        low_memory=False,
+    )
+    for column in columns:
+        if column not in IDENTITY_COLUMNS:
+            features[column] = pd.to_numeric(features[column], errors="coerce")
+    if features["IA_LABEL"].eq("").any():
+        raise ValueError(f"empty display label in {feature_path}")
+    return features
+
+
 def _load_feature_cache(
     spec: Mapping[str, Any],
     protocol: Mapping[str, Any],
@@ -168,12 +188,7 @@ def _load_feature_cache(
         *protocol["analysis"]["model_feature_set"],
         "is_context_scored",
     ]
-    features = pd.read_csv(
-        feature_path,
-        usecols=columns,
-        dtype={"Text_ID": str, "IA_ID": int, "IA_LABEL": str},
-        low_memory=False,
-    )
+    features = _read_feature_table(feature_path, columns)
     if features.duplicated(list(IDENTITY_COLUMNS)).any():
         raise ValueError(f"duplicate feature identity for {spec['key']}")
     rename = {
@@ -886,6 +901,15 @@ def main() -> None:
             "scalers_fit_on_training_only": True,
             "production_model_changed": False,
             "new_cohort_confirmation_required": True,
+        },
+        "pre_evaluation_incident": {
+            "first_attempt_produced_personalized_result": False,
+            "stage": "feature_identity_merge_before_any_model_fit",
+            "error": "pandas default NA parsing converted the literal GECO word 'null' to a missing display label",
+            "fix": "read cached display labels literally and convert only frozen numeric feature columns",
+            "affected_feature_rows": 1,
+            "methodological_change": False,
+            "regression_test_added": True,
         },
     }
     args.output_dir.mkdir(parents=True, exist_ok=True)
