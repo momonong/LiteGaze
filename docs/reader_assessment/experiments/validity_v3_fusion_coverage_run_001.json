@@ -1,0 +1,125 @@
+{
+  "decision": {
+    "reading_item_calibration_separate_study_required": true,
+    "reason": "It is the only candidate with 12 independent confirmation passage families; compact_18 has only 3 and cannot support a credible passage-resampling confirmation. Exposure counts remain a planning diagnostic, not a universal validity threshold.",
+    "recommended_candidate": "diverse_48"
+  },
+  "device": "cpu",
+  "gpu_used": false,
+  "limitations": [
+    "coverage only; no human outcome or effect is simulated",
+    "passage difficulty, genre, and domain balance require a later frozen manifest",
+    "exposure counts are correlated within participants and passages"
+  ],
+  "participant_grid": [
+    300,
+    600,
+    900
+  ],
+  "protocol_id": "reader-assessment-v3-fusion-coverage-v1",
+  "replicates": 200,
+  "rows": [
+    {
+      "all_passage_exposure_min_p05": 100.0,
+      "candidate_id": "compact_18",
+      "confirmation_passage_families": 3,
+      "development_cell_min_p05": 49.95,
+      "joint_confirmation_per_passage_min_p05": 13.950000000000001,
+      "joint_confirmation_word_labels_median": 480.0,
+      "participants": 300,
+      "passages_per_participant": 6,
+      "total_passage_families": 18
+    },
+    {
+      "all_passage_exposure_min_p05": 200.0,
+      "candidate_id": "compact_18",
+      "confirmation_passage_families": 3,
+      "development_cell_min_p05": 105.0,
+      "joint_confirmation_per_passage_min_p05": 30.0,
+      "joint_confirmation_word_labels_median": 960.0,
+      "participants": 600,
+      "passages_per_participant": 6,
+      "total_passage_families": 18
+    },
+    {
+      "all_passage_exposure_min_p05": 300.0,
+      "candidate_id": "compact_18",
+      "confirmation_passage_families": 3,
+      "development_cell_min_p05": 162.0,
+      "joint_confirmation_per_passage_min_p05": 49.0,
+      "joint_confirmation_word_labels_median": 1440.0,
+      "participants": 900,
+      "passages_per_participant": 6,
+      "total_passage_families": 18
+    },
+    {
+      "all_passage_exposure_min_p05": 50.0,
+      "candidate_id": "balanced_36",
+      "confirmation_passage_families": 9,
+      "development_cell_min_p05": 21.0,
+      "joint_confirmation_per_passage_min_p05": 4.0,
+      "joint_confirmation_word_labels_median": 720.0,
+      "participants": 300,
+      "passages_per_participant": 6,
+      "total_passage_families": 36
+    },
+    {
+      "all_passage_exposure_min_p05": 100.0,
+      "candidate_id": "balanced_36",
+      "confirmation_passage_families": 9,
+      "development_cell_min_p05": 48.0,
+      "joint_confirmation_per_passage_min_p05": 11.0,
+      "joint_confirmation_word_labels_median": 1440.0,
+      "participants": 600,
+      "passages_per_participant": 6,
+      "total_passage_families": 36
+    },
+    {
+      "all_passage_exposure_min_p05": 150.0,
+      "candidate_id": "balanced_36",
+      "confirmation_passage_families": 9,
+      "development_cell_min_p05": 74.95,
+      "joint_confirmation_per_passage_min_p05": 19.0,
+      "joint_confirmation_word_labels_median": 2160.0,
+      "participants": 900,
+      "passages_per_participant": 6,
+      "total_passage_families": 36
+    },
+    {
+      "all_passage_exposure_min_p05": 37.0,
+      "candidate_id": "diverse_48",
+      "confirmation_passage_families": 12,
+      "development_cell_min_p05": 14.0,
+      "joint_confirmation_per_passage_min_p05": 2.0,
+      "joint_confirmation_word_labels_median": 720.0,
+      "participants": 300,
+      "passages_per_participant": 6,
+      "total_passage_families": 48
+    },
+    {
+      "all_passage_exposure_min_p05": 75.0,
+      "candidate_id": "diverse_48",
+      "confirmation_passage_families": 12,
+      "development_cell_min_p05": 33.95,
+      "joint_confirmation_per_passage_min_p05": 6.0,
+      "joint_confirmation_word_labels_median": 1440.0,
+      "participants": 600,
+      "passages_per_participant": 6,
+      "total_passage_families": 48
+    },
+    {
+      "all_passage_exposure_min_p05": 112.0,
+      "candidate_id": "diverse_48",
+      "confirmation_passage_families": 12,
+      "development_cell_min_p05": 53.0,
+      "joint_confirmation_per_passage_min_p05": 13.0,
+      "joint_confirmation_word_labels_median": 2160.0,
+      "participants": 900,
+      "passages_per_participant": 6,
+      "total_passage_families": 48
+    }
+  ],
+  "runtime_seconds": 17.4355,
+  "schema_version": 1,
+  "seed": 20260808
+}

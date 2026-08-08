@@ -1,0 +1,451 @@
+{
+  "schema_version": 3,
+  "protocol_id": "lexigaze-reader-assessment-validity-v3",
+  "protocol_version": "2026-08-08.v1",
+  "status": "design_frozen_not_collection_ready",
+  "live_collection_enabled": false,
+  "replaces_live_protocol": false,
+  "intended_use": {
+    "primary": "Estimate whether a specific reader would benefit from reviewing a sampled word after reading an unseen article.",
+    "secondary": "Study session-level reading performance and process evidence while preserving uncertainty and abstention.",
+    "prohibited": [
+      "medical_or_clinical_diagnosis",
+      "general_cognitive_ability_classification",
+      "attention_or_fatigue_diagnosis",
+      "cefr_assignment_without_formal_linking",
+      "high_stakes_education_or_employment_decisions"
+    ]
+  },
+  "study_tracks": {
+    "reading_measurement_calibration": {
+      "purpose": "develop and validate task-specific reading measures and their external-anchor relationships",
+      "participant_overlap_with_fusion": false,
+      "webcam_gaze_required": false,
+      "v2_live_bank_role": "software_dry_run_only",
+      "new_bank_target": {
+        "passage_family_count": 36,
+        "comprehension_items_per_passage": 4,
+        "passage_split_counts": {
+          "development": 18,
+          "validation": 9,
+          "confirmation": 9
+        },
+        "administration": "balanced fixed forms with common anchors and alternate-form retest"
+      },
+      "primary_evidence": [
+        "sentence_verification_accuracy_and_latency",
+        "passage_item_responses",
+        "authorized_external_lexical_and_reading_anchors"
+      ]
+    },
+    "personalized_word_fusion": {
+      "purpose": "test incremental personalized word-review prediction on unseen people and articles",
+      "participant_overlap_with_measurement_calibration": false,
+      "webcam_gaze_collected": true,
+      "gaze_branch_may_abstain": true,
+      "stimulus_pool_target": {
+        "passage_family_count": 48,
+        "passages_per_participant": 6,
+        "word_probes_per_passage": 8,
+        "passage_split_counts": {
+          "development": 24,
+          "validation": 12,
+          "confirmation": 12
+        }
+      },
+      "primary_evidence": "post_reading_word_review_need"
+    },
+    "cognitive_covariate_add_on": {
+      "purpose": "study one justified cognitive moderator without changing the primary fusion decision",
+      "session": "separate_optional",
+      "participant_overlap": "predeclared_optional_subset_only",
+      "composite_score_allowed": false
+    }
+  },
+  "legacy_data_policy": {
+    "scope": "sessions collected before the v3 protocol, content bank, and split manifest were frozen",
+    "role": "workflow_quality_and_exploratory_evidence_only",
+    "eligible_for_item_or_scale_calibration": false,
+    "eligible_for_model_or_threshold_selection": false,
+    "eligible_for_validation_or_confirmation": false,
+    "must_remain_separately_provenanced": true
+  },
+  "claim_registry": {
+    "personalized_word_review_recommendation": {
+      "status": "research_target",
+      "scope": "post-reading sampled-word review need on unseen readers and articles"
+    },
+    "reading_comprehension_session": {
+      "status": "provisional_session_evidence",
+      "scope": "performance on the administered form only"
+    },
+    "lexical_knowledge": {
+      "status": "not_estimated",
+      "promotion_requires": "authorized external lexical anchor plus reliability and validity evidence"
+    },
+    "english_reading_proficiency": {
+      "status": "not_estimated",
+      "promotion_requires": "independent standardized reading criterion and confirmation data"
+    },
+    "cefr": {
+      "status": "not_estimated",
+      "promotion_requires": "formal CEFR specification, standard setting, and empirical linking study"
+    },
+    "working_memory": {
+      "status": "not_estimated",
+      "promotion_requires": "authorized validated task, separate-session reliability, and convergent/discriminant validity"
+    },
+    "general_cognitive_ability": {
+      "status": "not_estimated",
+      "promotion_requires": "out_of_scope"
+    },
+    "attention": {
+      "status": "not_estimated",
+      "promotion_requires": "out_of_scope_for_reading_and_gaze_session"
+    },
+    "fatigue": {
+      "status": "not_estimated",
+      "promotion_requires": "out_of_scope_for_reading_and_gaze_session"
+    },
+    "typography_preference": {
+      "status": "not_estimated",
+      "promotion_requires": "separate matched and counterbalanced typography experiment"
+    }
+  },
+  "construct_map": [
+    {
+      "id": "personalized_word_review_need",
+      "role": "primary_product_outcome",
+      "evidence": "post-reading response collected without exposing gaze or model scores",
+      "score_use": "ranking and calibrated abstaining recommendation"
+    },
+    {
+      "id": "sentence_meaning_processing",
+      "role": "reading_component",
+      "evidence": "accuracy and response time on independently authored sentence verification items",
+      "score_use": "task-specific session evidence"
+    },
+    {
+      "id": "passage_comprehension",
+      "role": "reading_component",
+      "evidence": "accuracy on explicit, inferential, cohesive, and source-evaluation items",
+      "score_use": "task-specific session evidence"
+    },
+    {
+      "id": "lexical_knowledge_anchor",
+      "role": "external_person_covariate",
+      "evidence": "authorized validated instrument administered independently of LexiGaze text and gaze",
+      "score_use": "validation and personalization covariate, never automatic CEFR"
+    },
+    {
+      "id": "gaze_process_observables",
+      "role": "secondary_process_evidence",
+      "evidence": "quality-gated word and passage observables conditioned on text and capture context",
+      "score_use": "incremental prediction only"
+    },
+    {
+      "id": "working_memory_task_performance",
+      "role": "optional_separate_session_covariate",
+      "evidence": "authorized validated working-memory task with its own scoring contract",
+      "score_use": "task-specific score only; no cognitive composite"
+    }
+  ],
+  "modules": [
+    {
+      "id": "language_background",
+      "session": "measurement_and_fusion",
+      "required_for_primary": true,
+      "implementation": "versioned research questionnaire covering L1, age of acquisition, exposure, education band, vision correction, and recent standardized-test history"
+    },
+    {
+      "id": "capture_quality",
+      "session": "fusion",
+      "required_for_primary": false,
+      "implementation": "calibration and continuous capture-quality audit; failure causes gaze abstention, not participant exclusion from non-gaze analyses"
+    },
+    {
+      "id": "sentence_verification",
+      "session": "reading_measurement",
+      "required_for_primary": false,
+      "implementation": "fixed-form sentence meaning checks with accuracy and monotonic-clock response time"
+    },
+    {
+      "id": "controlled_reading",
+      "session": "track_specific",
+      "required_for_primary": true,
+      "implementation": "balanced incomplete-block assignment with fixed typography and no adaptive routing"
+    },
+    {
+      "id": "post_reading_word_audit",
+      "session": "fusion",
+      "required_for_primary": true,
+      "implementation": "sampled words rated no_review, unsure, or review_needed after each passage; model and gaze outputs remain hidden"
+    },
+    {
+      "id": "external_lexical_anchor",
+      "session": "measurement_and_fusion",
+      "required_for_primary": true,
+      "implementation": "instrument choice and reuse authorization must be frozen before collection"
+    },
+    {
+      "id": "cognitive_add_on",
+      "session": "separate_optional",
+      "required_for_primary": false,
+      "implementation": "authorized validated working-memory task on a different day or counterbalanced session; no composite score"
+    }
+  ],
+  "stimulus_design": {
+    "scope": "personalized_word_fusion",
+    "passage_family_count": 48,
+    "passages_per_participant": 6,
+    "comprehension_items_per_passage": 4,
+    "word_probes_per_passage": 8,
+    "provisional_difficulty_bands": 3,
+    "passage_split_counts": {
+      "development": 24,
+      "validation": 12,
+      "confirmation": 12
+    },
+    "assignment": "balanced_incomplete_block",
+    "adaptive_routing_enabled": false,
+    "fixed_typography": {
+      "font_size_px": 16,
+      "line_width_px": 650,
+      "line_height": 1.7
+    },
+    "content_requirements": [
+      "multiple genres, domains, and discourse structures",
+      "licensed, public-domain, or researcher-authored provenance",
+      "no question-answer benchmark passages",
+      "two independent human reviews before model scores are revealed",
+      "item families include explicit, inference, lexical_cohesion, and source_evaluation",
+      "passage-linked items analyzed as testlets rather than assumed locally independent"
+    ],
+    "word_probe_sampling": {
+      "selection": "frozen stratified probability sample over eligible content words",
+      "strata": [
+        "lexical_frequency",
+        "word_length",
+        "frozen_text_model_score"
+      ],
+      "inclusion_probability_logged": true,
+      "during_reading_highlighted": false
+    }
+  },
+  "split_policy": {
+    "freeze_before_outcome_access": true,
+    "participant_partitions": {
+      "development": 0.6,
+      "validation": 0.2,
+      "confirmation": 0.2
+    },
+    "passage_partitions": {
+      "development": 12,
+      "validation": 3,
+      "confirmation": 3
+    },
+    "item_family_partitions": [
+      "development",
+      "validation",
+      "confirmation"
+    ],
+    "holdout_axes": [
+      "participant_id",
+      "passage_family_id",
+      "item_family_id",
+      "capture_session_id",
+      "device_class"
+    ],
+    "same_participant_same_partition": true,
+    "confirmation_access_once": true,
+    "required_evaluation_cells": [
+      "heldout_participant_seen_passage_family",
+      "seen_participant_heldout_passage_family",
+      "heldout_participant_heldout_passage_family",
+      "heldout_capture_session",
+      "heldout_device_class_when_cell_size_is_adequate"
+    ]
+  },
+  "outcomes": {
+    "prohibited_target_scope": "personalized_word_model_and_fusion",
+    "primary": {
+      "id": "post_reading_word_review_need",
+      "levels": [
+        "no_review",
+        "unsure",
+        "review_needed"
+      ],
+      "collection_timing": "after_reading_before_feedback",
+      "primary_metric": "mean_negative_log_likelihood",
+      "secondary_metrics": [
+        "ranked_probability_score",
+        "multiclass_brier_score",
+        "calibration_by_level",
+        "coverage_at_abstention_thresholds"
+      ]
+    },
+    "secondary": [
+      "sentence_verification_accuracy_and_latency",
+      "passage_item_accuracy",
+      "explicit_full_text_reading_rate",
+      "quality_gated_gaze_observables",
+      "external_anchor_association"
+    ],
+    "prohibited_training_or_selection_targets": [
+      "question_answer_correctness",
+      "gaze_derived_duration",
+      "text_model_score",
+      "calibration_target_coordinates",
+      "synthetic_fusion_label"
+    ]
+  },
+  "model_ladder": [
+    {
+      "id": "b0_prevalence",
+      "inputs": [
+        "training_outcome_prevalence"
+      ]
+    },
+    {
+      "id": "b1_lexical_controls",
+      "inputs": [
+        "word_length",
+        "lexical_frequency",
+        "position"
+      ]
+    },
+    {
+      "id": "b2_frozen_text_artifact",
+      "inputs": [
+        "b1_lexical_controls",
+        "frozen_gpt2_causal_surprisal"
+      ],
+      "fine_tuning_allowed": false
+    },
+    {
+      "id": "b3_person_only",
+      "inputs": [
+        "authorized_external_anchor",
+        "language_background"
+      ]
+    },
+    {
+      "id": "b4_gaze_only",
+      "inputs": [
+        "quality_gated_gaze_observables",
+        "capture_context"
+      ]
+    },
+    {
+      "id": "f1_text_person",
+      "inputs": [
+        "b2_frozen_text_artifact",
+        "b3_person_only"
+      ]
+    },
+    {
+      "id": "f2_quality_aware_fusion",
+      "inputs": [
+        "f1_text_person",
+        "b4_gaze_only",
+        "gaze_quality_and_missingness"
+      ],
+      "must_support_gaze_abstention": true
+    }
+  ],
+  "decision_rule": {
+    "primary_candidate": "f2_quality_aware_fusion",
+    "primary_comparators": [
+      "b2_frozen_text_artifact",
+      "b3_person_only",
+      "b4_gaze_only",
+      "f1_text_person"
+    ],
+    "promotion_requires": [
+      "lower primary-metric loss than every eligible comparator on joint participant-and-passage confirmation",
+      "two-way participant-and-passage resampling interval for the loss difference excludes zero",
+      "no direction reversal on participant-only, passage-only, and capture-session holdouts",
+      "calibration is no worse than the best comparator",
+      "gaze-missing and low-quality cases safely fall back to f1_text_person",
+      "predeclared practical-utility threshold is met",
+      "subgroup and device results disclose uncertainty and abstain where support is insufficient"
+    ],
+    "confirmation_threshold_retuning_allowed": false,
+    "question_answer_outcomes_can_change_decision": false
+  },
+  "calibration_and_validation": {
+    "initial_response_model": "rasch_or_testlet_rasch_selected_before_outcome_access",
+    "three_parameter_logistic_allowed_initially": false,
+    "required_checks": [
+      "response_process_interviews",
+      "item_difficulty_and_fit",
+      "dimensionality",
+      "local_dependence_and_testlet_effects",
+      "reliability_and_conditional_precision",
+      "test_retest_with_alternate_forms",
+      "convergent_and_discriminant_validity",
+      "differential_item_functioning",
+      "measurement_invariance",
+      "missingness_and_attrition",
+      "participant_and_item_family_holdouts",
+      "external_confirmation"
+    ],
+    "sample_size_policy": "freeze separate measurement-calibration and fusion-confirmation simulations for parameter precision, primary-effect power, attrition, cluster count, and subgroup cells; no universal n threshold",
+    "cat_activation_requires": [
+      "empirically_calibrated_item_or_testlet parameters",
+      "adequate information across the intended score range",
+      "routing simulation on frozen parameters",
+      "independent confirmation that CAT preserves score interpretation and fairness"
+    ]
+  },
+  "study_phases": [
+    {
+      "id": "design_and_content_review",
+      "outcome_access": false,
+      "claim_level": "none"
+    },
+    {
+      "id": "usability_dress_rehearsal",
+      "outcome_access": "workflow_and_missingness_only",
+      "claim_level": "none"
+    },
+    {
+      "id": "feasibility_pilot",
+      "outcome_access": "development_partition_only",
+      "claim_level": "descriptive_session_evidence"
+    },
+    {
+      "id": "calibration_and_model_development",
+      "outcome_access": "development_then_validation_partition",
+      "claim_level": "research_only"
+    },
+    {
+      "id": "locked_confirmation",
+      "outcome_access": "single_confirmation_pass",
+      "claim_level": "bounded_by_registered_decision_rule"
+    }
+  ],
+  "compute_policy": {
+    "current_phase_device": "cpu",
+    "gpu_allowed_current_phase": false,
+    "network_allowed_for_design_audit": false,
+    "future_gpu_use_requires_new_protocol_version": true,
+    "future_requirements": [
+      "CPU smoke test first",
+      "one GPU job at a time",
+      "peak VRAM and wall time logged",
+      "fixed candidate list and early stopping before outcome access",
+      "no language-model fine-tuning on participant outcomes"
+    ]
+  },
+  "readiness_blockers": [
+    "ethics approval or exempt determination for the revised procedures",
+    "authorized external lexical and reading anchors",
+    "versioned reading-measurement bank and 48-family fusion pool with independent human review",
+    "frozen balanced assignment manifest",
+    "simulation-based sample-size and subgroup plan",
+    "predeclared practical-utility threshold",
+    "updated consent, retention, and withdrawal documents",
+    "end-to-end dress rehearsal"
+  ]
+}
