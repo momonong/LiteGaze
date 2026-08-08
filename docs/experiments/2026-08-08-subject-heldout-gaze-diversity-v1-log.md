@@ -116,9 +116,85 @@ samples showed a safe window. It passed with:
 - 65 C peak GPU temperature; and
 - 2% peak observed GPU utilization at telemetry checkpoints.
 
-## Pending
+### 2026-08-08 — formal-run scheduling interruption
 
-1. Run the frozen 45 candidate folds and 15 shuffled-label sentinel folds.
-2. Evaluate every preregistered gate exactly once.
-3. Preserve the result whether it passes or fails; do not tune v1 on its
-   outcomes.
+The first formal attempt started from a clean work directory and completed the
+first candidate job. While its second seed was training, another project's
+automatic GPU rerun started and shared the same device. The LexiGaze process was
+the only process stopped; the other workload was not modified.
+
+The completed job remains integrity-bound to protocol, data, and implementation
+hashes. The interrupted second job had reached epoch 18 but had not restored a
+checkpoint, evaluated its held-out test subject, or written a job artifact, so
+no partial test outcome exists. Resumption must reuse the exact implementation
+SHA-256 `2298f777a56fc38b960175b5eda7959b310c92e0ea0e348b5dc073d7ac3ef86e`
+and the original frozen parameters. The first completed job consumed 110.2
+seconds, 0.559 GiB peak process VRAM, and reached 70 C.
+
+## Formal result
+
+### 2026-08-08 — run 001 completed
+
+All 45 candidate jobs and 15 shuffled-label sentinel jobs completed under the
+frozen protocol. Every preregistered gate passed:
+
+- candidate macro subject error: `6.9450` degrees;
+- pose-only macro subject error: `9.1250` degrees;
+- constant-baseline macro subject error: `9.2146` degrees;
+- shuffled-label sentinel macro subject error: `9.1952` degrees;
+- candidate minus pose-only: `-2.1800` degrees, a `23.89%` relative reduction;
+- participant-bootstrap 95% CI: `[-2.7186, -1.5944]` degrees;
+- held-out subjects improved: `14/15`;
+- three-seed macro standard deviation: `0.1688` degrees; and
+- worst candidate subject error: `9.4191` degrees.
+
+The one non-improved subject was `p09`: the candidate scored `9.4191` degrees
+versus `8.9830` for pose-only, a regression of `0.4361` degrees. This exception
+is retained as evidence and must not be tuned away on the same subjects.
+
+The shuffled-label sentinel was `2.2503` degrees worse than the candidate and
+`0.0702` degrees worse than pose-only. This supports the interpretation that
+the candidate used eye-image signal rather than merely exploiting pose or the
+split structure.
+
+Completed model jobs consumed `1.318` GPU-hours in aggregate, with `0.559` GiB
+peak PyTorch-reserved process VRAM and a `70 C` peak GPU temperature. The
+aborted, unscored scheduling attempt contributed approximately five additional
+minutes that are not included in the completed-job sum; it produced no
+held-out prediction or job artifact. Peak whole-device memory observed during
+the completed run was `3571 MiB`. There were zero network attempts, and the
+production gaze-source hash remained unchanged.
+
+### 2026-08-08 — independent result audit
+
+An independent post-run calculation loaded all 60 persisted job files instead
+of trusting the runner summary. It verified exact candidate and sentinel seed
+coverage, equality between job and aggregate records, absence of temporary
+files, all four aggregate model metrics, per-seed variability, worst-subject
+error, the participant bootstrap interval, resource sums and maxima, finite
+JSON values, zero network attempts, and protocol/data/implementation/production
+hashes. The independent calculation reproduced the formal decision: `passed`.
+
+### 2026-08-08 — final repository verification
+
+- The isolated offline regression gate passed `124/124` tests across 18
+  explicit targets, with network probes blocked, credentials cleared, Torch
+  not imported, GPU memory unchanged, and no tracked artifact mutation.
+- Ruff lint passed for the gaze-diversity implementation and the updated
+  offline gate; all nine experiment Python files matched Ruff formatting.
+- Python byte-compilation, `git diff --check`, result finiteness checks, and a
+  scan for credential-shaped strings or local absolute paths passed.
+- Recomputed implementation and production hashes still exactly matched the
+  hashes sealed into the formal result.
+
+## Decision and next boundary
+
+`EyePoseTinyCNN-v1` is retained only as a research baseline. MPIIGaze provides
+useful cross-person evidence, but it does not establish improvement for the
+LexiGaze webcam pipeline, other devices, new sessions, or production UniGaze.
+No production default was changed.
+
+The next gaze experiment must be independently frozen before examining its
+outcomes and must use either a genuinely external dataset or fresh participant
+capture groups held out by participant, session, and device. The v1 MPIIGaze
+subjects must not be used for further architecture or threshold selection.
