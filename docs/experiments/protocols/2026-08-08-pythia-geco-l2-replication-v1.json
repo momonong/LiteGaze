@@ -1,0 +1,165 @@
+{
+  "schema_version": 1,
+  "protocol_id": "pythia-full-geco-l2-replication-v1",
+  "frozen_date": "2026-08-08",
+  "status_at_freeze": "pythia_geco_outcome_blind",
+  "parent_experiment": "non_cn_text_backbone_provo_development_run_001",
+  "purpose": "Test the sole preregistered Provo challenger against the immutable GPT-2 baseline on English GECO L2 without reopening model selection.",
+  "source_policy": {
+    "mode": "exact_allowlist",
+    "trust_remote_code": false,
+    "public_ungated_only": true,
+    "base_or_pretrained_only": true,
+    "instruction_or_chat_models_allowed": false,
+    "excluded_model_id_prefixes": [
+      "Qwen/",
+      "deepseek-ai/",
+      "THUDM/",
+      "baichuan-inc/",
+      "01-ai/",
+      "uer/"
+    ],
+    "derivatives_of_excluded_bases_allowed": false,
+    "allowlist": [
+      {
+        "key": "gpt2",
+        "model_id": "gpt2",
+        "revision": "607a30d783dfa663caf39e06633721c8d4cfcd7e",
+        "developer": "OpenAI",
+        "license": "MIT",
+        "role": "immutable_baseline"
+      },
+      {
+        "key": "pythia_410m_deduped_full",
+        "model_id": "EleutherAI/pythia-410m-deduped",
+        "revision": "c4fc8d586d62df497f1f9b69d66d3ca419992d3e",
+        "developer": "EleutherAI",
+        "license": "Apache-2.0",
+        "role": "sole_provo_shortlisted_challenger"
+      }
+    ]
+  },
+  "dataset": {
+    "name": "GECO English L2",
+    "path": "data/geco/L2ReadingData.csv",
+    "sha256": "cd551640cfd122b5e360d70c12998798125e7485c6deb900bc71b8e591c59b87",
+    "expected_rows": 534154,
+    "expected_participants": 19,
+    "expected_texts": 588,
+    "expected_items": 56411,
+    "reader_group": "bilingual",
+    "stimulus_language": "English",
+    "role": "historically_inspected_for_gpt2_but_challenger_outcome_blind",
+    "question_answer_dataset_used": false
+  },
+  "feature_extraction": {
+    "contract": "identical_to_non_cn_text_backbone_provo_development_v1",
+    "context_direction": "left_only",
+    "surprisal_unit": "nats",
+    "word_surprisal_aggregation": "subtoken_sum",
+    "special_tokens": false,
+    "first_word_of_each_text_excluded": true,
+    "language_model_fine_tuning": false,
+    "outcomes_read_during_extraction": false
+  },
+  "smoke_gate": {
+    "texts": 5,
+    "required_item_coverage": 1.0,
+    "finite_context_scored_features_required": true,
+    "minimum_tokens_per_word": 1,
+    "maximum_peak_cuda_reserved_gib": 12.0,
+    "failure_action": "invalidate that backbone in v1 and do not repair after outcome access"
+  },
+  "analysis": {
+    "primary_outcome": {
+      "name": "total_reading_time",
+      "source_column": "WORD_TOTAL_READING_TIME"
+    },
+    "secondary_outcomes": [
+      {
+        "name": "gaze_duration",
+        "source_column": "WORD_GAZE_DURATION"
+      },
+      {
+        "name": "first_fixation_duration",
+        "source_column": "WORD_FIRST_FIXATION_DURATION"
+      }
+    ],
+    "target_transform": "log1p",
+    "outer_holdout": "complete_Text_ID",
+    "outer_folds": 5,
+    "seed": 20260808,
+    "ridge_alpha": 1.0,
+    "bootstrap_samples": 10000,
+    "feature_sets": {
+      "m0_lexical_shared": [
+        "log_char_length",
+        "zipf_frequency",
+        "relative_position",
+        "starts_upper",
+        "ends_punctuation",
+        "prev_log_char_length",
+        "prev_zipf_frequency"
+      ],
+      "m0_tokenization": [
+        "log_char_length",
+        "zipf_frequency",
+        "relative_position",
+        "starts_upper",
+        "ends_punctuation",
+        "prev_log_char_length",
+        "prev_zipf_frequency",
+        "subtoken_count"
+      ],
+      "m1_causal_surprisal": [
+        "log_char_length",
+        "zipf_frequency",
+        "relative_position",
+        "starts_upper",
+        "ends_punctuation",
+        "prev_log_char_length",
+        "prev_zipf_frequency",
+        "subtoken_count",
+        "causal_surprisal",
+        "prev_causal_surprisal"
+      ]
+    },
+    "target_shuffle_sentinel_model": "m1_causal_surprisal"
+  },
+  "decision_gate": {
+    "primary_outcome_only": true,
+    "challenger_increment_must_pass": {
+      "participant_bootstrap_ci_95_low_greater_than": 0.0,
+      "text_bootstrap_ci_95_low_greater_than": 0.0,
+      "minimum_positive_outer_folds": 4
+    },
+    "strong_replication_vs_gpt2": {
+      "participant_bootstrap_ci_95_low_greater_than": 0.0,
+      "text_bootstrap_ci_95_low_greater_than": 0.0,
+      "minimum_positive_outer_folds": 4
+    },
+    "directional_replication_vs_gpt2": {
+      "participant_point_difference_greater_than": 0.0,
+      "text_point_difference_greater_than": 0.0,
+      "minimum_positive_outer_folds": 4
+    },
+    "otherwise": "does_not_replicate_over_gpt2",
+    "production_model_change_allowed": false,
+    "one_stop_retest_allowed": false
+  },
+  "compute": {
+    "device": "cuda",
+    "dtype": "bfloat16",
+    "one_backbone_loaded_at_a_time": true,
+    "training_allowed": false,
+    "fine_tuning_allowed": false,
+    "maximum_total_inference_gpu_hours": 1.0,
+    "throughput_is_selection_metric": false
+  },
+  "mutation_policy": {
+    "after_challenger_outcome_access": "Do not change candidate, revision, features, folds, alpha, outcomes, thresholds, or gates in v1.",
+    "unfavorable_result": "Report it unchanged and retain GPT-2.",
+    "favorable_result": "Report the replication tier but do not change production; independent v3 word-review evidence remains required.",
+    "source_policy_violation": "Stop before model download or inference."
+  }
+}
