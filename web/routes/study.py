@@ -16,6 +16,12 @@ from core.participant_study import (
     audit_participant_calibration,
     public_protocol,
 )
+from core.participant_study.general_collection import (
+    load_general_bank,
+    load_general_protocol,
+    public_practice,
+    validate_general_design,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 study_bp = Blueprint("study", __name__)
@@ -97,9 +103,36 @@ def participant_assessment_page():
     return render_template("participant_assessment.html")
 
 
+@study_bp.get("/study/collection")
+def participant_collection_page():
+    return render_template("participant_collection.html")
+
+
 @study_bp.get("/api/study/protocol")
 def get_study_protocol():
     return jsonify({"ok": True, "protocol": public_protocol(current_app.config)})
+
+
+@study_bp.get("/api/study/general-collection/protocol")
+def get_general_collection_protocol():
+    protocol = load_general_protocol()
+    bank = load_general_bank()
+    audit = validate_general_design(protocol, bank)
+    return jsonify(
+        {
+            "ok": True,
+            "protocol": protocol,
+            "bank": {
+                "bank_id": bank["bank_id"],
+                "bank_version": bank["bank_version"],
+                "status": bank["status"],
+                "review": bank["review"],
+            },
+            "design_audit": audit,
+            "practice": public_practice(bank=bank),
+            "activation": _store().activation,
+        }
+    )
 
 
 @study_bp.post("/api/study/enroll")
@@ -154,6 +187,158 @@ def participant_system_check(session_id: str):
         return _error_response(exc)
 
 
+@study_bp.post("/api/study/sessions/<session_id>/general/profile")
+def participant_general_profile(session_id: str):
+    body = request.get_json(force=True) or {}
+    try:
+        session = _store().record_general_profile(
+            session_id,
+            _access_token(body),
+            body.get("profile", {}),
+        )
+        return jsonify({"ok": True, "session": session})
+    except (
+        StudyAuthorizationError,
+        StudyNotReadyError,
+        StudyStateError,
+        StudyValidationError,
+    ) as exc:
+        return _error_response(exc)
+
+
+@study_bp.post("/api/study/sessions/<session_id>/general/system-check")
+def participant_general_system_check(session_id: str):
+    body = request.get_json(force=True) or {}
+    try:
+        session = _store().record_general_system_check(
+            session_id,
+            _access_token(body),
+            body,
+        )
+        return jsonify({"ok": True, "session": session})
+    except (
+        StudyAuthorizationError,
+        StudyNotReadyError,
+        StudyStateError,
+        StudyValidationError,
+    ) as exc:
+        return _error_response(exc)
+
+
+@study_bp.post("/api/study/sessions/<session_id>/general/start")
+def start_participant_general_collection(session_id: str):
+    body = request.get_json(force=True) or {}
+    try:
+        session = _store().start_general_collection(
+            session_id,
+            _access_token(body),
+        )
+        return jsonify({"ok": True, "session": session})
+    except (
+        StudyAuthorizationError,
+        StudyNotReadyError,
+        StudyStateError,
+        StudyValidationError,
+    ) as exc:
+        return _error_response(exc)
+
+
+@study_bp.post("/api/study/sessions/<session_id>/general/validation")
+def participant_general_validation(session_id: str):
+    body = request.get_json(force=True) or {}
+    try:
+        session = _store().record_general_validation(
+            session_id,
+            _access_token(body),
+            phase=str(body.get("phase") or ""),
+            samples=body.get("samples", []),
+        )
+        return jsonify({"ok": True, "session": session})
+    except (
+        StudyAuthorizationError,
+        StudyNotReadyError,
+        StudyStateError,
+        StudyValidationError,
+    ) as exc:
+        return _error_response(exc)
+
+
+@study_bp.post("/api/study/sessions/<session_id>/general/round/start")
+def start_participant_general_round(session_id: str):
+    body = request.get_json(force=True) or {}
+    try:
+        result = _store().begin_general_round(
+            session_id,
+            _access_token(body),
+        )
+        return jsonify(result)
+    except (
+        StudyAuthorizationError,
+        StudyNotReadyError,
+        StudyStateError,
+        StudyValidationError,
+    ) as exc:
+        return _error_response(exc)
+
+
+@study_bp.post("/api/study/sessions/<session_id>/general/round/probes")
+def open_participant_general_probes(session_id: str):
+    body = request.get_json(force=True) or {}
+    try:
+        result = _store().open_general_word_reviews(
+            session_id,
+            _access_token(body),
+            passage_id=str(body.get("passage_id") or ""),
+        )
+        return jsonify(result)
+    except (
+        StudyAuthorizationError,
+        StudyNotReadyError,
+        StudyStateError,
+        StudyValidationError,
+    ) as exc:
+        return _error_response(exc)
+
+
+@study_bp.post("/api/study/sessions/<session_id>/general/telemetry")
+def record_participant_general_telemetry(session_id: str):
+    body = request.get_json(force=True) or {}
+    try:
+        result = _store().record_general_telemetry_batch(
+            session_id,
+            _access_token(body),
+            body,
+        )
+        return jsonify(result)
+    except (
+        StudyAuthorizationError,
+        StudyNotReadyError,
+        StudyStateError,
+        StudyValidationError,
+    ) as exc:
+        return _error_response(exc)
+
+
+@study_bp.post("/api/study/sessions/<session_id>/general/round")
+def record_participant_general_round(session_id: str):
+    body = request.get_json(force=True) or {}
+    try:
+        session = _store().record_general_round(
+            session_id,
+            _access_token(body),
+            passage_id=str(body.get("passage_id") or ""),
+            payload=body,
+        )
+        return jsonify({"ok": True, "session": session})
+    except (
+        StudyAuthorizationError,
+        StudyNotReadyError,
+        StudyStateError,
+        StudyValidationError,
+    ) as exc:
+        return _error_response(exc)
+
+
 @study_bp.post("/api/study/sessions/<session_id>/dry-run")
 def advance_participant_dry_run(session_id: str):
     body = request.get_json(force=True) or {}
@@ -180,7 +365,7 @@ def complete_participant_calibration(session_id: str):
     store = _store()
     try:
         participant = store.get_session(session_id, access_token)
-        if participant["mode"] != "pilot":
+        if participant["mode"] not in {"pilot", "rehearsal"}:
             raise StudyStateError("dry runs cannot process calibration data")
         if participant["state"] != "calibration_in_progress":
             raise StudyStateError("calibration is not in progress")
@@ -235,7 +420,10 @@ def complete_participant_calibration(session_id: str):
                 }
             ), 422
 
-        model_name = f"{participant['participant_id'].lower()}_pilot_v1"
+        model_name = (
+            f"{participant['participant_id'].lower()}_"
+            f"{participant['mode']}_general_v1"
+        )
         try:
             training, training_status = train_placeholder(
                 gaze_root,

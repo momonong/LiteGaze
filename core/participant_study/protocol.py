@@ -142,6 +142,56 @@ def activation_status(
         raw_retention_hours = 0
     require(1 <= raw_retention_hours <= 24, "raw_frame_retention_hours_invalid")
 
+    rehearsal_missing: list[str] = []
+
+    def require_rehearsal(condition: bool, code: str) -> None:
+        if not condition:
+            rehearsal_missing.append(code)
+
+    rehearsal_enabled = mode == "rehearsal" or _truthy(
+        _setting(settings, "LEXIGAZE_STUDY_REHEARSAL_MODE")
+    )
+    local_base_url = base_url.lower().rstrip("/")
+    require_rehearsal(rehearsal_enabled, "rehearsal_mode_disabled")
+    require_rehearsal(
+        local_base_url.startswith("http://127.0.0.1")
+        or local_base_url.startswith("http://localhost"),
+        "rehearsal_must_be_localhost_only",
+    )
+    require_rehearsal(
+        _truthy(
+            _setting(
+                settings,
+                "LEXIGAZE_REHEARSAL_ACKNOWLEDGED_DEVELOPMENT_ONLY",
+            )
+        ),
+        "rehearsal_development_only_acknowledgement_missing",
+    )
+    require_rehearsal(
+        _truthy(_setting(settings, "LEXIGAZE_REHEARSAL_INVITES_ONLY")),
+        "rehearsal_invites_only_not_confirmed",
+    )
+    require_rehearsal(
+        _truthy(_setting(settings, "LEXIGAZE_REQUEST_BODY_LOGGING_DISABLED")),
+        "request_body_logging_not_disabled",
+    )
+    require_rehearsal(
+        _truthy(_setting(settings, "LEXIGAZE_STORAGE_ENCRYPTED")),
+        "encrypted_storage_not_confirmed",
+    )
+    require_rehearsal(
+        bool(_setting(settings, "LEXIGAZE_DATA_LOCATION")),
+        "data_location_missing",
+    )
+    require_rehearsal(
+        1 <= retention_days <= 30,
+        "rehearsal_data_retention_days_invalid",
+    )
+    require_rehearsal(
+        1 <= raw_retention_hours <= 24,
+        "raw_frame_retention_hours_invalid",
+    )
+
     return {
         "protocol_id": active_protocol["protocol_id"],
         "protocol_version": active_protocol["protocol_version"],
@@ -150,6 +200,9 @@ def activation_status(
         "dry_run_ready": True,
         "pilot_ready": not missing,
         "missing_requirements": missing,
+        "rehearsal_ready": not rehearsal_missing,
+        "rehearsal_missing_requirements": rehearsal_missing,
+        "rehearsal_scope": "local_invited_development_only",
         "ethics_status": ethics_status or "not_provided",
         "ethics_reference": _setting(settings, "LEXIGAZE_ETHICS_REFERENCE") or None,
         "external_anchor_id": _setting(settings, "LEXIGAZE_EXTERNAL_ANCHOR_ID") or None,

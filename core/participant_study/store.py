@@ -13,6 +13,21 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from .general_collection import (
+    assignment_for_cell,
+    canonical_sha256,
+    classify_gaze_quality,
+    load_general_bank,
+    load_general_protocol,
+    normalize_telemetry_batch,
+    probe_order,
+    public_passage,
+    summarize_validation_samples,
+    validate_general_design,
+    validate_profile,
+    validate_round_payload,
+    validate_system_profile,
+)
 from .protocol import activation_status, load_protocol, public_protocol
 
 
@@ -83,7 +98,14 @@ class ParticipantStudyStore:
         return hashlib.sha256(material).hexdigest()
 
     def _study_root(self, mode: str) -> Path:
-        bucket = "dry_runs" if mode == "dry_run" else "pilot"
+        buckets = {
+            "dry_run": "dry_runs",
+            "pilot": "pilot",
+            "rehearsal": "rehearsals",
+        }
+        if mode not in buckets:
+            raise StudyValidationError("invalid study mode")
+        bucket = buckets[mode]
         return (
             self.root
             / "data"
@@ -105,7 +127,7 @@ class ParticipantStudyStore:
         return candidate
 
     def _find_session_path(self, session_id: str) -> Path:
-        for mode in ("dry_run", "pilot"):
+        for mode in ("dry_run", "pilot", "rehearsal"):
             path = self._session_path(session_id, mode)
             if path.exists():
                 return path
@@ -182,10 +204,17 @@ class ParticipantStudyStore:
             "optional_scopes": optional_scopes,
         }
 
-    def _consume_invite(self, invite_code: str, session_id: str) -> None:
-        invite_path = self._study_root("pilot") / "invites.json"
+    def _consume_invite(
+        self,
+        invite_code: str,
+        session_id: str,
+        *,
+        mode: str = "pilot",
+    ) -> dict[str, Any]:
+        filename = "collection_invites.json" if mode == "rehearsal" else "invites.json"
+        invite_path = self._study_root(mode) / filename
         if not invite_path.exists():
-            raise StudyNotReadyError("no pilot invitation registry is available")
+            raise StudyNotReadyError(f"no {mode} invitation registry is available")
         registry = json.loads(invite_path.read_text(encoding="utf-8"))
         supplied = self._secret_hash(invite_code)
         matched = None
@@ -195,9 +224,44 @@ class ParticipantStudyStore:
                 break
         if matched is None or matched.get("used_at_utc"):
             raise StudyAuthorizationError("invalid or already-used invitation code")
+        if int(matched.get("visit_index", 1)) == 2:
+            pair_id = str(matched.get("pair_id") or "")
+            first = next(
+                (
+                    item
+                    for item in registry.get("invites", [])
+                    if item.get("pair_id") == pair_id
+                    and int(item.get("visit_index", 0)) == 1
+                ),
+                None,
+            )
+            if not first or not first.get("used_at_utc"):
+                raise StudyStateError("visit 1 must be completed before visit 2")
+            first_session_id = str(first.get("study_session_id") or "")
+            try:
+                _, first_session = self._read(first_session_id)
+            except StudyError as exc:
+                raise StudyStateError("visit 1 session is unavailable") from exc
+            if first_session.get("state") != "completed":
+                raise StudyStateError("visit 1 must be completed before visit 2")
+            general_protocol = load_general_protocol()
+            elapsed = datetime.now(UTC) - datetime.fromisoformat(
+                str(first["used_at_utc"])
+            )
+            minimum = timedelta(
+                hours=int(general_protocol["sessions"]["minimum_interval_hours"])
+            )
+            maximum = timedelta(
+                hours=int(general_protocol["sessions"]["maximum_interval_hours"])
+            )
+            if elapsed < minimum:
+                raise StudyStateError("visit 2 is earlier than the frozen retest interval")
+            if elapsed > maximum:
+                raise StudyStateError("visit 2 is later than the frozen retest interval")
         matched["used_at_utc"] = _utc_now()
         matched["study_session_id"] = session_id
         _atomic_json(invite_path, registry)
+        return dict(matched)
 
     def create_invites(self, count: int) -> list[str]:
         if not self.activation["pilot_ready"]:
@@ -230,6 +294,86 @@ class ParticipantStudyStore:
             _atomic_json(path, registry)
         return codes
 
+    def create_collection_invite_pairs(self, count: int) -> list[dict[str, Any]]:
+        """Create local development-only A/B retest invitation pairs."""
+
+        if not self.activation.get("rehearsal_ready"):
+            raise StudyNotReadyError(
+                "rehearsal invitations are locked until local privacy gates pass"
+            )
+        if not 1 <= count <= 100:
+            raise StudyValidationError("invite pair count must be between 1 and 100")
+        general_protocol = load_general_protocol()
+        bank = load_general_bank()
+        design = validate_general_design(general_protocol, bank)
+        path = self._study_root("rehearsal") / "collection_invites.json"
+        created: list[dict[str, Any]] = []
+        with self._lock:
+            if path.exists():
+                registry = json.loads(path.read_text(encoding="utf-8"))
+            else:
+                registry = {
+                    "schema_version": 1,
+                    "protocol_id": general_protocol["protocol_id"],
+                    "protocol_version": general_protocol["protocol_version"],
+                    "protocol_sha256": design["protocol_sha256"],
+                    "bank_id": bank["bank_id"],
+                    "bank_version": bank["bank_version"],
+                    "bank_sha256": design["bank_sha256"],
+                    "dataset_role": general_protocol["dataset_role"],
+                    "created_at_utc": _utc_now(),
+                    "invites": [],
+                }
+            existing_pair_ids = {
+                str(item.get("pair_id")) for item in registry.get("invites", [])
+            }
+            base_pair_count = len(existing_pair_ids)
+            for offset in range(count):
+                schedule_cell = (base_pair_count + offset) % 12
+                assignment = assignment_for_cell(schedule_cell, bank=bank)
+                pair_id = "PAIR-" + secrets.token_hex(8).upper()
+                participant_id = "GP-" + secrets.token_hex(6).upper()
+                visit_results: list[dict[str, Any]] = []
+                for visit in assignment["visits"]:
+                    code = f"LGR-{secrets.token_hex(6).upper()}"
+                    registry["invites"].append(
+                        {
+                            "code_sha256": self._secret_hash(code),
+                            "created_at_utc": _utc_now(),
+                            "used_at_utc": None,
+                            "study_session_id": None,
+                            "pair_id": pair_id,
+                            "participant_id": participant_id,
+                            "schedule_cell": schedule_cell,
+                            "sequence": assignment["sequence"],
+                            "order_cell": assignment["order_cell"],
+                            "visit_index": visit["visit_index"],
+                            "form_id": visit["form_id"],
+                            "passage_order": visit["passage_order"],
+                            "protocol_sha256": design["protocol_sha256"],
+                            "bank_sha256": design["bank_sha256"],
+                        }
+                    )
+                    visit_results.append(
+                        {
+                            "visit_index": visit["visit_index"],
+                            "form_id": visit["form_id"],
+                            "invite_code": code,
+                        }
+                    )
+                created.append(
+                    {
+                        "pair_id": pair_id,
+                        "participant_id": participant_id,
+                        "schedule_cell": schedule_cell,
+                        "sequence": assignment["sequence"],
+                        "visits": visit_results,
+                    }
+                )
+                existing_pair_ids.add(pair_id)
+            _atomic_json(path, registry)
+        return created
+
     def enforce_expired_calibration_retention(
         self,
         *,
@@ -243,9 +387,11 @@ class ParticipantStudyStore:
         current = now or datetime.now(UTC)
         cutoff = current - timedelta(hours=int(retention_hours))
         purged: list[str] = []
-        pilot_root = self._study_root("pilot")
         with self._lock:
-            for path in pilot_root.glob("ST-*/session.json"):
+            session_paths = list(
+                self._study_root("pilot").glob("ST-*/session.json")
+            ) + list(self._study_root("rehearsal").glob("ST-*/session.json"))
+            for path in session_paths:
                 try:
                     session = json.loads(path.read_text(encoding="utf-8"))
                     if session.get("state") != "calibration_in_progress":
@@ -290,11 +436,15 @@ class ParticipantStudyStore:
 
     def enroll(self, payload: Mapping[str, object]) -> dict[str, Any]:
         mode = str(payload.get("mode") or "dry_run").strip().lower()
-        if mode not in {"dry_run", "pilot"}:
-            raise StudyValidationError("mode must be dry_run or pilot")
+        if mode not in {"dry_run", "pilot", "rehearsal"}:
+            raise StudyValidationError("mode must be dry_run, rehearsal, or pilot")
         if mode == "pilot" and not self.activation["pilot_ready"]:
             raise StudyNotReadyError(
                 "real participant collection is locked; run the readiness audit"
+            )
+        if mode == "rehearsal" and not self.activation.get("rehearsal_ready"):
+            raise StudyNotReadyError(
+                "local development rehearsal is locked; run the readiness audit"
             )
         enrollment = self._validate_enrollment(payload)
         session_id = "ST-" + secrets.token_hex(10).upper()
@@ -303,6 +453,21 @@ class ParticipantStudyStore:
         withdrawal_code = "WD-" + secrets.token_hex(8).upper()
         timestamp = _utc_now()
         path = self._session_path(session_id, mode)
+        invite_metadata: dict[str, Any] = {}
+        with self._lock:
+            if mode in {"pilot", "rehearsal"}:
+                invite_code = str(payload.get("invite_code") or "").strip()
+                if not invite_code:
+                    raise StudyAuthorizationError(
+                        f"{mode} invitation code is required"
+                    )
+                invite_metadata = self._consume_invite(
+                    invite_code,
+                    session_id,
+                    mode=mode,
+                )
+                if mode == "rehearsal":
+                    participant_id = str(invite_metadata["participant_id"])
         session = {
             "schema_version": 1,
             "protocol_id": self.protocol["protocol_id"],
@@ -334,12 +499,33 @@ class ParticipantStudyStore:
             "quality": {},
             "events": [{"at_utc": timestamp, "event": "consent_recorded"}],
         }
+        if mode == "rehearsal":
+            session["collection_assignment"] = {
+                key: invite_metadata[key]
+                for key in (
+                    "pair_id",
+                    "schedule_cell",
+                    "sequence",
+                    "order_cell",
+                    "visit_index",
+                    "form_id",
+                    "passage_order",
+                    "protocol_sha256",
+                    "bank_sha256",
+                )
+            }
+            session["dataset_role"] = (
+                "workflow_quality_and_development_exploration_only"
+            )
+            session["events"].append(
+                {
+                    "at_utc": timestamp,
+                    "event": "general_collection_assignment_consumed",
+                    "visit_index": invite_metadata["visit_index"],
+                    "form_id": invite_metadata["form_id"],
+                }
+            )
         with self._lock:
-            if mode == "pilot":
-                invite_code = str(payload.get("invite_code") or "").strip()
-                if not invite_code:
-                    raise StudyAuthorizationError("pilot invitation code is required")
-                self._consume_invite(invite_code, session_id)
             self._write(path, session)
         return {
             "ok": True,
@@ -371,7 +557,7 @@ class ParticipantStudyStore:
         }
 
     def _public_session(self, session: Mapping[str, object]) -> dict[str, Any]:
-        return {
+        public = {
             "study_session_id": session["study_session_id"],
             "participant_id": session["participant_id"],
             "protocol_id": session["protocol_id"],
@@ -386,6 +572,31 @@ class ParticipantStudyStore:
             "quality": session.get("quality", {}),
             "linked_data": session.get("linked_data", {}),
         }
+        if session.get("collection_assignment"):
+            public["collection_assignment"] = session["collection_assignment"]
+        collection = dict(session.get("general_collection") or {})
+        if collection:
+            public["general_collection"] = {
+                "assessment_id": collection.get("assessment_id"),
+                "phase": collection.get("phase"),
+                "completed_rounds": len(collection.get("rounds", [])),
+                "required_rounds": len(
+                    dict(session.get("collection_assignment") or {}).get(
+                        "passage_order", []
+                    )
+                ),
+                "current_round": collection.get("current_round"),
+                "validations": {
+                    key: {
+                        metric: value
+                        for metric, value in dict(summary).items()
+                        if metric != "samples"
+                    }
+                    for key, summary in dict(collection.get("validations") or {}).items()
+                },
+                "gaze_quality_band": collection.get("gaze_quality_band"),
+            }
+        return public
 
     def get_session(self, session_id: str, access_token: str) -> dict[str, Any]:
         with self._lock:
@@ -398,6 +609,501 @@ class ParticipantStudyStore:
             _, session = self._read(session_id)
             self._authorize(session, access_token)
             return self.consent_receipt(session)
+
+    def record_general_profile(
+        self,
+        session_id: str,
+        access_token: str,
+        profile: Mapping[str, object],
+    ) -> dict[str, Any]:
+        """Store only the frozen categorical profile; direct identifiers fail."""
+
+        try:
+            normalized = validate_profile(profile)
+        except ValueError as exc:
+            raise StudyValidationError(str(exc)) from exc
+        with self._lock:
+            path, session = self._read(session_id)
+            self._authorize(session, access_token)
+            if session.get("mode") != "rehearsal":
+                raise StudyStateError("general profile is rehearsal-only in v1")
+            if session.get("state") != "consented":
+                raise StudyStateError("profile requires a consented session")
+            collection = session.setdefault("general_collection", {})
+            existing = collection.get("profile")
+            if existing and existing != normalized:
+                raise StudyStateError("the frozen participant profile cannot be changed")
+            collection["profile"] = normalized
+            collection["phase"] = "profile_recorded"
+            self._event(session, "general_profile_recorded")
+            self._write(path, session)
+            return self._public_session(session)
+
+    def record_general_system_check(
+        self,
+        session_id: str,
+        access_token: str,
+        payload: Mapping[str, object],
+    ) -> dict[str, Any]:
+        try:
+            normalized = validate_system_profile(payload)
+        except ValueError as exc:
+            raise StudyValidationError(str(exc)) from exc
+        with self._lock:
+            path, session = self._read(session_id)
+            self._authorize(session, access_token)
+            collection = session.get("general_collection")
+            if session.get("mode") != "rehearsal" or not isinstance(collection, dict):
+                raise StudyStateError("general system check requires a rehearsal profile")
+            if session.get("state") != "consented":
+                raise StudyStateError("system check requires a consented session")
+            if not collection.get("profile"):
+                raise StudyStateError("participant profile must be recorded first")
+            session["state"] = "system_check_passed"
+            session["quality"]["general_system_check"] = normalized
+            collection["phase"] = "system_check_passed"
+            self._event(session, "general_system_check_passed")
+            self._write(path, session)
+            return self._public_session(session)
+
+    def start_general_collection(
+        self,
+        session_id: str,
+        access_token: str,
+    ) -> dict[str, Any]:
+        general_protocol = load_general_protocol()
+        bank = load_general_bank()
+        design = validate_general_design(general_protocol, bank)
+        with self._lock:
+            path, session = self._read(session_id)
+            self._authorize(session, access_token)
+            if session.get("mode") != "rehearsal":
+                raise StudyStateError("general collection is rehearsal-only in v1")
+            if session.get("state") not in {
+                "calibration_complete",
+                "assessment_in_progress",
+            }:
+                raise StudyStateError("general collection requires completed calibration")
+            assignment = dict(session.get("collection_assignment") or {})
+            if assignment.get("protocol_sha256") != design["protocol_sha256"]:
+                raise StudyStateError("assigned protocol no longer matches the frozen design")
+            if assignment.get("bank_sha256") != design["bank_sha256"]:
+                raise StudyStateError("assigned bank no longer matches the frozen design")
+            collection = session.setdefault("general_collection", {})
+            if not collection.get("profile"):
+                raise StudyStateError("participant profile is missing")
+            assessment_id = collection.get("assessment_id")
+            if not assessment_id:
+                assessment_id = "GC-" + secrets.token_hex(10).upper()
+                collection.update(
+                    {
+                        "assessment_id": assessment_id,
+                        "protocol_id": general_protocol["protocol_id"],
+                        "protocol_version": general_protocol["protocol_version"],
+                        "protocol_sha256": design["protocol_sha256"],
+                        "bank_id": bank["bank_id"],
+                        "bank_version": bank["bank_version"],
+                        "bank_sha256": design["bank_sha256"],
+                        "dataset_role": general_protocol["dataset_role"],
+                        "phase": "start_validation_required",
+                        "validations": {},
+                        "rounds": [],
+                        "current_round": None,
+                        "telemetry_stats": {
+                            "batch_count": 0,
+                            "attempt_count": 0,
+                            "successful_count": 0,
+                            "head_pose_min": [None, None],
+                            "head_pose_max": [None, None],
+                            "face_scale_min": None,
+                            "face_scale_max": None,
+                        },
+                    }
+                )
+                self._event(session, "general_collection_started")
+            session["state"] = "assessment_in_progress"
+            session["linked_data"]["assessment_id"] = str(assessment_id)
+            self._write(path, session)
+            return self._public_session(session)
+
+    def record_general_validation(
+        self,
+        session_id: str,
+        access_token: str,
+        *,
+        phase: str,
+        samples: list[Mapping[str, object]],
+    ) -> dict[str, Any]:
+        if phase not in {"start", "end"}:
+            raise StudyValidationError("validation phase must be start or end")
+        try:
+            summary = summarize_validation_samples(samples)
+        except ValueError as exc:
+            raise StudyValidationError(str(exc)) from exc
+        summary["samples_sha256"] = canonical_sha256(summary["samples"])
+        with self._lock:
+            path, session = self._read(session_id)
+            self._authorize(session, access_token)
+            if session.get("state") != "assessment_in_progress":
+                raise StudyStateError("general collection is not in progress")
+            collection = dict(session.get("general_collection") or {})
+            expected_phase = (
+                "start_validation_required" if phase == "start" else "end_validation_required"
+            )
+            if collection.get("phase") != expected_phase:
+                existing = dict(collection.get("validations") or {}).get(phase)
+                if existing and existing.get("samples_sha256") == summary["samples_sha256"]:
+                    return self._public_session(session)
+                raise StudyStateError(f"{phase} validation is not expected now")
+            validations = collection.setdefault("validations", {})
+            validations[phase] = summary
+            if phase == "start":
+                collection["phase"] = "reading_ready"
+                self._event(session, "general_start_validation_recorded")
+            else:
+                collection["phase"] = "completed"
+                telemetry = dict(collection.get("telemetry_stats") or {})
+                rounds = list(collection.get("rounds") or [])
+                reading_seconds = sum(
+                    float(item.get("reading_elapsed_ms", 0)) for item in rounds
+                ) / 1000.0
+                attempts = int(telemetry.get("attempt_count", 0))
+                successes = int(telemetry.get("successful_count", 0))
+                validation_summaries = [
+                    dict(validations.get(key) or {}) for key in ("start", "end")
+                ]
+                medians = [
+                    float(item["median_spatial_error_px"])
+                    for item in validation_summaries
+                    if item.get("median_spatial_error_px") is not None
+                ]
+                p90_values = [
+                    float(item["p90_spatial_error_px"])
+                    for item in validation_summaries
+                    if item.get("p90_spatial_error_px") is not None
+                ]
+                metrics = {
+                    "median_spatial_error_px": max(medians) if medians else None,
+                    "p90_spatial_error_px": max(p90_values) if p90_values else None,
+                    "precision_rms_px": max(
+                        (
+                            float(item["precision_rms_px"])
+                            for item in validation_summaries
+                            if item.get("precision_rms_px") is not None
+                        ),
+                        default=None,
+                    ),
+                    "prediction_success_fraction": successes / attempts if attempts else 0.0,
+                    "effective_sampling_hz": successes / reading_seconds
+                    if reading_seconds > 0
+                    else 0.0,
+                    "head_pose_range": [
+                        (
+                            float(telemetry["head_pose_max"][index])
+                            - float(telemetry["head_pose_min"][index])
+                            if telemetry.get("head_pose_min", [None, None])[index]
+                            is not None
+                            else None
+                        )
+                        for index in range(2)
+                    ],
+                    "face_scale_range": (
+                        float(telemetry["face_scale_max"])
+                        - float(telemetry["face_scale_min"])
+                        if telemetry.get("face_scale_min") is not None
+                        else None
+                    ),
+                    "drift_change_px": (
+                        float(validations["end"]["median_spatial_error_px"])
+                        - float(validations["start"]["median_spatial_error_px"])
+                        if validations["end"].get("median_spatial_error_px") is not None
+                        and validations["start"].get("median_spatial_error_px") is not None
+                        else None
+                    ),
+                }
+                if metrics["median_spatial_error_px"] is None or metrics[
+                    "p90_spatial_error_px"
+                ] is None:
+                    quality_band = "behavioral_only"
+                else:
+                    quality_band = classify_gaze_quality(metrics)
+                collection["gaze_quality_metrics"] = metrics
+                collection["gaze_quality_band"] = quality_band
+                session["quality"]["general_collection"] = {
+                    **metrics,
+                    "gaze_quality_band": quality_band,
+                    "behavioral_labels_retained": True,
+                    "threshold_status": "rehearsal_descriptive_not_promotion_thresholds",
+                }
+                session["state"] = "completed"
+                self._event(
+                    session,
+                    "general_collection_completed",
+                    gaze_quality_band=quality_band,
+                )
+            session["general_collection"] = collection
+            self._write(path, session)
+            return self._public_session(session)
+
+    def begin_general_round(
+        self,
+        session_id: str,
+        access_token: str,
+    ) -> dict[str, Any]:
+        with self._lock:
+            path, session = self._read(session_id)
+            self._authorize(session, access_token)
+            if session.get("state") != "assessment_in_progress":
+                raise StudyStateError("general collection is not in progress")
+            collection = dict(session.get("general_collection") or {})
+            assignment = dict(session.get("collection_assignment") or {})
+            if collection.get("phase") in {"reading_active", "probes_open"}:
+                current = dict(collection.get("current_round") or {})
+            elif collection.get("phase") == "reading_ready":
+                completed = len(collection.get("rounds", []))
+                order = list(assignment.get("passage_order") or [])
+                if completed >= len(order):
+                    collection["phase"] = "end_validation_required"
+                    session["general_collection"] = collection
+                    self._write(path, session)
+                    return {"ok": True, "is_finished": True, "phase": collection["phase"]}
+                current = {
+                    "round_number": completed + 1,
+                    "passage_id": order[completed],
+                    "started_at_utc": _utc_now(),
+                }
+                collection["current_round"] = current
+                collection["phase"] = "reading_active"
+                session["general_collection"] = collection
+                self._event(
+                    session,
+                    "general_round_started",
+                    round_number=current["round_number"],
+                    passage_id=current["passage_id"],
+                )
+                self._write(path, session)
+            else:
+                raise StudyStateError("a reading round is not expected now")
+            return {
+                "ok": True,
+                "is_finished": False,
+                "phase": collection["phase"],
+                "round_number": current["round_number"],
+                "round_count": len(assignment.get("passage_order") or []),
+                "passage": public_passage(str(current["passage_id"])),
+            }
+
+    def open_general_word_reviews(
+        self,
+        session_id: str,
+        access_token: str,
+        *,
+        passage_id: str,
+    ) -> dict[str, Any]:
+        with self._lock:
+            path, session = self._read(session_id)
+            self._authorize(session, access_token)
+            collection = dict(session.get("general_collection") or {})
+            current = dict(collection.get("current_round") or {})
+            if collection.get("phase") not in {"reading_active", "probes_open"}:
+                raise StudyStateError("word reviews are not expected now")
+            if passage_id != current.get("passage_id"):
+                raise StudyStateError("word reviews do not match the current passage")
+            if collection.get("phase") == "reading_active":
+                collection["phase"] = "probes_open"
+                session["general_collection"] = collection
+                self._event(
+                    session,
+                    "general_word_reviews_opened",
+                    passage_id=passage_id,
+                )
+                self._write(path, session)
+            assignment = dict(session.get("collection_assignment") or {})
+            probes = probe_order(
+                passage_id,
+                str(session["participant_id"]),
+                int(assignment["visit_index"]),
+            )
+            return {
+                "ok": True,
+                "passage_id": passage_id,
+                "probes": [
+                    {"probe_id": item["probe_id"], "surface": item["surface"]}
+                    for item in probes
+                ],
+            }
+
+    def record_general_telemetry_batch(
+        self,
+        session_id: str,
+        access_token: str,
+        payload: Mapping[str, object],
+    ) -> dict[str, Any]:
+        with self._lock:
+            path, session = self._read(session_id)
+            self._authorize(session, access_token)
+            collection = dict(session.get("general_collection") or {})
+            current = dict(collection.get("current_round") or {})
+            if collection.get("phase") not in {"reading_active", "probes_open"}:
+                raise StudyStateError("telemetry is not expected now")
+            passage_id = str(current.get("passage_id") or "")
+            word_count = int(public_passage(passage_id)["word_count"])
+            try:
+                normalized = normalize_telemetry_batch(
+                    payload,
+                    maximum_word_index=word_count,
+                )
+            except ValueError as exc:
+                raise StudyValidationError(str(exc)) from exc
+            if normalized["passage_id"] != passage_id:
+                raise StudyStateError("telemetry does not match the current passage")
+            batch_path = (
+                path.parent
+                / "collection"
+                / "telemetry"
+                / passage_id
+                / f"{normalized['batch_id']}.json"
+            )
+            payload_digest = canonical_sha256(normalized)
+            if batch_path.exists():
+                existing = json.loads(batch_path.read_text(encoding="utf-8"))
+                if existing.get("payload_sha256") != payload_digest:
+                    raise StudyStateError("telemetry batch ID was reused with new content")
+                return {"ok": True, "idempotent": True, "batch_id": normalized["batch_id"]}
+            observation = {
+                "schema_version": 1,
+                "participant_id": session["participant_id"],
+                "study_session_id": session["study_session_id"],
+                "visit_index": session["collection_assignment"]["visit_index"],
+                "capture_session_id": session.get("linked_data", {}).get(
+                    "gaze_session_id"
+                ),
+                "passage_id": passage_id,
+                "received_at_utc": _utc_now(),
+                "payload_sha256": payload_digest,
+                **normalized,
+            }
+            _atomic_json(batch_path, observation)
+            stats = collection.setdefault("telemetry_stats", {})
+            stats["batch_count"] = int(stats.get("batch_count", 0)) + 1
+            stats["attempt_count"] = int(stats.get("attempt_count", 0)) + len(
+                normalized["samples"]
+            )
+            successful = [
+                item for item in normalized["samples"] if item["prediction_success"]
+            ]
+            stats["successful_count"] = int(stats.get("successful_count", 0)) + len(
+                successful
+            )
+            pose_min = list(stats.get("head_pose_min") or [None, None])
+            pose_max = list(stats.get("head_pose_max") or [None, None])
+            scales: list[float] = []
+            for item in successful:
+                pose = item["head_pose_pitch_yaw"]
+                for index in range(2):
+                    pose_min[index] = (
+                        pose[index]
+                        if pose_min[index] is None
+                        else min(float(pose_min[index]), pose[index])
+                    )
+                    pose_max[index] = (
+                        pose[index]
+                        if pose_max[index] is None
+                        else max(float(pose_max[index]), pose[index])
+                    )
+                bbox = item["normalized_face_bbox"]
+                scales.append(max(0.0, bbox[2] - bbox[0]) * max(0.0, bbox[3] - bbox[1]))
+            stats["head_pose_min"] = pose_min
+            stats["head_pose_max"] = pose_max
+            if scales:
+                old_min = stats.get("face_scale_min")
+                old_max = stats.get("face_scale_max")
+                stats["face_scale_min"] = (
+                    min(scales) if old_min is None else min(float(old_min), *scales)
+                )
+                stats["face_scale_max"] = (
+                    max(scales) if old_max is None else max(float(old_max), *scales)
+                )
+            session["general_collection"] = collection
+            self._write(path, session)
+            return {"ok": True, "idempotent": False, "batch_id": normalized["batch_id"]}
+
+    def record_general_round(
+        self,
+        session_id: str,
+        access_token: str,
+        *,
+        passage_id: str,
+        payload: Mapping[str, object],
+    ) -> dict[str, Any]:
+        with self._lock:
+            path, session = self._read(session_id)
+            self._authorize(session, access_token)
+            collection = dict(session.get("general_collection") or {})
+            current = dict(collection.get("current_round") or {})
+            if collection.get("phase") != "probes_open":
+                raise StudyStateError("the current word reviews have not been opened")
+            if passage_id != current.get("passage_id"):
+                raise StudyStateError("round does not match the current passage")
+            assignment = dict(session.get("collection_assignment") or {})
+            try:
+                normalized = validate_round_payload(
+                    payload,
+                    passage_id=passage_id,
+                    participant_id=str(session["participant_id"]),
+                    visit_index=int(assignment["visit_index"]),
+                )
+            except ValueError as exc:
+                raise StudyValidationError(str(exc)) from exc
+            round_number = int(current["round_number"])
+            round_path = (
+                path.parent / "collection" / "rounds" / f"R{round_number:02d}.json"
+            )
+            if round_path.exists():
+                raise StudyStateError("round was already recorded")
+            observation = {
+                "schema_version": 1,
+                "participant_id": session["participant_id"],
+                "study_session_id": session["study_session_id"],
+                "visit_index": assignment["visit_index"],
+                "form_id": assignment["form_id"],
+                "round_number": round_number,
+                "recorded_at_utc": _utc_now(),
+                **normalized,
+            }
+            _atomic_json(round_path, observation)
+            labels: dict[str, int] = {}
+            for item in normalized["word_reviews"]:
+                label = str(item["label"])
+                labels[label] = labels.get(label, 0) + 1
+            collection.setdefault("rounds", []).append(
+                {
+                    "round_number": round_number,
+                    "passage_id": passage_id,
+                    "passage_family_id": normalized["passage_family_id"],
+                    "reading_elapsed_ms": normalized["reading_elapsed_ms"],
+                    "label_counts": labels,
+                    "word_layout_sha256": normalized["word_layout_sha256"],
+                    "probe_order_sha256": normalized["probe_order_sha256"],
+                    "round_payload_sha256": canonical_sha256(observation),
+                }
+            )
+            collection["current_round"] = None
+            required_rounds = len(assignment.get("passage_order") or [])
+            collection["phase"] = (
+                "end_validation_required"
+                if len(collection["rounds"]) == required_rounds
+                else "reading_ready"
+            )
+            session["general_collection"] = collection
+            self._event(
+                session,
+                "general_round_recorded",
+                round_number=round_number,
+                passage_id=passage_id,
+            )
+            self._write(path, session)
+            return self._public_session(session)
 
     def record_system_check(
         self,

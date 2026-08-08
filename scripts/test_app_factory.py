@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 from web import create_app
 
@@ -35,6 +37,18 @@ class FocusedAppFactoryTests(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.get_json()["error"], "session not found")
         self.assertNotIn("torch", sys.modules)
+
+    def test_gaze_routes_honor_configured_storage_root(self):
+        with tempfile.TemporaryDirectory(prefix="lexigaze-gaze-root-") as name:
+            root = Path(name)
+            app = create_app({
+                "TESTING": True,
+                "LEXIGAZE_BLUEPRINTS": ("gaze",),
+                "LEXIGAZE_GAZE_ROOT": str(root),
+            })
+            response = app.test_client().get("/api/gaze/health")
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue((root / "examples" / "models").is_dir())
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "bank_id": "lexigaze-general-reading-rehearsal-v1",
-  "bank_version": "2026-08-08.v1",
+  "bank_version": "2026-08-08.v2",
   "status": "rehearsal_only_pending_two_independent_human_reviews",
   "dataset_role": "workflow_quality_and_development_exploration_only",
   "language": "en",
@@ -39,6 +39,15 @@
       "standard-d-coastal-sensors",
       "advanced-c-algorithm-audits",
       "advanced-d-historical-maps"
+    ]
+  },
+  "practice": {
+    "passage_id": "practice-tool-library",
+    "text": "Some neighborhoods run tool libraries where members can borrow drills, saws, and gardening equipment. A shared catalogue shows which items are available and when they should be returned. Before borrowing a tool, members receive a short safety explanation and check that all parts are present. Small membership fees pay for repairs and replacement blades. The service saves storage space for households, but it also depends on clear records and timely returns so that the same equipment remains useful to many people.",
+    "probes": [
+      {"probe_id": "practice-p01", "surface": "catalogue"},
+      {"probe_id": "practice-p02", "surface": "borrowing"},
+      {"probe_id": "practice-p03", "surface": "replacement"}
     ]
   },
   "passages": [

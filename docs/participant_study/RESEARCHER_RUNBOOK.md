@@ -1,5 +1,47 @@
 # Researcher Runbook
 
+## 目前新增允許：研究團隊本人的 localhost rehearsal
+
+這條路徑會保存真實但 development-only 的衍生資料，與不收資料的 `dry_run`
+不同。只允許研究團隊本人做 moderated software rehearsal；在倫理／豁免判定、
+正式聯絡資訊與兩位獨立文章 reviewer 完成前，不得把邀請碼交給朋友或外部受試者。
+
+1. 以系統管理員 PowerShell 確認實際資料位置已加密，例如檢查 D 槽的
+   `ProtectionStatus=On` 與完整加密狀態。若無法確認，不要使用
+   `--confirm-encrypted-storage`。
+2. 在不影響既有 8080 server 的情況下，可使用 8098：
+
+   ```powershell
+   $studyRoot = (Resolve-Path ".").Path
+   $dataLocation = Join-Path $studyRoot "data"
+   .\.venv\Scripts\python.exe -X utf8 -m scripts.run_general_collection_rehearsal `
+     --root $studyRoot `
+     --port 8098 `
+     --data-location $dataLocation `
+     --retention-days 7 `
+     --raw-frame-retention-hours 1 `
+     --create-invite-pairs 1 `
+     --acknowledge-development-only `
+     --confirm-encrypted-storage
+   ```
+
+3. Plaintext invite 只會在 console 顯示一次；不要 commit、貼到 issue 或傳給
+   非研究團隊人員。開啟 `http://127.0.0.1:8098/study`，本次只使用 visit 1 code。
+4. Visit 2 必須在 visit 1 完成後 18–72 小時，以同一裝置類別與瀏覽器 family
+   使用配對 code；server 會拒絕過早、過晚或 visit 1 未完成的 code。
+5. 每次完成後執行：
+
+   ```powershell
+   .\.venv\Scripts\python.exe -X utf8 -m scripts.audit_general_collection_readiness --root $studyRoot
+   .\.venv\Scripts\python.exe -X utf8 -m scripts.export_general_collection_dataset --root $studyRoot
+   ```
+
+   Export 是 private pseudonymous bundle，預設排除未完成／已撤回 session，且
+   manifest 永遠標示 `formal_promotion_allowed=false`。不要 commit export。
+
+6. Rehearsal 只回答 completion、missingness、quality、abstention、resume、export
+   與 withdrawal 是否正常。不得用同一人／同一 12 篇文章反覆調參後回報模型成效。
+
 ## 目前允許做的事：dry run
 
 1. 安裝依賴：`uv sync`。

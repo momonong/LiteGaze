@@ -70,17 +70,25 @@ function renderProtocol(protocol) {
   state.protocol = protocol;
   const activation = protocol.activation;
   const pilotReady = activation.pilot_ready === true;
+  const rehearsalReady = activation.rehearsal_ready === true;
   $("studyTitle").textContent = protocol.title_zh;
   $("studyPurpose").textContent = protocol.purpose_zh;
   $("protocolVersion").textContent = `Protocol ${protocol.protocol_version}`;
   $("footerProtocol").textContent = protocol.protocol_version;
   $("estimatedTime").textContent = `約 ${protocol.estimated_duration_minutes} 分鐘`;
   $("consentVersion").textContent = `Consent ${protocol.consent_version}`;
-  $("modeBadge").textContent = pilotReady ? "正式 pilot 已通過啟動閘門" : "DRY RUN · 正式收案鎖定";
-  $("modeBadge").className = `mode-badge ${pilotReady ? "" : "locked"}`;
+  $("modeBadge").textContent = pilotReady
+    ? "正式 pilot 已通過啟動閘門"
+    : rehearsalReady ? "LOCAL REHEARSAL · 僅開發探索" : "DRY RUN · 正式收案鎖定";
+  $("modeBadge").className = `mode-badge ${pilotReady || rehearsalReady ? "" : "locked"}`;
   $("dryRunNotice").classList.toggle("hidden", pilotReady);
-  $("enrollBtn").textContent = pilotReady ? "同意並開始正式流程" : "開始技術 dry run";
-  $("inviteField").classList.toggle("hidden", !pilotReady);
+  $("dryRunNotice").textContent = rehearsalReady && !pilotReady
+    ? "目前只開放 localhost 邀請制 rehearsal：資料可用來檢查流程與品質，但不能當成正式研究、確認性比較或模型升級證據。朋友等外部受試者仍須等倫理與題庫審查完成。"
+    : "目前是技術 dry run：可以演練同意、狀態與撤回，但不會開啟相機、保存臉部影像或產生真人研究資料。";
+  $("enrollBtn").textContent = pilotReady
+    ? "同意並開始正式流程"
+    : rehearsalReady ? "同意並開始本機 rehearsal" : "開始技術 dry run";
+  $("inviteField").classList.toggle("hidden", !pilotReady && !rehearsalReady);
 
   $("proceduresList").innerHTML = protocol.procedures_zh
     .map((item) => `<li>${escHtml(item)}</li>`).join("");
@@ -92,13 +100,15 @@ function renderProtocol(protocol) {
     </div>`).join("");
 
   const governance = protocol.data_governance;
-  $("governanceSummary").textContent = pilotReady
+  $("governanceSummary").textContent = pilotReady || rehearsalReady
     ? `資料地點：${governance.location}；研究資料保存 ${governance.retention_days} 天；校正影格最長 ${governance.raw_frame_retention_hours} 小時。`
     : "正式資料地點、保存期限與加密確認尚未填妥，因此系統不允許真人收案。";
   const contacts = protocol.research_contacts;
   $("contactsSummary").textContent = pilotReady
     ? `研究者：${contacts.investigator}（${contacts.investigator_email}）；受試者權益：${contacts.participant_rights}`
-    : "正式研究者與受試者權益聯絡資訊尚未填妥；目前只能進行不收資料的技術演練。";
+    : rehearsalReady
+      ? "這是研究團隊自己的本機開發 rehearsal；尚未提供正式研究聯絡資訊，因此不得邀請外部受試者。"
+      : "正式研究者與受試者權益聯絡資訊尚未填妥；目前只能進行不收資料的技術演練。";
   $("withdrawalPolicy").textContent = protocol.withdrawal_policy_zh;
 
   $("requiredStatements").innerHTML = protocol.required_consent_statements.map((item) => `
@@ -134,7 +144,9 @@ function enrollmentPayload() {
     scopes[input.value] = input.checked;
   });
   return {
-    mode: state.protocol.activation.pilot_ready ? "pilot" : "dry_run",
+    mode: state.protocol.activation.pilot_ready
+      ? "pilot"
+      : state.protocol.activation.rehearsal_ready ? "rehearsal" : "dry_run",
     invite_code: $("inviteCode").value.trim(),
     adult_confirmed: $("adultConfirmed").checked,
     private_space_confirmed: $("privateSpaceConfirmed").checked,
@@ -173,8 +185,12 @@ function renderSession(session) {
   $("completionBox").classList.toggle("hidden", session.state !== "completed");
 
   const dryRun = session.mode === "dry_run";
+  const rehearsal = session.mode === "rehearsal";
+  $("runSystemCheckBtn").textContent = rehearsal ? "前往標準化準備流程" : "執行系統檢查";
   $("calibrationBtn").textContent = dryRun ? "模擬校正（不開相機）" : "前往眼動校正";
-  $("assessmentBtn").textContent = dryRun ? "模擬閱讀評量（不作答）" : "前往閱讀評量";
+  $("assessmentBtn").textContent = dryRun
+    ? "模擬閱讀評量（不作答）"
+    : rehearsal ? "前往固定式資料收集" : "前往閱讀評量";
   $("completeBtn").textContent = dryRun ? "完成 dry run" : "等待評量完成";
 }
 
@@ -234,6 +250,10 @@ async function enroll(event) {
 }
 
 async function runSystemCheck() {
+  if (state.context?.mode === "rehearsal") {
+    location.assign("/study/collection");
+    return;
+  }
   const secureContext = window.isSecureContext || ["localhost", "127.0.0.1"].includes(location.hostname);
   const results = {
     secure_context: secureContext,
@@ -282,7 +302,9 @@ async function assessmentAction() {
     await dryRunAction("assessment_start");
     return;
   }
-  location.assign("/study/assessment?study=1");
+  location.assign(state.context.mode === "rehearsal"
+    ? "/study/collection"
+    : "/study/assessment?study=1");
 }
 
 async function completeAction() {

@@ -37,6 +37,7 @@ TEST_TARGETS = (
     "scripts.test_independent_capture_plan",
     "scripts.test_adaptive_stepper",
     "scripts.test_participant_study",
+    "scripts.test_general_collection",
     "scripts.test_reader_assessment_v3_design",
     "scripts.test_cognitive_policy",
     "scripts.test_cognitive_inspector",

@@ -177,6 +177,15 @@ class ParticipantWebSurfaceTests(unittest.TestCase):
     def test_public_mode_allows_participant_pages_and_blocks_admin_apis(self) -> None:
         self.assertEqual(self.client.get("/study").status_code, 200)
         self.assertEqual(self.client.get("/study/assessment").status_code, 200)
+        self.assertEqual(self.client.get("/study/collection").status_code, 200)
+        collection_protocol = self.client.get(
+            "/api/study/general-collection/protocol"
+        )
+        self.assertEqual(collection_protocol.status_code, 200)
+        self.assertEqual(
+            collection_protocol.get_json()["design_audit"]["probe_count"],
+            96,
+        )
         root = self.client.get("/")
         self.assertEqual(root.status_code, 302)
         self.assertTrue(root.headers["Location"].endswith("/study"))

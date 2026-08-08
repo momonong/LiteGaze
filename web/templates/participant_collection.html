@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>LexiGaze｜標準化閱讀資料收集</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='participant_collection.css') }}">
+  <script defer src="{{ url_for('static', filename='participant_collection.js') }}"></script>
+</head>
+<body>
+  <header class="study-header">
+    <a class="brand" href="/study"><span class="brand-mark">L</span><span><strong>LexiGaze</strong><small>Fixed-form collection v1</small></span></a>
+    <div class="session-meta"><span id="visitMeta">Visit — · Form —</span><strong id="participantId">—</strong></div>
+  </header>
+
+  <main>
+    <div id="alert" class="alert hidden" role="alert"></div>
+
+    <section class="hero">
+      <div><p class="eyebrow">LOCAL REHEARSAL · DEVELOPMENT ONLY</p><h1>標準化英文閱讀與單字回顧</h1></div>
+      <p>每位使用者都經過相同的背景欄位、裝置檢查、練習、5 點品質驗證、6 篇固定文章與每篇 8 個延後單字標籤。流程不會依你的回答換題。</p>
+      <div class="boundary">這一版只可檢查流程、遺漏率與資料品質；不能用來宣稱英文、認知或 CEFR 能力，也不能當正式模型升級證據。</div>
+    </section>
+
+    <section id="setupPanel" class="panel hidden" aria-labelledby="setupTitle">
+      <div class="panel-heading"><div><span class="step">準備 1/4</span><h2 id="setupTitle">背景與裝置條件</h2></div><span id="setupStatus" class="pill">尚未完成</span></div>
+      <p class="hint">只使用下列分類選項；不輸入姓名、電子郵件、年齡或其他自由文字。</p>
+      <form id="profileForm" class="profile-grid">
+        <label>英文是第一語言
+          <select id="englishL1" required><option value="">請選擇</option><option value="yes">是</option><option value="no">否</option><option value="prefer_not_to_say">不願回答</option></select>
+        </label>
+        <label>開始接觸英文的年齡區間
+          <select id="englishAoa" required><option value="">請選擇</option><option value="0_5">0–5</option><option value="6_11">6–11</option><option value="12_17">12–17</option><option value="18_plus">18 以上</option><option value="prefer_not_to_say">不願回答</option></select>
+        </label>
+        <label>每週閱讀英文時間
+          <select id="weeklyReading" required><option value="">請選擇</option><option value="under_1h">少於 1 小時</option><option value="1_3h">1–3 小時</option><option value="4_7h">4–7 小時</option><option value="8_plus_h">8 小時以上</option><option value="prefer_not_to_say">不願回答</option></select>
+        </label>
+        <label>視力矯正
+          <select id="visionCorrection" required><option value="">請選擇</option><option value="none">無</option><option value="glasses">眼鏡</option><option value="contacts">隱形眼鏡</option><option value="other">其他</option><option value="prefer_not_to_say">不願回答</option></select>
+        </label>
+        <label>教育程度區間
+          <select id="educationBand" required><option value="">請選擇</option><option value="secondary_or_less">中學或以下</option><option value="some_tertiary">部分大專</option><option value="bachelors">學士</option><option value="postgraduate">研究所</option><option value="prefer_not_to_say">不願回答</option></select>
+        </label>
+      </form>
+      <div class="manual-checks">
+        <label><input id="privateSpace" type="checkbox">目前只有受試者本人在相機前，空間可保護隱私。</label>
+        <label><input id="evenLighting" type="checkbox">臉部光線均勻，沒有強烈背光。</label>
+        <label><input id="comfortableDistance" type="checkbox">螢幕與相機位置舒適，接下來不會搬動裝置。</label>
+      </div>
+      <div class="camera-row">
+        <video id="cameraPreview" muted playsinline aria-label="相機預覽"></video>
+        <div><strong id="cameraStatus">尚未檢查相機</strong><p id="deviceSummary">需要至少 640×480，相同 visit 期間請維持同一裝置與瀏覽器。</p></div>
+      </div>
+      <div class="actions"><button id="checkCameraBtn" class="button secondary" type="button">檢查相機</button><button id="saveSetupBtn" class="button primary" type="button" disabled>儲存並進入校正</button></div>
+    </section>
+
+    <section id="calibrationPanel" class="panel hidden">
+      <div class="panel-heading"><div><span class="step">準備 2/4</span><h2>動作多樣化眼動校正</h2></div><span class="pill">CPU 個人化</span></div>
+      <p>校正會暫存含臉部的影格；伺服器品質閘門與 CPU 個人化完成後立即刪除影像。請完成所有姿勢與目標，不要沿用其他使用者的模型。</p>
+      <div class="actions"><a class="button primary" href="/gaze?study=1">前往標準化校正</a><a class="button ghost" href="/study">暫停並返回</a></div>
+    </section>
+
+    <section id="practicePanel" class="panel hidden">
+      <div class="panel-heading"><div><span class="step">準備 3/4</span><h2>不計入分析的練習</h2></div><span class="pill">Practice</span></div>
+      <p class="hint">先自然讀完短文，再對三個單字練習選擇。這一段不會寫入研究觀察。</p>
+      <div id="practicePassage" class="passage" lang="en"></div>
+      <form id="practiceForm" class="review-list"></form>
+      <div class="actions"><button id="practiceBtn" class="button primary" type="button">完成練習</button></div>
+    </section>
+
+    <section id="validationPanel" class="panel hidden">
+      <div class="panel-heading"><div><span class="step">準備 4/4</span><h2 id="validationTitle">閱讀前 5 點品質驗證</h2></div><span id="validationProgress" class="pill">0 / 15</span></div>
+      <p>啟動後請只看橘色圓點，盡量不要移動螢幕或相機。每個位置會量三次；這和訓練校正分開，用來估計準確度與精密度。</p>
+      <div class="actions"><button id="validationBtn" class="button primary" type="button">開始 5 點驗證</button></div>
+    </section>
+
+    <section id="readingPanel" class="panel hidden">
+      <div class="panel-heading"><div><span id="roundLabel" class="step">文章 — / 6</span><h2>自然閱讀英文文章</h2></div><div class="round-meta"><span id="difficulty">—</span><strong id="timer">00:00</strong></div></div>
+      <div class="layout-rule">16 px · 650 px 行寬 · 1.7 行高 · 不捲動 · 不縮放</div>
+      <div id="passage" class="passage" lang="en"></div>
+      <p id="readingHint" class="hint">按下開始後才計時；至少閱讀 20 秒。</p>
+      <div class="actions"><button id="startReadingBtn" class="button primary" type="button">開始閱讀</button><button id="finishReadingBtn" class="button success hidden" type="button" disabled>完成閱讀並標記單字</button></div>
+    </section>
+
+    <section id="reviewPanel" class="panel hidden">
+      <div class="panel-heading"><div><span class="step">閱讀後標記</span><h2>哪些單字需要再回顧？</h2></div><span class="pill">不顯示模型分數</span></div>
+      <p class="hint">依你剛才閱讀這篇文章時的感受作答；沒有正確答案。</p>
+      <form id="reviewForm" class="review-list"></form>
+      <div class="ratings">
+        <label>我理解這篇文章（1 很少，5 很多）<select id="understanding"><option value="">請選擇</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></label>
+        <label>閱讀所需心力（1 很低，5 很高）<select id="mentalEffort"><option value="">請選擇</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></label>
+        <label><input id="readComplete" type="checkbox" checked>我有讀完整篇文章</label>
+        <label><input id="interrupted" type="checkbox">閱讀期間曾被打斷</label>
+      </div>
+      <div class="actions"><button id="submitRoundBtn" class="button primary" type="button">送出本篇資料</button></div>
+    </section>
+
+    <section id="completePanel" class="panel hidden">
+      <p class="eyebrow">VISIT COMPLETE</p><h2>這次固定表單已完成</h2>
+      <p id="qualitySummary">正在整理資料品質……</p>
+      <div class="boundary">無論眼動品質高低，單字回顧行為資料都不會因表現而刪除；品質不足時，眼動分析會降級或 abstain。</div>
+      <div class="actions"><a class="button primary" href="/study">查看撤回資訊</a></div>
+    </section>
+
+    <canvas id="captureCanvas" class="hidden" width="640" height="480"></canvas>
+    <p id="liveStatus" class="sr-only" aria-live="polite"></p>
+  </main>
+
+  <div id="targetOverlay" class="target-overlay hidden" aria-hidden="true"><div id="validationTarget" class="validation-target"></div><div class="target-instruction">只看圓點，請勿追著畫面移動頭部</div></div>
+</body>
+</html>

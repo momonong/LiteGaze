@@ -32,6 +32,12 @@ workflow rehearsal. It has not received two independent human reviews and is
 therefore development-only. It cannot serve as the 48-family validation and
 confirmation bank required by Reader Assessment v3.
 
+An automated pre-screen now verifies word/probe uniqueness, A/B balance,
+heuristic grade progression, word-frequency balance, domain/genre counts, and
+five-word overlap. It passed, but these heuristics do not replace factual,
+naturalness, accessibility, fairness, or difficulty review by two independent
+people.
+
 ## Why word review replaces adaptive QA
 
 The primary product question is whether a particular reader would benefit from
@@ -107,3 +113,12 @@ development/validation/confirmation assignments, sample-size and subgroup
 simulation, a practical-utility threshold, and a moderated end-to-end dress
 rehearsal. Software must continue to fail closed until those conditions are
 recorded.
+
+A 50,000-iteration CPU-only sensitivity simulation has now been frozen and
+run without participant outcomes. Under its base attrition/quality/subgroup
+assumptions, 144 enrolled people were required to reach the joint yield targets
+with at least 80% probability; optimistic and pessimistic scenarios required
+128 and 208. These are conditional planning numbers, not recruitment
+authorization. Blinded rehearsal rates must replace the assumptions, and any
+tuned development cohort must remain separate from a newly recruited frozen
+confirmation cohort.

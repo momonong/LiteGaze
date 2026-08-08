@@ -48,7 +48,7 @@ if (studyMode) {
   } catch (_) {
     studyContext = null;
   }
-  if (!studyContext?.study_session_id || !studyContext?.access_token || studyContext.mode !== "pilot") {
+  if (!studyContext?.study_session_id || !studyContext?.access_token || !["pilot", "rehearsal"].includes(studyContext.mode)) {
     window.location.replace("/study");
   }
 }
@@ -638,7 +638,10 @@ async function finalizeStudyCalibration() {
   sessionStorage.setItem(STUDY_STORAGE_KEY, JSON.stringify(studyContext));
   els.phase.textContent = "校正完成，影像已清除";
   log(`品質閘門通過：${response.quality.sample_count} 筆；個人化模型使用 ${response.quality.training.device || "CPU"}。`);
-  window.setTimeout(() => window.location.assign("/study/assessment?study=1"), 900);
+  const nextPage = studyContext.mode === "rehearsal"
+    ? "/study/collection"
+    : "/study/assessment?study=1";
+  window.setTimeout(() => window.location.assign(nextPage), 900);
 }
 
 async function train() {

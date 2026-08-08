@@ -128,7 +128,13 @@ def create_app(config: Mapping[str, object] | None = None):
         if path == "/gaze" and request.args.get("study") != "1":
             return redirect("/study")
 
-        public_pages = {"/study", "/study/assessment", "/gaze", "/favicon.ico"}
+        public_pages = {
+            "/study",
+            "/study/assessment",
+            "/study/collection",
+            "/gaze",
+            "/favicon.ico",
+        }
         public_api_paths = {
             "/api/gaze/models",
             "/api/gaze/session",

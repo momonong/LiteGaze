@@ -9,6 +9,7 @@ archive/weichi/*.json
 !archive/weichi/xgb_model.json
 archive/weichi/runs/*.json
 *.html
+!web/templates/*.html
 *.pdf
 *.nii.gz
 *.cache
@@ -26,6 +27,8 @@ archive/weichi/test_predictions.csv
 output/subject-heldout-gaze-diversity-v1-run-001/
 output/subject-heldout-gaze-diversity-v1-quality-gate.json
 output/subject-heldout-gaze-diversity-v1-synthetic-smoke.json
+.tmp/
+artifacts/general_collection_*/
 
 # Environment
 .env

@@ -1,24 +1,26 @@
 {
   "schema_version": 1,
   "protocol_id": "lexigaze-reader-pilot",
-  "protocol_version": "2026-08-07.v1",
-  "consent_version": "2026-08-07.v1",
+  "protocol_version": "2026-08-08.v3",
+  "consent_version": "2026-08-08.v3",
   "collection_status": "dry_run_only",
-  "title_zh": "LexiGaze 英文閱讀與眼動技術試行研究",
-  "title_en": "LexiGaze English Reading and Gaze Technical Pilot",
+  "title_zh": "LexiGaze 英文閱讀、單字回顧與眼動技術試行研究",
+  "title_en": "LexiGaze English Reading, Word Review, and Gaze Technical Pilot",
   "study_type": "minimal-risk_behavioral_software_pilot",
-  "estimated_duration_minutes": 40,
+  "estimated_duration_minutes": 50,
   "population": {
     "minimum_age": 18,
     "minors_enrolled": false,
     "exact_age_collected": false
   },
-  "purpose_zh": "檢查網路攝影機眼動校正、英文閱讀理解題與資料品質流程是否可穩定運作。這不是醫療、智力、注意力、疲勞或正式英語能力診斷。",
+  "purpose_zh": "檢查網路攝影機眼動校正、固定英文文章、閱讀後單字回顧與資料品質流程是否可穩定運作。這不是醫療、智力、注意力、疲勞或正式英語能力診斷。",
   "procedures_zh": [
     "閱讀研究說明、完成理解確認並自主決定是否參與。",
+    "以固定分類選項填寫英文接觸、每週英文閱讀、視力矯正與教育程度背景；不收姓名、電子郵件、確切年齡或自由文字。",
     "允許瀏覽器使用網路攝影機，依畫面指示完成眼動校正。",
-    "閱讀 4 至 6 篇英文短文並回答每篇 3 題理解題。",
-    "查看完成與撤回資訊；整體流程約 40 分鐘，可隨時休息或停止。"
+    "以固定排版閱讀 6 篇英文短文；每篇讀完後標示 8 個單字是否需要回顧，並填寫簡短的理解與心力自評。",
+    "在開始與結束時完成 5 點視線品質檢查；若參加重測，第二次使用另一份固定文章表單。",
+    "查看完成與撤回資訊；每次流程約 50 分鐘，可隨時休息或停止。"
   ],
   "risks_zh": [
     "長時間看螢幕可能造成短暫眼睛疲勞、乾澀或不適。",
@@ -40,6 +42,11 @@
       "description_zh": "受試者代碼、同意書版本與雜湊、同意時間、勾選項目與理解確認結果。"
     },
     {
+      "id": "coarse_background_profile",
+      "required": true,
+      "description_zh": "英文是否為第一語言、開始接觸英文的年齡區間、每週英文閱讀時間區間、視力矯正與教育程度區間；只收分類選項，不收直接識別資訊或自由文字。"
+    },
+    {
       "id": "temporary_calibration_images",
       "required": true,
       "description_zh": "校正時擷取的臉部影格與處理後影像；只用於校正與品質檢查，正式研究最長保存時間由啟動設定揭露。"
@@ -47,12 +54,12 @@
     {
       "id": "derived_gaze_and_quality",
       "required": true,
-      "description_zh": "去識別化的視線座標、目標座標、追蹤品質、校正誤差與裝置類別。"
+      "description_zh": "去識別化的視線座標、目標座標、頭部姿勢、臉部位置比例、追蹤品質、校正誤差與粗略裝置類別。"
     },
     {
       "id": "reading_observations",
       "required": true,
-      "description_zh": "文章與題目版本、作答正誤、閱讀時間、描述性眼動摘要與資料品質。"
+      "description_zh": "文章與探針版本、每個探針單字的回顧需求、閱讀時間、文章自評、字詞版面快照、衍生眼動序列與資料品質；不以理解題正確率當模型目標。"
     },
     {
       "id": "transient_reading_frames",
@@ -72,7 +79,7 @@
     },
     {
       "id": "procedures_understood",
-      "text_zh": "我已閱讀研究目的、約 40 分鐘的程序、可能不適、資料類別與無保證直接利益。"
+      "text_zh": "我已閱讀研究目的、每次約 50 分鐘的固定閱讀與單字回顧程序、可能不適、資料類別與無保證直接利益。"
     },
     {
       "id": "camera_understood",
@@ -115,7 +122,7 @@
       "id": "no_diagnosis",
       "question_zh": "這個研究會提供哪一種結果？",
       "options": {
-        "session_evidence": "本次題組與追蹤品質的研究證據",
+        "session_evidence": "本次固定文章、單字回顧與追蹤品質的研究證據",
         "diagnosis": "正式智力、注意力或 CEFR 診斷"
       },
       "correct": "session_evidence"

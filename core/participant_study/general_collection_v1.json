@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "protocol_id": "lexigaze-generalizable-participant-collection-v1",
-  "protocol_version": "2026-08-08.v1",
+  "protocol_version": "2026-08-08.v2",
   "parent_validity_protocol": "lexigaze-reader-assessment-validity-v3",
   "status": "standardized_rehearsal_ready_formal_collection_blocked",
   "study_track": "personalized_word_fusion",
@@ -195,7 +195,7 @@
     "authorized external lexical or reading anchor",
     "48-family fusion bank with two independent human reviews",
     "frozen development validation confirmation assignment manifest",
-    "simulation-based sample-size and subgroup plan",
+    "sample-size and subgroup simulation updated with blinded rehearsal completion and gaze-quality rates",
     "predeclared practical-utility threshold",
     "end-to-end moderated dress rehearsal"
   ],
