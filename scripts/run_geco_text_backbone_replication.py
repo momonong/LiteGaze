@@ -21,11 +21,11 @@ from scripts import run_text_backbone_benchmark as benchmark
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROTOCOL_PATH = (
     PROJECT_ROOT
-    / "docs/experiments/protocols/2026-08-08-pythia-geco-l2-replication-v1.json"
+    / "docs/experiments/protocols/2026-08-08-pythia-geco-l2-replication-v2.json"
 )
 DEFAULT_GECO_PATH = PROJECT_ROOT / "data/geco/L2ReadingData.csv"
 DEFAULT_CACHE_DIR = (
-    PROJECT_ROOT / "data/geco/text_modeling/pythia-geco-l2-replication-v1"
+    PROJECT_ROOT / "data/geco/text_modeling/pythia-geco-l2-replication-v2"
 )
 DEFAULT_OUTPUT_DIR = DEFAULT_CACHE_DIR / "run-001"
 IDENTITY_SOURCE_COLUMNS = (
@@ -47,7 +47,7 @@ OUTCOME_COLUMNS = {
 
 def load_protocol(path: Path) -> tuple[dict[str, Any], list[BackboneSpec]]:
     payload = json.loads(path.read_text(encoding="utf-8"))
-    if payload.get("protocol_id") != "pythia-full-geco-l2-replication-v1":
+    if payload.get("protocol_id") != "pythia-full-geco-l2-replication-v2":
         raise ValueError("unexpected GECO replication protocol")
     policy = payload["source_policy"]
     if policy.get("mode") != "exact_allowlist":
@@ -276,7 +276,7 @@ def evaluate(
     )
     return {
         "schema_version": 1,
-        "experiment": "pythia_full_geco_l2_replication_run_001",
+        "experiment": "pythia_full_geco_l2_replication_v2_run_001",
         "created_at": datetime.now(UTC).isoformat(),
         "protocol": {
             "path": protocol_path.relative_to(PROJECT_ROOT).as_posix(),
@@ -329,7 +329,7 @@ def write_report(path: Path, summary: Mapping[str, Any]) -> None:
     primary_name = summary["cross_backbone_primary"]["outcome"]
     comparison = summary["cross_backbone_primary"]["comparison"]
     lines = [
-        "# Pythia-410M Full GECO L2 Replication — Run 001",
+        "# Pythia-410M Full GECO L2 Replication v2 — Run 001",
         "",
         f"- Completed: {summary['created_at']}",
         f"- Decision: **`{summary['decision']['label']}`**",

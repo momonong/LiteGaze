@@ -64,6 +64,9 @@ def build_display_text(words: Sequence[str]) -> tuple[str, list[tuple[int, int]]
 def align_token_offsets_to_words(
     offsets: Sequence[Sequence[int]],
     word_spans: Sequence[tuple[int, int]],
+    *,
+    text: str | None = None,
+    separator_policy: str = "reject",
 ) -> tuple[list[int], list[int]]:
     """Map each non-special token to exactly one displayed word.
 
@@ -71,6 +74,12 @@ def align_token_offsets_to_words(
     overlap test ignores separators while rejecting tokens that span two words,
     because such a token has no unambiguous word-level surprisal assignment.
     """
+    supported_policies = {
+        "reject",
+        "assign_to_following_word_if_exact_unicode_whitespace_gap",
+    }
+    if separator_policy not in supported_policies:
+        raise ValueError(f"unsupported separator token policy: {separator_policy!r}")
     token_word_ids: list[int] = []
     subtoken_counts = [0] * len(word_spans)
     previous_word_id = -1
@@ -87,6 +96,20 @@ def align_token_offsets_to_words(
             for word_id, (word_start, word_end) in enumerate(word_spans)
             if start < word_end and end > word_start
         ]
+        if not overlaps and separator_policy != "reject":
+            if text is None:
+                raise ValueError("separator assignment requires the original text")
+            source = text[start:end]
+            if source and all(character.isspace() for character in source):
+                following = [
+                    word_id
+                    for word_id in range(1, len(word_spans))
+                    if start >= word_spans[word_id - 1][1]
+                    and end <= word_spans[word_id][0]
+                    and word_spans[word_id - 1][1] < word_spans[word_id][0]
+                ]
+                if len(following) == 1:
+                    overlaps = following
         if len(overlaps) != 1:
             raise ValueError(
                 f"token offset {token_index} {(start, end)} overlaps "
@@ -123,12 +146,14 @@ class FrozenCausalBackbone:
         *,
         device: str,
         dtype: str,
+        separator_policy: str = "reject",
     ) -> None:
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
         self.spec = spec
         self.device = torch.device(device)
         self.requested_dtype = dtype
+        self.separator_policy = separator_policy
         self.inference_seconds = 0.0
         self.tokens_scored = 0
         self.texts_scored = 0
@@ -245,6 +270,8 @@ class FrozenCausalBackbone:
         token_word_ids, subtoken_counts = align_token_offsets_to_words(
             offsets,
             word_spans,
+            text=text,
+            separator_policy=self.separator_policy,
         )
         input_ids = encoding["input_ids"]
         token_count = int(input_ids.shape[1])
@@ -335,6 +362,7 @@ class FrozenCausalBackbone:
             "dtype": str(parameter.dtype),
             "trust_remote_code": False,
             "special_tokens_used": False,
+            "separator_only_token_policy": self.separator_policy,
             "metric_contract": {
                 "surprisal_kind": "causal",
                 "surprisal_unit": "nats",

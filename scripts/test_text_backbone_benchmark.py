@@ -69,6 +69,34 @@ class TextBackboneBenchmarkTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "without tokenizer coverage"):
             align_token_offsets_to_words([(0, 3)], spans)
 
+    def test_frozen_separator_policy_assigns_exact_gap_to_following_word(self) -> None:
+        text, spans = build_display_text(["words:", "erything"])
+
+        token_word_ids, counts = align_token_offsets_to_words(
+            [(0, 6), (6, 7), (7, 15)],
+            spans,
+            text=text,
+            separator_policy=(
+                "assign_to_following_word_if_exact_unicode_whitespace_gap"
+            ),
+        )
+
+        self.assertEqual(token_word_ids, [0, 1, 1])
+        self.assertEqual(counts, [1, 2])
+
+    def test_separator_policy_still_rejects_non_whitespace_gap_token(self) -> None:
+        _, spans = build_display_text(["one", "two"])
+
+        with self.assertRaisesRegex(ValueError, "overlaps 0 displayed words"):
+            align_token_offsets_to_words(
+                [(0, 3), (3, 4), (4, 7)],
+                spans,
+                text="one-two",
+                separator_policy=(
+                    "assign_to_following_word_if_exact_unicode_whitespace_gap"
+                ),
+            )
+
     def test_source_prefix_policy_is_case_insensitive(self) -> None:
         excluded = ("Qwen/", "deepseek-ai/", "uer/")
 
@@ -98,6 +126,7 @@ class TextBackboneBenchmarkTests(unittest.TestCase):
         calculator.spec = types.SimpleNamespace(key="fake")
         calculator.device = torch.device("cpu")
         calculator.context_limit = 16
+        calculator.separator_policy = "reject"
         calculator.tokenizer = _FakeTokenizer()
         calculator.model = _FakeModel()
         calculator.inference_seconds = 0.0

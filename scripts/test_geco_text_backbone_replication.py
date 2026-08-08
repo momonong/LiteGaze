@@ -51,6 +51,13 @@ class GecoTextBackboneReplicationTests(unittest.TestCase):
                 for spec in self.specs
             )
         )
+        self.assertEqual(
+            self.protocol["feature_extraction"]["separator_only_token_policy"],
+            "assign_to_following_word_if_exact_unicode_whitespace_gap",
+        )
+        self.assertFalse(
+            self.protocol["feature_extraction"]["v1_feature_reuse_allowed"]
+        )
 
     def test_label_free_loader_preserves_frozen_geco_identity(self) -> None:
         items, fingerprint = replication.load_label_free_geco_items(

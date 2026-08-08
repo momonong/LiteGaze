@@ -366,6 +366,9 @@ def extract_or_load_backbone(
             spec,
             device=protocol["compute"]["device"],
             dtype=protocol["compute"]["dtype"],
+            separator_policy=protocol["feature_extraction"].get(
+                "separator_only_token_policy", "reject"
+            ),
         )
         smoke_features = _score_item_groups(
             backbone,
