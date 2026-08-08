@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "experiment": "columbia-cross-domain-gaze-v2-independent-audit",
+  "created_at": "2026-08-08T03:11:22.248159+00:00",
+  "result_sha256": "05b3540ab5c6d0f3fad6d5de7a28e0ab9df46e393a40606a0fa45c7d7a33aa15",
+  "evidence_sha256": "602fee2404ebfa26342704ac97d66288ed119147e5b0fc5481a0594695708a99",
+  "checks": {
+    "result_experiment_exact": true,
+    "evidence_sha256_matches": true,
+    "evidence_integrity_matches": true,
+    "candidate_rows_exact": true,
+    "production_rows_match_success_mask": true,
+    "fallback_rows_exact": true,
+    "subjects_exact": true,
+    "all_evidence_finite": true,
+    "metrics_recompute_exact": true,
+    "effectiveness_recompute_exact": true,
+    "audit_runtime_did_not_import_torch": true,
+    "passed": true
+  },
+  "recomputed_summary": {
+    "zero_macro_subject_mean_degrees": 12.045496476588566,
+    "candidate_macro_subject_mean_degrees": 14.284057727240423,
+    "production_macro_subject_mean_degrees": 17.685669698749116,
+    "candidate_confirmed": false,
+    "production_supported": false
+  }
+}

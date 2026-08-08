@@ -83,3 +83,66 @@ metrics, protocol inheritance, aggregate failure codes, and the ignored
 prediction-evidence schema. A separate CPU audit can recompute every committed
 aggregate and effectiveness decision from that local evidence after the model
 run. No Columbia outcome may be used to change these contracts.
+
+## Formal run record
+
+### 2026-08-08 - frozen model execution completed
+
+The one-time confirmation run completed without changing the committed runner.
+The formal implementation SHA-256 was
+`94e9677b255090b8c1f8fb67ca729dd48229362fe690ae94d88f93cab5b96b9f`.
+
+- Production preprocessing: `5,880/5,880` (`100%` coverage)
+- Candidate completeness: `5,880/5,880`; fallback `15/15`
+- Zero-gaze macro subject angular error: `12.0455` degrees
+- EyePoseTinyCNN-v1 macro subject angular error: `14.2841` degrees
+- Candidate minus zero: `+2.2386` degrees; 95% participant-bootstrap CI
+  `[+2.0703, +2.4115]`; subjects improved `0/56`
+- UniGaze macro subject angular error: `17.6857` degrees
+- Production minus zero: `+5.6402` degrees; 95% participant-bootstrap CI
+  `[+5.4423, +5.8572]`; subjects improved `0/56`
+- Candidate confirmed: `false`
+- Production external baseline supported: `false`
+- Execution integrity: `passed`
+
+The three candidate fits used the frozen seeds and exactly 11 epochs. Their
+state-dict SHA-256 values are:
+
+- `20260808`:
+  `4ac9305ec13984aabba1c64ae015a92129c635a92b2b382f6d7291d56a2dd3f4`
+- `20260809`:
+  `f3ecb93ae771313a282bf6f950eb28b49a44ade85bad571c0659d171941eed1c`
+- `20260810`:
+  `eba22e41bb8b1046971b5d68f254e6f1108559f3a7f37f7aecbad63b3b6d23e3`
+
+The UniGaze state-dict SHA-256 was
+`6a99da8fed8c4fcd0fda85bd14137c68e7c34969a7698106cd6ae157270eb0e6`.
+Model execution used `0.0866` hours, reached `0.8281` GiB peak process VRAM
+and `63 C`, and made zero network attempts. Production source SHA-256 remained
+`ab6ecdd4db6c7ebfbf1a55c51cc123ba487dc4a04f8c37ef4574ef5d60229f1b`
+before and after the run.
+
+### Independent aggregate audit
+
+A fresh CPU-only process loaded the ignored prediction evidence, verified its
+SHA-256 (`602fee2404ebfa26342704ac97d66288ed119147e5b0fc5481a0594695708a99`),
+and exactly recomputed all metrics, bootstrap intervals, and effectiveness
+decisions without importing Torch. Every audit check passed.
+
+The committed primary result SHA-256 is
+`05b3540ab5c6d0f3fad6d5de7a28e0ab9df46e393a40606a0fa45c7d7a33aa15`.
+The result is negative and final under this protocol; Columbia-driven tuning or
+a sign-adjusted replacement score is not allowed.
+
+### Post-hoc hypothesis, not a replacement result
+
+Aggregate component regressions found that production pitch retained a slope
+of `+0.795` with Pearson `r=+0.886`, while production yaw had a slope of
+`-0.971` with `r=-0.959`. This is consistent with a horizontal coordinate
+interface mismatch under the frozen Columbia label mapping. The candidate was
+more broadly compressed and biased (pitch slope `+0.174`, yaw slope `-0.247`).
+
+These diagnostics were not pre-registered, do not change the failed primary
+decisions, and may not select a mapping for a rerun presented as independent.
+They motivate a new, separately frozen coordinate-contract check on fresh
+LexiGaze left/center/right captures before any model or hardware promotion.
