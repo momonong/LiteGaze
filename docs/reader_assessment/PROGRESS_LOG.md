@@ -14,6 +14,17 @@
 - 成功 forward 合計 `31.04` 秒／`0.00862` GPU-hours，只使用 1.5-hour budget 的 0.57%；peak reserved 為 GPT-2 `0.371 GiB`、Pythia `0.924 GiB`，全程一次只載入一個模型，沒有 training/fine-tuning。
 - Product model 維持 GPT-2 frozen；下一步只能先凍結 GECO L2 replication，再開啟 full Pythia 的 GECO outcome。OneStop 不再用於候選選模。
 
+### GECO L2 frozen replication
+
+- v1 在 outcome-blind extraction 階段發現 GPT-2 對 `Text_ID 4:33` 的一個 ASCII separator 產生 standalone token；依 frozen rule invalidated，沒有讀取 duration。
+- v2 只新增 deterministic separator rule：完整落在相鄰 words gap 的 Unicode-whitespace token 歸到下一字；其他 ambiguity 仍 fail-closed。全 588 texts tokenizer scan 找到 GPT-2 1 個、Pythia 0 個 separator-only tokens。
+- v2 重新抽取兩套 56,411-item features，完全不重用 v1；GPT-2 / Pythia peak reserved 分別 `0.512 / 1.057 GiB`，forward 合計 `43.65 s`（`0.01212 GPU-hours`）。
+- Total reading time 上，GPT-2 與 Pythia 的 M1-M0 增量都通過且 5/5 folds 為正；causal surprisal 作為 auxiliary feature 再度成立。
+- Frozen Pythia-minus-GPT-2 為 participant `+0.00042`（CI `[-0.00037, +0.00123]`）、text `+0.00148`（CI `[+0.00029, +0.00268]`），但只有 3/5 folds 為正，因此 strong/directional replication 都失敗。
+- 第一次 evaluation 因共用 evaluator 與 GECO protocol 的 gate JSON key 不同而在產生結果前停止；只加入 exact-object schema alias 與 regression test，沒有改 data/features/folds/alpha/outcomes/thresholds，clean commit `f780bff` 完成正式 run。
+- ADR 0005 決定保留 GPT-2 production backbone；Pythia 僅作 research comparator，不再開 OneStop 或增加 public corpus 尋找 favorable result。下一個有效證據必須來自 independent v3 word-review outcome。
+- Runtime source policy 同步移除 `uer/gpt2-chinese-cluecorpussmall`；中文若誤選 GPT-2，會在任何下載／載入前 fail-closed，英文 GPT-2 與既有中文 BERT 預設不變，並明確停用 remote code。
+
 ## 2026-08-08 — branch `research/reader-assessment-validity-v3`
 
 ### 問題重構

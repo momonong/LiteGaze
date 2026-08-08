@@ -1,0 +1,155 @@
+{
+  "schema_version": 2,
+  "experiment": "pythia_full_geco_l2_replication_v2_run_001",
+  "date": "2026-08-08",
+  "branch": "research/non-cn-text-backbone-benchmark",
+  "v1_protocol_commit": "6215d89",
+  "v2_protocol_commit": "25ea198",
+  "v2_feature_implementation_commit": "25afed0",
+  "evaluation_schema_fix_commit": "f780bff",
+  "protocol_sha256": "a1c47eb372f5ce6f26692a521dfcf0959077ea3ba9c8724390d482eaf7c5bd68",
+  "v1_invalidation": {
+    "outcome_columns_read": false,
+    "reason": "GPT-2 standalone whitespace token overlapped zero display-word spans",
+    "text_id": "4:33",
+    "sorted_text_ordinal": 519,
+    "token_index": 102,
+    "token_id": 220,
+    "offset": [450, 451]
+  },
+  "v2_alignment": {
+    "policy": "assign_to_following_word_if_exact_unicode_whitespace_gap",
+    "gpt2_separator_tokens": 1,
+    "pythia_separator_tokens": 0,
+    "tokenizer_only_full_scan_passed": true,
+    "gpt2_max_text_tokens": 176,
+    "pythia_max_text_tokens": 177
+  },
+  "dataset": {
+    "name": "GECO English L2",
+    "sha256": "cd551640cfd122b5e360d70c12998798125e7485c6deb900bc71b8e591c59b87",
+    "rows": 534154,
+    "participants": 19,
+    "texts": 588,
+    "items": 56411,
+    "reader_group": "bilingual",
+    "stimulus_language": "English",
+    "role": "historically_inspected_for_gpt2_but_challenger_outcome_blind",
+    "question_answer_dataset_used": false
+  },
+  "primary_outcome": "total_reading_time",
+  "backbones": {
+    "gpt2": {
+      "revision": "607a30d783dfa663caf39e06633721c8d4cfcd7e",
+      "m1_participant_rho": 0.3037392852138045,
+      "m1_text_rho": 0.5010570447185078,
+      "m1_minus_m0_tokenization_participant": {
+        "mean": 0.012373609100583258,
+        "ci_95": [0.0093, 0.0154]
+      },
+      "m1_minus_m0_tokenization_text": {
+        "mean": 0.019636803737868223,
+        "ci_95": [0.0172, 0.0221]
+      },
+      "positive_increment_outer_folds": 5,
+      "outer_folds": 5,
+      "feature_sha256": "63de8ae14e679a4a54706e90532ddc6e66f51e6fd268d67fd4b61a2bee91a167",
+      "inference_seconds": 18.221227300469764,
+      "tokens_scored": 74687,
+      "peak_cuda_reserved_bytes": 549453824
+    },
+    "pythia_410m_deduped_full": {
+      "revision": "c4fc8d586d62df497f1f9b69d66d3ca419992d3e",
+      "m1_participant_rho": 0.30416379921304154,
+      "m1_text_rho": 0.5025327613113422,
+      "m1_minus_m0_tokenization_participant": {
+        "mean": 0.012852845444502348,
+        "ci_95": [0.0091, 0.0166]
+      },
+      "m1_minus_m0_tokenization_text": {
+        "mean": 0.021356173848977728,
+        "ci_95": [0.0187, 0.0240]
+      },
+      "positive_increment_outer_folds": 5,
+      "outer_folds": 5,
+      "feature_sha256": "e0fe4361535bf7658634e7aa11f66d1c4f0389285081a89c2ff6752b83b5a2ff",
+      "inference_seconds": 25.424051299109124,
+      "tokens_scored": 75371,
+      "peak_cuda_reserved_bytes": 1134559232
+    }
+  },
+  "frozen_pythia_minus_gpt2": {
+    "participant": {
+      "mean": 0.0004245139992370227,
+      "ci_95": [-0.0003674438769195843, 0.0012257028442914793],
+      "pairs": 19
+    },
+    "text": {
+      "mean": 0.0014757165928345481,
+      "ci_95": [0.00028516055267795566, 0.0026779091287948966],
+      "pairs": 588
+    },
+    "fold_differences": {
+      "0": 0.0010561570806081931,
+      "1": 0.0013380062055097493,
+      "2": -0.0006886748631442288,
+      "3": -0.0008417662839381402,
+      "4": 0.0012546117063050178
+    },
+    "positive_outer_folds": 3,
+    "outer_folds": 5
+  },
+  "secondary_descriptive_m1": {
+    "gaze_duration": {
+      "gpt2_participant_rho": 0.2534649790406898,
+      "gpt2_text_rho": 0.41870376634181145,
+      "pythia_participant_rho": 0.25353388549300165,
+      "pythia_text_rho": 0.41894740345061976
+    },
+    "first_fixation_duration": {
+      "gpt2_participant_rho": 0.11174805774800842,
+      "gpt2_text_rho": 0.19534650191441635,
+      "pythia_participant_rho": 0.11228834450574766,
+      "pythia_text_rho": 0.19601558461452495
+    }
+  },
+  "decision": {
+    "label": "does_not_replicate_over_gpt2",
+    "challenger_incremental_gate_passed": true,
+    "strong_replication_gate_passed": false,
+    "directional_replication_gate_passed": false,
+    "production_model": "gpt2",
+    "production_model_changed": false,
+    "pythia_role": "research_comparator_only",
+    "one_stop_retest_allowed": false,
+    "independent_word_review_confirmation_required": true
+  },
+  "compute": {
+    "device": "cuda",
+    "dtype": "bfloat16",
+    "one_backbone_loaded_at_a_time": true,
+    "v2_inference_seconds": 43.64527859957889,
+    "v2_inference_gpu_hours": 0.012123688499883024,
+    "v2_gpu_budget_hours": 1.0,
+    "v2_gpu_budget_exceeded": false,
+    "training_or_fine_tuning": false,
+    "throughput_is_selection_metric": false
+  },
+  "evaluation_incident": {
+    "first_attempt_produced_result": false,
+    "error": "shared evaluator expected interpretation.incremental_gate while GECO stored the identical values at decision_gate.challenger_increment_must_pass",
+    "fix": "schema alias preserving the exact frozen object and all analysis settings",
+    "test_added": true,
+    "methodological_change": false
+  },
+  "guardrails": {
+    "exact_non_cn_source_allowlist": true,
+    "features_extracted_before_outcomes_loaded": true,
+    "legacy_precomputed_text_features_used": false,
+    "complete_text_holdout": true,
+    "scaler_fit_on_training_only": true,
+    "target_shuffle_sentinel_included": true,
+    "question_answer_dataset_used": false,
+    "onestop_accessed": false
+  }
+}
