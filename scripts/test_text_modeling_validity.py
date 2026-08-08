@@ -111,7 +111,7 @@ class TextModelingValidityTests(unittest.TestCase):
         with mock.patch(
             "transformers.AutoTokenizer.from_pretrained",
             return_value=tokenizer,
-        ), mock.patch(
+        ) as tokenizer_loader, mock.patch(
             "transformers.AutoModelForCausalLM.from_pretrained",
             return_value=model,
         ) as causal_loader:
@@ -121,11 +121,45 @@ class TextModelingValidityTests(unittest.TestCase):
                 device="cpu",
             )
 
+        tokenizer_loader.assert_called_once_with(
+            "gpt2",
+            add_prefix_space=True,
+            trust_remote_code=False,
+        )
         causal_loader.assert_called_once_with(
             "gpt2",
             attn_implementation="eager",
+            trust_remote_code=False,
         )
         self.assertEqual(calculator.device, "cpu")
+
+    def test_chinese_gpt2_is_rejected_before_model_loading(self) -> None:
+        with mock.patch(
+            "transformers.AutoTokenizer.from_pretrained",
+            side_effect=AssertionError("disallowed model must not be loaded"),
+        ) as tokenizer_loader:
+            with self.assertRaisesRegex(ValueError, "approved source policy"):
+                LanguageModelCalculator(
+                    model_type="gpt2",
+                    lang="zh",
+                    device="cpu",
+                )
+
+        tokenizer_loader.assert_not_called()
+
+    def test_active_model_allowlist_excludes_disallowed_sources(self) -> None:
+        model_ids = {
+            model_id.casefold()
+            for languages in LanguageModelCalculator.MODELS.values()
+            for model_id in languages.values()
+        }
+        excluded_prefixes = tuple(
+            prefix.casefold()
+            for prefix in LanguageModelCalculator.EXCLUDED_MODEL_ID_PREFIXES
+        )
+
+        for model_id in model_ids:
+            self.assertFalse(model_id.startswith(excluded_prefixes), model_id)
 
     def test_compute_uses_resolved_device_not_global_cuda_availability(self) -> None:
         calculator = self._calculator()

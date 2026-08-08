@@ -92,10 +92,46 @@ class DocumentLoader:
 
 class LanguageModelCalculator:
     MODELS = {
-        'gpt2': {'zh': "uer/gpt2-chinese-cluecorpussmall", 'en': "gpt2"},
-        'gpt2-medium': {'zh': "uer/gpt2-chinese-cluecorpussmall", 'en': "gpt2-medium"},
+        'gpt2': {'en': "gpt2"},
+        'gpt2-medium': {'en': "gpt2-medium"},
         'bert': {'zh': "bert-base-chinese", 'en': "bert-base-uncased", 'nl': "bert-base-multilingual-cased"}
     }
+    EXCLUDED_MODEL_ID_PREFIXES = (
+        "qwen/",
+        "deepseek-ai/",
+        "thudm/",
+        "baichuan-inc/",
+        "01-ai/",
+        "uer/",
+    )
+
+    @classmethod
+    def _resolve_model_name(cls, model_type: str, lang: str) -> str:
+        """Resolve only explicitly approved model/language pairs."""
+        if model_type not in cls.MODELS:
+            supported = ", ".join(sorted(cls.MODELS))
+            raise ValueError(
+                f"unsupported model type {model_type!r}; expected one of: {supported}"
+            )
+
+        approved_languages = cls.MODELS[model_type]
+        if lang not in approved_languages:
+            supported = ", ".join(sorted(approved_languages))
+            raise ValueError(
+                f"model type {model_type!r} does not support language {lang!r} "
+                f"under the approved source policy; expected one of: {supported}"
+            )
+
+        model_name = approved_languages[lang]
+        normalized_name = model_name.casefold()
+        if any(
+            normalized_name.startswith(prefix.casefold())
+            for prefix in cls.EXCLUDED_MODEL_ID_PREFIXES
+        ):
+            raise ValueError(
+                f"model source {model_name!r} is excluded by the approved source policy"
+            )
+        return model_name
 
     def __init__(
         self,
@@ -104,15 +140,20 @@ class LanguageModelCalculator:
         batch_size: int = 32,
         device: Optional[str] = None,
     ):
-        from transformers import AutoModelForCausalLM, AutoModelForMaskedLM, AutoTokenizer
         self.model_type = model_type
         self.lang = lang
         self.batch_size = batch_size
-        model_name = self.MODELS[model_type][lang]
+        model_name = self._resolve_model_name(model_type, lang)
+
+        from transformers import AutoModelForCausalLM, AutoModelForMaskedLM, AutoTokenizer
 
         print(f"[系統] 正在初始化 {model_name}...")
         tokenizer_kwargs = {"add_prefix_space": True} if model_type.startswith('gpt2') else {}
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name, **tokenizer_kwargs)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            model_name,
+            trust_remote_code=False,
+            **tokenizer_kwargs,
+        )
         if model_type.startswith('gpt2'):
             # Pin the CPU-reproducible path. Transformers may otherwise select
             # SDPA, whose causal-mask helper probes CUDA tracing even when the
@@ -120,9 +161,14 @@ class LanguageModelCalculator:
             self.model = AutoModelForCausalLM.from_pretrained(
                 model_name,
                 attn_implementation="eager",
+                trust_remote_code=False,
             )
         else:
-            self.model = AutoModelForMaskedLM.from_pretrained(model_name, attn_implementation="eager")
+            self.model = AutoModelForMaskedLM.from_pretrained(
+                model_name,
+                attn_implementation="eager",
+                trust_remote_code=False,
+            )
 
         requested_device = (
             device
