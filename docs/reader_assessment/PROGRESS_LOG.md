@@ -1,5 +1,50 @@
 # Reader Assessment v2 Progress Log
 
+## 2026-08-08 — branch `research/reader-assessment-validity-v3`
+
+### 問題重構
+
+- 將「文字模型很差」拆成兩件事：目前 frozen causal surprisal 在三個 corpus 有小而一致的 population-level 增益；真正缺少的是 independent personalized outcome。
+- 確認 6 passages / 18 items 與 expert-seeded 3PL 只能作工程 pilot，且 passage-linked items 的 local dependence 會讓一般 IRT precision 過度樂觀。
+- 停止把 reading/gaze observables 當作 cognitive profile；working memory 等構念只能由獨立、授權、經驗證的作業支持。
+
+### 研究與決策
+
+- 依 testing Standards 與 Evidence-Centered Design，先固定 intended use、claim、evidence、task，再選模型。
+- 依 PIAAC 將 reading components 擴為 sentence meaning、explicit、inference、lexical/cohesion 與 source evaluation，但先保留 task-specific scores。
+- LexTALE/LEAP-Q 類工具只能分別作 lexical anchor 與 language-background covariates，不自動產生 CEFR。
+- CEFR 需另行 specification、standard setting 與 empirical linking；v3 保持 `not_estimated`。
+- 初次真實校準改用 balanced fixed forms；只有 empirical item/testlet parameters、information、fairness 與 confirmation 通過後才能重新啟用 CAT。
+- Primary product target 改為 post-reading sampled-word `no_review / unsure / review_needed`，QA、gaze duration、text score、calibration coordinates 與 synthetic fusion labels 全部禁止作 training/selection target。
+- 凍結 participant、passage family、item family、capture session 與 device class 五個 holdout axes；confirmation 只開一次。
+- Cognitive add-on 改為 separate optional session 且禁止 composite；本階段完全 CPU-only。
+- v3 凍結前已收集的資料保留作 workflow/quality exploratory evidence，但禁止進入 calibration、model/threshold selection、validation 或 confirmation。
+
+### 實作
+
+- 新增 `MEASUREMENT_DESIGN_V3.md` 與 machine-readable `reader_assessment_validity_v3.json`。
+- 新增 CPU/network-free design audit，對 latent-claim abstention、獨立 outcome、anti-QA-overfit、固定 typography、holdout、ablation、gaze fallback、cognition separation 與 compute policy 做 fail-closed 檢查。
+- 新增 mutation tests，確保 CEFR 提前晉級、未校準 adaptive routing、QA target、缺 passage holdout、同 session cognition 與 text fine-tuning 都會失敗。
+- 將 v3 design test 納入 repository offline quality gate。
+- 以 200 replicates、`n=300/600/900` 做 CPU-only matrix coverage simulation；18-passage 方案雖有較多重複 labels，卻只有 3 個 confirmation passage clusters，因此否決。
+- 將 reading measurement calibration 與 personalized fusion 拆成不重疊 cohorts；前者規劃獨立 36-family measurement bank，後者採 48-family pool（24/12/12）以保留 12 個 confirmation content clusters。
+- Coverage run 001 在 48-family 方案、`n=600` 時產生中位 1,440 個 joint-confirmation word labels，但第五百分位的每篇 joint cell 仍只有 6 人；這證明最終 n 必須用 cluster-aware power/utility simulation 決定，不能把 600 當成自動足夠。
+
+### 邊界
+
+- v3 是已凍結的研究設計，不取代 live v2 protocol，也不授權收案。
+- 下一階段是選定合法 external anchors、分別建立並雙人審查 36-family measurement bank 與 48-family fusion pool、做 effect/precision-based sample-size simulation，再更新 ethics/consent 文件。
+
+### 驗證
+
+- v3 design contract 的 19 個 safeguards 全數通過，`collection_ready=false` 如預期保留。
+- 11 個 v3 focused tests 通過，涵蓋 protocol mutation、legacy-data isolation 與 coverage determinism。
+- Repository offline CPU quality gate：151 tests passed，0 failures/errors/skips；Torch 未 import、network/process probes 均被阻擋、artifact 無變動。
+- Gate 前後 GPU telemetry 完全相同：0% utilization、729 MiB / 24,463 MiB；本輪研究、simulation 與驗證沒有使用 GPU compute。
+- Python compileall 與 `git diff --check` 通過；專案 `.venv` 未安裝 Ruff，因此沒有把 Ruff 誤報為已執行。
+- v3 protocol SHA-256：`52B40498D2ECD2C0D35A45328E6F5AB0DA78C3C7C3F2CC34D99B656D9DB71D93`。
+- Coverage JSON SHA-256：`37F4251831CA77C3710AE7245E20A6F4EC2F21ABED47C01B669636931A1695C3`；Markdown SHA-256：`2D15B6776831AEA69B492CE4BDB42A33671CE257D8FBDB0263DA76CF8EF411A7`。
+
 ## 2026-08-06 — branch `feat/evidence-based-reader-assessment`
 
 ### Audit

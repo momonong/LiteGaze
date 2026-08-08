@@ -1,5 +1,11 @@
 # LexiGaze Reader Assessment v2
 
+> 2026-08-08 update: v3 的研究與測量設計已凍結，但尚未接上 live
+> collection。請先讀 [`MEASUREMENT_DESIGN_V3.md`](MEASUREMENT_DESIGN_V3.md)
+> 與機器可讀的
+> [`reader_assessment_validity_v3.json`](reader_assessment_validity_v3.json)。
+> 目前 production/dry-run 行為仍是本文件所述的 v2；v3 不會繞過倫理、內容審查或外部 anchor 授權。
+
 ## Outcome
 
 The old "Cognitive Inspector" must not be treated as a validated ability test. Version 2 replaces its arbitrary 0–100 scores with an evidence-bounded measurement pipeline:
