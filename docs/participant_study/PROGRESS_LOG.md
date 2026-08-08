@@ -59,3 +59,71 @@ evidence 分成三個不同 target，避免把 schema-valid 誤寫成可招募�
 這項里程碑沒有解除 `dry_run_only`。倫理／豁免判定、正式聯絡、樣本數、外部
 效標與文章授權、storage、HTTPS、retention、正式 frozen manifest 及 dress
 rehearsal 仍是 pilot blockers。
+
+## 2026-08-08 — generalizable fixed-form collection rehearsal v1
+
+### 目標與決策
+
+把研究團隊本人的資料收集流程做成未來每位使用者都能照同一規格執行的版本，
+並明確切開 development rehearsal 與正式 confirmation。舊 adaptive QA 不再作為
+這條 track 的 outcome；primary label 改為每篇閱讀後、模型輸出隱藏時取得的
+8 個 `no_review / unsure / review_needed` 單字回顧標籤。
+
+每位 participant 兩次 visit，間隔 18–72 小時，A/B alternate forms 與六種
+Williams-style passage order 在看到 outcome 前由一次性 invite pair 指定。同一
+participant、capture session、device、passage family 與 probe 都保留 group ID，
+後續實驗必須做 participant/text/probe/capture/device holdout，不能 random-row split。
+
+### 完成的工程
+
+- 凍結 general collection protocol 與 12-family rehearsal bank；A/B 各 6 篇、
+  每篇 8 probes，另有不寫入 observation 的 practice passage。
+- 新增 strict categorical profile、coarse device schema、5-point start/end validation、
+  fixed 16 px / 650 px / 1.7 layout、20 秒最短閱讀、no-scroll/no-zoom gate。
+- 閱讀期間只傳 transient frame 做同源推論；server 僅接受 derived gaze、head pose、
+  normalized face geometry、word index、failure code 與 monotonic time。Raw media field
+  會被 schema 拒絕，batch ID 重送只能是 byte-equivalent payload。
+- 新增 invite-pair、visit interval、immutable round order、48 labels/visit、resume、
+  withdrawal、private pseudonymous export 與 manifest hash。低品質 gaze 只降級成
+  `passage_level_only` 或 `behavioral_only`，不刪 behavioral labels。
+- 新增 localhost-only runner；必須由操作人明確確認 encrypted storage、development
+  only、invite-only、retention 與 raw-frame TTL。Gaze routes 現在一致遵守 configured
+  storage root，避免 study metadata 與 calibration artifacts 分散到不同位置。
+- 同意內容升版，明列分類式語言／閱讀／視力／教育背景，不收 direct identifiers、
+  exact age、user-agent fingerprint 或自由文字。
+
+### 文章與樣本規劃結果
+
+- Automated bank screen：12 unique families、96 unique-in-passage probes；foundation /
+  standard / advanced heuristic grades 8.74 / 13.23 / 14.75；A/B mean grade 12.21 /
+  12.26；9 domains、5 genres、maximum five-word overlap 0.0。這只通過 automated
+  screen，兩位 independent human reviews 仍是 0/2。
+- 50,000-iteration CPU sensitivity simulation：在 joint targets（52 paired behavioral、
+  30 word-gaze、25% subgroup 至少 20 人、paired d=0.40 power）下，conditional minimum
+  enrollment 是 optimistic 128、base 144、pessimistic 208。這不是招募授權；正式
+  design 必須用 blinded rehearsal rates 更新，任何 development tuning 之後需另收
+  frozen confirmation cohort。
+
+### 驗證證據
+
+- Focused Python/JS validation：27 tests passed；三個 browser scripts syntax pass；
+  六個 collection CLI 的 direct `--help` entry point 均可啟動。
+- Full offline quality gate：171 tests passed；0 failure、0 error、0 skip。
+- Safeguards：network/subprocess probes blocked、provider credentials cleared、artifact
+  changes `[]`、Torch not imported、`CUDA_VISIBLE_DEVICES=-1`。
+- GPU before/after：RTX 5090 utilization 均為 `0%`，memory 均為
+  `76/24463 MiB`；worker 明確設為 CPU-only。
+- In-app browser isolated QA：正確顯示 rehearsal boundary、versioned consent、one-time
+  invite、server pseudonym 與 Visit 1 / Form A；1024×700 無 horizontal overflow；
+  console 0 warnings/errors。沒有代替使用者接受 camera permission。
+- Browser QA 使用的 synthetic session、plaintext QA invites、logs 與 localhost:8097
+  process 已全部刪除／停止；沒有混入 project data。既有 localhost:8080 process
+  未被停止或修改。
+
+### 仍然 fail closed
+
+正式朋友／外部受試者收案仍缺 revised ethics/exempt determination、正式聯絡與
+rights contact、authorized external anchor、48-family bank + 2 independent reviews、
+frozen dev/validation/confirmation manifest、rehearsal-rate sample-size update、
+practical-utility threshold 與 moderated camera dress rehearsal。本里程碑沒有解除
+正式 `pilot_ready=false`。

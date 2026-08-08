@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "experiment_id": "general-collection-sample-size-v1",
+  "frozen_at_utc": "2026-08-08T10:00:00Z",
+  "status": "simulation_assumptions_frozen_before_participant_outcomes",
+  "parent_protocol": "lexigaze-generalizable-participant-collection-v1",
+  "seed": 20260808,
+  "iterations": 50000,
+  "candidate_enrollments": [48, 64, 80, 96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 256],
+  "scenarios": {
+    "optimistic": {
+      "visit1_completion": 0.92,
+      "visit2_retention_given_visit1": 0.88,
+      "behavioral_usable_given_visit2": 0.98,
+      "word_gaze_candidate_given_behavioral": 0.70
+    },
+    "base": {
+      "visit1_completion": 0.88,
+      "visit2_retention_given_visit1": 0.80,
+      "behavioral_usable_given_visit2": 0.96,
+      "word_gaze_candidate_given_behavioral": 0.55
+    },
+    "pessimistic": {
+      "visit1_completion": 0.80,
+      "visit2_retention_given_visit1": 0.70,
+      "behavioral_usable_given_visit2": 0.90,
+      "word_gaze_candidate_given_behavioral": 0.35
+    }
+  },
+  "targets": {
+    "paired_behavioral_participants": 52,
+    "paired_word_gaze_candidates": 30,
+    "minority_subgroup_prevalence": 0.25,
+    "minority_subgroup_paired_participants": 20,
+    "minimum_target_probability": 0.80
+  },
+  "paired_confirmation_test": {
+    "alpha_two_sided": 0.05,
+    "standardized_effect_sizes": [0.30, 0.40, 0.50],
+    "unit": "participant-level paired loss or utility difference",
+    "independence": "new confirmation participants collected only after model and thresholds freeze"
+  },
+  "decision_policy": {
+    "development_stage": "Use rehearsal-observed completion and quality rates to replace assumptions before opening a formal development cohort.",
+    "confirmation_stage": "Recruit a new participant cohort after all model choices, thresholds, exclusions, and utility metrics are frozen.",
+    "subgroups": "If the planned subgroup count cannot be reached, report descriptive uncertainty and do not claim subgroup equivalence.",
+    "gaze": "Behavioral labels remain usable when gaze abstains; word-level gaze claims require the independent quality band."
+  },
+  "compute": {
+    "device": "cpu",
+    "gpu_allowed": false,
+    "participant_data_used": false
+  }
+}

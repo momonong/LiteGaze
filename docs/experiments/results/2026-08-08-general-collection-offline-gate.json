@@ -1,0 +1,63 @@
+{
+  "duration_seconds": 3.471,
+  "errors": 0,
+  "failures": 0,
+  "safeguards": {
+    "artifact_changes": [],
+    "credentials_cleared": true,
+    "cuda_visible_devices": "-1",
+    "network_attempts": [],
+    "network_probe_blocked": true,
+    "process_probe_blocked": true,
+    "torch_imported": false
+  },
+  "schema_version": 1,
+  "skipped": 0,
+  "status": "passed",
+  "supervisor": {
+    "duration_seconds": 3.826,
+    "gpu_after": {
+      "available": true,
+      "rows": [
+        "0, NVIDIA GeForce RTX 5090 Laptop GPU, 0, 76, 24463"
+      ]
+    },
+    "gpu_before": {
+      "available": true,
+      "rows": [
+        "0, NVIDIA GeForce RTX 5090 Laptop GPU, 0, 76, 24463"
+      ]
+    },
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9",
+    "timed_out": false,
+    "timeout_seconds": 180,
+    "worker_exit": 0
+  },
+  "test_targets": [
+    "scripts.test_app_factory",
+    "scripts.test_gaze_benchmark",
+    "scripts.test_gaze_calibration_regression",
+    "scripts.test_gaze_motion_experiment",
+    "scripts.test_gaze_motion_robustness",
+    "scripts.test_gaze_session_independence",
+    "scripts.test_gaze_torch_runtime",
+    "scripts.test_independent_capture_plan",
+    "scripts.test_adaptive_stepper",
+    "scripts.test_participant_study",
+    "scripts.test_general_collection",
+    "scripts.test_reader_assessment_v3_design",
+    "scripts.test_cognitive_policy",
+    "scripts.test_cognitive_inspector",
+    "scripts.test_text_artifact",
+    "scripts.test_text_model_generalization",
+    "scripts.test_personalized_backbone_matching",
+    "scripts.test_provenance_fusion",
+    "scripts.test_quality_aware_fusion_v2",
+    "scripts.test_subject_holdout_gaze_diversity",
+    "scripts.test_onestop_confirmation_preparation",
+    "scripts.test_fusion_routes"
+  ],
+  "tests_run": 171,
+  "unexpected_successes": 0
+}

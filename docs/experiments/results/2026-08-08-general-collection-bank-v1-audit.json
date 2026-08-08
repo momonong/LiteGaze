@@ -1,0 +1,270 @@
+{
+  "audit_id": "general-collection-bank-v1-automated-screen",
+  "band_summary": {
+    "advanced": {
+      "mean_grade": 14.74758608058608,
+      "mean_probe_zipf": 3.58375,
+      "mean_type_token_ratio": 0.8214126984126984,
+      "mean_word_count": 127.75,
+      "mean_word_zipf": 5.379147045177046
+    },
+    "foundation": {
+      "mean_grade": 8.735396358615912,
+      "mean_probe_zipf": 4.2259375,
+      "mean_type_token_ratio": 0.7992618253610275,
+      "mean_word_count": 102.0,
+      "mean_word_zipf": 5.636384277464341
+    },
+    "standard": {
+      "mean_grade": 13.227596557302213,
+      "mean_probe_zipf": 3.88375,
+      "mean_type_token_ratio": 0.8110784887491989,
+      "mean_word_count": 120.5,
+      "mean_word_zipf": 5.419267657692503
+    }
+  },
+  "compute": {
+    "device": "cpu",
+    "gpu_used": false
+  },
+  "design": {
+    "bank_id": "lexigaze-general-reading-rehearsal-v1",
+    "bank_sha256": "8b26c05cca0f351bddc8cb987a5e7ee5d61f65d2a60cfd2e6153cecdf26fede1",
+    "bank_version": "2026-08-08.v2",
+    "form_balance": {
+      "A": {
+        "advanced": 2,
+        "foundation": 2,
+        "standard": 2
+      },
+      "B": {
+        "advanced": 2,
+        "foundation": 2,
+        "standard": 2
+      }
+    },
+    "ok": true,
+    "passage_count": 12,
+    "passage_family_count": 12,
+    "probe_count": 96,
+    "protocol_id": "lexigaze-generalizable-participant-collection-v1",
+    "protocol_sha256": "7c4b25bb306b68bb2a2ee5f34217a67aace0de6778fb3f1ed9b462741a0a26b9",
+    "protocol_version": "2026-08-08.v2"
+  },
+  "diversity": {
+    "domain_count": 9,
+    "genre_count": 5,
+    "maximum_overlap_pair": [],
+    "maximum_pairwise_five_gram_jaccard": 0.0
+  },
+  "form_absolute_differences": {
+    "mean_grade": 0.05287084607736148,
+    "mean_probe_zipf": 0.28687499999999977,
+    "mean_type_token_ratio": 0.02993417012367594,
+    "mean_word_count": 2.5,
+    "mean_word_zipf": 0.002481527356336777
+  },
+  "form_summary": {
+    "A": {
+      "mean_grade": 12.210424242462722,
+      "mean_probe_zipf": 4.04125,
+      "mean_type_token_ratio": 0.8255514225694797,
+      "mean_word_count": 118.0,
+      "mean_word_zipf": 5.477025563099795
+    },
+    "B": {
+      "mean_grade": 12.263295088540083,
+      "mean_probe_zipf": 3.754375,
+      "mean_type_token_ratio": 0.7956172524458037,
+      "mean_word_count": 115.5,
+      "mean_word_zipf": 5.479507090456131
+    }
+  },
+  "gates": {
+    "at_least_six_domains": true,
+    "at_least_three_genres": true,
+    "difficulty_mean_grade_strictly_increases": true,
+    "form_mean_grade_difference_le_1": true,
+    "form_mean_probe_zipf_difference_le_0_5": true,
+    "form_mean_word_count_difference_le_5": true,
+    "maximum_five_gram_jaccard_le_0_05": true
+  },
+  "human_review": {
+    "completed_independent_reviewers": 0,
+    "required_independent_reviewers": 2,
+    "still_required": true,
+    "warning": "Flesch-Kincaid, Zipf frequency, and n-gram screens are descriptive heuristics. They do not establish construct validity, fairness, naturalness, factual accuracy, or difficulty calibration."
+  },
+  "passages": [
+    {
+      "difficulty_band": "foundation",
+      "domain": "community",
+      "family_id": "community-resource-sharing",
+      "flesch_kincaid_grade_heuristic": 8.846,
+      "form_id": "A",
+      "genre": "expository",
+      "mean_probe_zipf": 4.5175,
+      "mean_word_zipf": 5.6113,
+      "passage_id": "foundation-a-seed-library",
+      "sentence_count": 6,
+      "type_token_ratio": 0.82,
+      "word_count": 100
+    },
+    {
+      "difficulty_band": "foundation",
+      "domain": "transport",
+      "family_id": "public-transport-information",
+      "flesch_kincaid_grade_heuristic": 9.89852899575672,
+      "form_id": "A",
+      "genre": "expository",
+      "mean_probe_zipf": 4.34875,
+      "mean_word_zipf": 5.654653465346534,
+      "passage_id": "foundation-b-bus-signs",
+      "sentence_count": 7,
+      "type_token_ratio": 0.8217821782178217,
+      "word_count": 101
+    },
+    {
+      "difficulty_band": "standard",
+      "domain": "environment",
+      "family_id": "urban-heat-mitigation",
+      "flesch_kincaid_grade_heuristic": 12.17667828106853,
+      "form_id": "A",
+      "genre": "argumentative_expository",
+      "mean_probe_zipf": 3.99625,
+      "mean_word_zipf": 5.3689430894308945,
+      "passage_id": "standard-a-urban-trees",
+      "sentence_count": 7,
+      "type_token_ratio": 0.8292682926829268,
+      "word_count": 123
+    },
+    {
+      "difficulty_band": "standard",
+      "domain": "ecology",
+      "family_id": "citizen-science-sampling",
+      "flesch_kincaid_grade_heuristic": 12.920184331797234,
+      "form_id": "A",
+      "genre": "methodological_expository",
+      "mean_probe_zipf": 3.95,
+      "mean_word_zipf": 5.555564516129032,
+      "passage_id": "standard-b-bird-counts",
+      "sentence_count": 7,
+      "type_token_ratio": 0.782258064516129,
+      "word_count": 124
+    },
+    {
+      "difficulty_band": "advanced",
+      "domain": "algorithmic_governance",
+      "family_id": "institutional-feedback-loops",
+      "flesch_kincaid_grade_heuristic": 15.073653846153842,
+      "form_id": "A",
+      "genre": "analytical",
+      "mean_probe_zipf": 3.8975,
+      "mean_word_zipf": 5.29223076923077,
+      "passage_id": "advanced-a-feedback-loops",
+      "sentence_count": 8,
+      "type_token_ratio": 0.8846153846153846,
+      "word_count": 130
+    },
+    {
+      "difficulty_band": "advanced",
+      "domain": "research_methods",
+      "family_id": "research-transparency",
+      "flesch_kincaid_grade_heuristic": 14.3475,
+      "form_id": "A",
+      "genre": "analytical",
+      "mean_probe_zipf": 3.5375,
+      "mean_word_zipf": 5.3794615384615385,
+      "passage_id": "advanced-b-preregistration",
+      "sentence_count": 8,
+      "type_token_ratio": 0.8153846153846154,
+      "word_count": 130
+    },
+    {
+      "difficulty_band": "foundation",
+      "domain": "community",
+      "family_id": "community-repair",
+      "flesch_kincaid_grade_heuristic": 7.563901098901102,
+      "form_id": "B",
+      "genre": "expository",
+      "mean_probe_zipf": 4.14,
+      "mean_word_zipf": 5.642884615384616,
+      "passage_id": "foundation-c-repair-cafe",
+      "sentence_count": 7,
+      "type_token_ratio": 0.8076923076923077,
+      "word_count": 104
+    },
+    {
+      "difficulty_band": "foundation",
+      "domain": "environment",
+      "family_id": "neighborhood-rain-gardens",
+      "flesch_kincaid_grade_heuristic": 8.633155339805828,
+      "form_id": "B",
+      "genre": "expository",
+      "mean_probe_zipf": 3.8975,
+      "mean_word_zipf": 5.636699029126214,
+      "passage_id": "foundation-d-rain-gardens",
+      "sentence_count": 6,
+      "type_token_ratio": 0.7475728155339806,
+      "word_count": 103
+    },
+    {
+      "difficulty_band": "standard",
+      "domain": "circular_economy",
+      "family_id": "reusable-container-systems",
+      "flesch_kincaid_grade_heuristic": 14.065960591133006,
+      "form_id": "B",
+      "genre": "analytical_expository",
+      "mean_probe_zipf": 3.765,
+      "mean_word_zipf": 5.455,
+      "passage_id": "standard-c-container-deposits",
+      "sentence_count": 7,
+      "type_token_ratio": 0.7672413793103449,
+      "word_count": 116
+    },
+    {
+      "difficulty_band": "standard",
+      "domain": "environmental_science",
+      "family_id": "coastal-monitoring",
+      "flesch_kincaid_grade_heuristic": 13.747563025210084,
+      "form_id": "B",
+      "genre": "methodological_expository",
+      "mean_probe_zipf": 3.82375,
+      "mean_word_zipf": 5.297563025210084,
+      "passage_id": "standard-d-coastal-sensors",
+      "sentence_count": 7,
+      "type_token_ratio": 0.865546218487395,
+      "word_count": 119
+    },
+    {
+      "difficulty_band": "advanced",
+      "domain": "algorithmic_governance",
+      "family_id": "deployment-aware-algorithm-audits",
+      "flesch_kincaid_grade_heuristic": 15.663,
+      "form_id": "B",
+      "genre": "analytical",
+      "mean_probe_zipf": 3.62625,
+      "mean_word_zipf": 5.43688,
+      "passage_id": "advanced-c-algorithm-audits",
+      "sentence_count": 6,
+      "type_token_ratio": 0.792,
+      "word_count": 125
+    },
+    {
+      "difficulty_band": "advanced",
+      "domain": "digital_humanities",
+      "family_id": "historical-map-reconstruction",
+      "flesch_kincaid_grade_heuristic": 13.906190476190478,
+      "form_id": "B",
+      "genre": "methodological_expository",
+      "mean_probe_zipf": 3.27375,
+      "mean_word_zipf": 5.408015873015873,
+      "passage_id": "advanced-d-historical-maps",
+      "sentence_count": 7,
+      "type_token_ratio": 0.7936507936507936,
+      "word_count": 126
+    }
+  ],
+  "schema_version": 1,
+  "status": "automated_screen_passed_human_review_pending"
+}
