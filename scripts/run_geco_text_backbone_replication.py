@@ -216,6 +216,22 @@ def make_decision(
     }
 
 
+def shared_evaluator_protocol(protocol: Mapping[str, Any]) -> dict[str, Any]:
+    """Bridge the frozen GECO gate to the shared evaluator's schema.
+
+    This is a key alias only: the object preserves the exact preregistered GECO
+    thresholds and does not introduce a feature, fold, or decision mutation.
+    """
+    return {
+        **protocol,
+        "interpretation": {
+            "incremental_gate": protocol["decision_gate"][
+                "challenger_increment_must_pass"
+            ]
+        },
+    }
+
+
 def evaluate(
     protocol: Mapping[str, Any],
     protocol_path: Path,
@@ -230,6 +246,7 @@ def evaluate(
         raise RuntimeError("GECO source changed after feature extraction")
     outcomes_by_backbone: dict[str, Any] = {}
     metric_tables: dict[str, dict[str, Mapping[str, pd.DataFrame]]] = {}
+    evaluator_protocol = shared_evaluator_protocol(protocol)
     for backbone_index, spec in enumerate(specs):
         if spec.key not in features_by_backbone:
             continue
@@ -242,7 +259,7 @@ def evaluate(
             summary, tables = benchmark.evaluate_backbone_outcome(
                 raw,
                 features_by_backbone[spec.key],
-                protocol,
+                evaluator_protocol,
                 outcome_name=outcome_name,
                 source_column=source_column,
                 seed_offset=1_000 * backbone_index + 100 * outcome_index,

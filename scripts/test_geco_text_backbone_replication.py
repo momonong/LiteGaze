@@ -84,6 +84,15 @@ class GecoTextBackboneReplicationTests(unittest.TestCase):
 
         self.assertEqual(decision["label"], "does_not_replicate_over_gpt2")
 
+    def test_shared_evaluator_bridge_preserves_exact_frozen_gate(self) -> None:
+        adapted = replication.shared_evaluator_protocol(self.protocol)
+
+        self.assertIs(
+            adapted["interpretation"]["incremental_gate"],
+            self.protocol["decision_gate"]["challenger_increment_must_pass"],
+        )
+        self.assertEqual(adapted["analysis"], self.protocol["analysis"])
+
     def test_strong_and_directional_tiers_are_distinct(self) -> None:
         outcome = {"incremental_gate_passed": True}
         strong = _comparison(
