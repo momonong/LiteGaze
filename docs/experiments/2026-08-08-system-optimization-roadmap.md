@@ -26,10 +26,19 @@ cross-dataset or real-capture confirmation.
 - The provenance-complete Ridge text artifact has fixed training calibration,
   feature-distribution bounds, source hashes, and training-only scaling, but it
   remains a candidate rather than the production default.
+- Personalized backbone matching v1 then tested GPT-2 versus Pythia with both
+  the target participant and complete evaluation texts held out. At the frozen
+  ten-text calibration budget, the uncertainty-aware selector gained only
+  `+0.000115` held-out Spearman, improved 5/19 participants, and was positive in
+  3/5 folds. It failed the breadth and fold-stability gates, so the conditional
+  SmolLM2/OLMo/Granite GPU extraction was correctly stopped.
+- The non-deployable two-model oracle gained only `+0.001445`, indicating that
+  discrete routing between these closely related surprisal features has little
+  available headroom even before calibration error.
 
 The next text-model investment should therefore be calibration and independent
-fusion evidence, not a larger language model or another public-corpus feature
-search.
+fusion evidence, plus a newly frozen comparison of materially different text
+signals. It should not be a larger candidate sweep selected on GECO outcomes.
 
 ### Fusion
 
