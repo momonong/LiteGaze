@@ -16,6 +16,10 @@
 - [x] 退出刪除 linked dataset、model 與整個 session payload，只留 tombstone。
 - [x] 離線單元／整合測試與 machine-readable readiness audit。
 - [x] protocol、consent、DMP、runbook、incident 與決策紀錄草案。
+- [x] outcome-blind independent capture-plan schema、aggregate-only audit 與
+  synthetic template。
+- [x] participant/session/article-family isolation，以及有條件的 device holdout
+  與 multi-view sync/extrinsics gate。
 
 ## B. 目前刻意保持未完成；完成前不可找朋友
 
@@ -32,3 +36,7 @@
 - [ ] 未參與開發者完成一次 moderated dress rehearsal 與 incident drill。
 
 若 B 還有任一項未勾選，正確狀態是「dry-run engineering ready、real pilot locked」，不是「差不多可以收案」。
+
+`independent_capture_plan.example.json` 通過 template audit 不會勾選 B 的
+holdout 項目。只有核准樣本數與文章後建立正式 plan、在收集前提交 freeze
+commit，並通過 `--target collection`，才算完成該項工程證據。

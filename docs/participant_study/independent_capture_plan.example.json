@@ -1,0 +1,248 @@
+{
+  "schema_version": 1,
+  "plan_id": "lexigaze-independent-capture-example",
+  "plan_version": "2026-08-08.v1",
+  "status": "template_only",
+  "created_at_utc": "2026-08-08T00:00:00Z",
+  "frozen_at_utc": null,
+  "protocol": {
+    "protocol_id": "lexigaze-reader-pilot",
+    "protocol_version": "2026-08-07.v1",
+    "protocol_commit": "70610713401db0603fa179a187180ae1d4211c85",
+    "protocol_digest_sha256": "696a236d5d75aa6822b93f57d3e8cd09f72715a20698eab48e7573268e03452f",
+    "consent_version": "2026-08-07.v1",
+    "consent_digest_sha256": "699a748eb6dca19c9f4abb0b3bdd543354717e7a0bc7866e50f0cd3468b6c999"
+  },
+  "requirements": {
+    "declared_target_participants": 3,
+    "minimum_bound_participants_per_role": {
+      "development": 1,
+      "validation": 1,
+      "confirmation": 1
+    },
+    "minimum_sessions_per_participant": 2,
+    "minimum_session_gap_hours": 24,
+    "required_condition_ids": [
+      "neutral",
+      "head-left",
+      "head-right",
+      "distance-near",
+      "distance-far"
+    ]
+  },
+  "claims": {
+    "participant_generalization": true,
+    "session_generalization": true,
+    "article_generalization": true,
+    "device_generalization": false,
+    "multiview_incremental_value": false,
+    "missing_view_policy": "not_applicable"
+  },
+  "participant_slots": [
+    {
+      "slot_id": "PSLOT-001",
+      "analysis_role": "development",
+      "binding_status": "unbound",
+      "binding_sha256": null
+    },
+    {
+      "slot_id": "PSLOT-002",
+      "analysis_role": "validation",
+      "binding_status": "unbound",
+      "binding_sha256": null
+    },
+    {
+      "slot_id": "PSLOT-003",
+      "analysis_role": "confirmation",
+      "binding_status": "unbound",
+      "binding_sha256": null
+    }
+  ],
+  "session_slots": [
+    {
+      "slot_id": "SSLOT-001-01",
+      "participant_slot_id": "PSLOT-001",
+      "analysis_role": "development",
+      "planned_offset_hours": 0,
+      "binding_status": "unbound",
+      "binding_sha256": null
+    },
+    {
+      "slot_id": "SSLOT-001-02",
+      "participant_slot_id": "PSLOT-001",
+      "analysis_role": "development",
+      "planned_offset_hours": 168,
+      "binding_status": "unbound",
+      "binding_sha256": null
+    },
+    {
+      "slot_id": "SSLOT-002-01",
+      "participant_slot_id": "PSLOT-002",
+      "analysis_role": "validation",
+      "planned_offset_hours": 0,
+      "binding_status": "unbound",
+      "binding_sha256": null
+    },
+    {
+      "slot_id": "SSLOT-002-02",
+      "participant_slot_id": "PSLOT-002",
+      "analysis_role": "validation",
+      "planned_offset_hours": 168,
+      "binding_status": "unbound",
+      "binding_sha256": null
+    },
+    {
+      "slot_id": "SSLOT-003-01",
+      "participant_slot_id": "PSLOT-003",
+      "analysis_role": "confirmation",
+      "planned_offset_hours": 0,
+      "binding_status": "unbound",
+      "binding_sha256": null
+    },
+    {
+      "slot_id": "SSLOT-003-02",
+      "participant_slot_id": "PSLOT-003",
+      "analysis_role": "confirmation",
+      "planned_offset_hours": 168,
+      "binding_status": "unbound",
+      "binding_sha256": null
+    }
+  ],
+  "device_slots": [
+    {
+      "slot_id": "DSLOT-001",
+      "analysis_role": "shared",
+      "device_role": "laptop-primary",
+      "device_class": "desktop",
+      "binding_status": "unbound",
+      "binding_sha256": null
+    }
+  ],
+  "article_slots": [
+    {
+      "slot_id": "ASLOT-001",
+      "family_slot_id": "AFAMILY-001",
+      "analysis_role": "development",
+      "content_sha256": null,
+      "authorization_id": null
+    },
+    {
+      "slot_id": "ASLOT-002",
+      "family_slot_id": "AFAMILY-002",
+      "analysis_role": "validation",
+      "content_sha256": null,
+      "authorization_id": null
+    },
+    {
+      "slot_id": "ASLOT-003",
+      "family_slot_id": "AFAMILY-003",
+      "analysis_role": "confirmation",
+      "content_sha256": null,
+      "authorization_id": null
+    }
+  ],
+  "capture_run_slots": [
+    {
+      "slot_id": "CRUN-001-01",
+      "participant_slot_id": "PSLOT-001",
+      "session_slot_id": "SSLOT-001-01",
+      "analysis_role": "development",
+      "article_slot_ids": ["ASLOT-001"],
+      "condition_ids": ["neutral", "head-left", "head-right", "distance-near", "distance-far"],
+      "source_slots": [
+        {
+          "slot_id": "SRC-001-01-01",
+          "device_slot_id": "DSLOT-001",
+          "source_role": "laptop-primary",
+          "required": true
+        }
+      ],
+      "synchronization": null
+    },
+    {
+      "slot_id": "CRUN-001-02",
+      "participant_slot_id": "PSLOT-001",
+      "session_slot_id": "SSLOT-001-02",
+      "analysis_role": "development",
+      "article_slot_ids": ["ASLOT-001"],
+      "condition_ids": ["neutral", "head-left", "head-right", "distance-near", "distance-far"],
+      "source_slots": [
+        {
+          "slot_id": "SRC-001-02-01",
+          "device_slot_id": "DSLOT-001",
+          "source_role": "laptop-primary",
+          "required": true
+        }
+      ],
+      "synchronization": null
+    },
+    {
+      "slot_id": "CRUN-002-01",
+      "participant_slot_id": "PSLOT-002",
+      "session_slot_id": "SSLOT-002-01",
+      "analysis_role": "validation",
+      "article_slot_ids": ["ASLOT-002"],
+      "condition_ids": ["neutral", "head-left", "head-right", "distance-near", "distance-far"],
+      "source_slots": [
+        {
+          "slot_id": "SRC-002-01-01",
+          "device_slot_id": "DSLOT-001",
+          "source_role": "laptop-primary",
+          "required": true
+        }
+      ],
+      "synchronization": null
+    },
+    {
+      "slot_id": "CRUN-002-02",
+      "participant_slot_id": "PSLOT-002",
+      "session_slot_id": "SSLOT-002-02",
+      "analysis_role": "validation",
+      "article_slot_ids": ["ASLOT-002"],
+      "condition_ids": ["neutral", "head-left", "head-right", "distance-near", "distance-far"],
+      "source_slots": [
+        {
+          "slot_id": "SRC-002-02-01",
+          "device_slot_id": "DSLOT-001",
+          "source_role": "laptop-primary",
+          "required": true
+        }
+      ],
+      "synchronization": null
+    },
+    {
+      "slot_id": "CRUN-003-01",
+      "participant_slot_id": "PSLOT-003",
+      "session_slot_id": "SSLOT-003-01",
+      "analysis_role": "confirmation",
+      "article_slot_ids": ["ASLOT-003"],
+      "condition_ids": ["neutral", "head-left", "head-right", "distance-near", "distance-far"],
+      "source_slots": [
+        {
+          "slot_id": "SRC-003-01-01",
+          "device_slot_id": "DSLOT-001",
+          "source_role": "laptop-primary",
+          "required": true
+        }
+      ],
+      "synchronization": null
+    },
+    {
+      "slot_id": "CRUN-003-02",
+      "participant_slot_id": "PSLOT-003",
+      "session_slot_id": "SSLOT-003-02",
+      "analysis_role": "confirmation",
+      "article_slot_ids": ["ASLOT-003"],
+      "condition_ids": ["neutral", "head-left", "head-right", "distance-near", "distance-far"],
+      "source_slots": [
+        {
+          "slot_id": "SRC-003-02-01",
+          "device_slot_id": "DSLOT-001",
+          "source_role": "laptop-primary",
+          "required": true
+        }
+      ],
+      "synchronization": null
+    }
+  ]
+}

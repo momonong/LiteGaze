@@ -31,7 +31,9 @@ REQUIRED_FILES = (
     "docs/participant_study/RESEARCHER_RUNBOOK.md",
     "docs/participant_study/DATA_MANAGEMENT_PLAN.md",
     "docs/participant_study/INCIDENT_RESPONSE.md",
+    "docs/participant_study/INDEPENDENT_CAPTURE_PLAN.md",
     "docs/participant_study/READINESS_CHECKLIST.md",
+    "docs/participant_study/independent_capture_plan.example.json",
 )
 
 

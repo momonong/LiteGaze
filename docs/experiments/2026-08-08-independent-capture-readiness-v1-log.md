@@ -62,10 +62,59 @@ a separately frozen v2.
 Protocol SHA-256:
 `2e1a88b4de8fd6af1c11dbeb5b1eb5b3213c534ecb2142086adc24762fbb3c69`.
 
-## Pending
+## 2026-08-08 — implementation result
 
-1. Implement the strict plan schema and aggregate-only audit.
-2. Add valid, leakage, unexpected-field, device-holdout, and multi-view tests.
-3. Add a synthetic template and researcher documentation.
-4. Run focused and repository-wide CPU-only gates.
-5. Record whether v1 passed without weakening its checks.
+V1 passed every frozen engineering gate without changing the protocol. The new
+contract provides three intentionally different targets:
+
+- `template` validates schema and isolation but explicitly warns that it is not
+  collection authorization;
+- `collection` requires a plan frozen before collection; and
+- `evidence` counts only bound, non-withdrawn participant/session units and
+  requires active device, article, and optional multi-view calibration assets
+  to be hashed and authorized.
+
+The exact allow-list rejects unknown or observed-outcome fields. Participant,
+session, device, article-family, capture-run, and sensor-source references are
+checked for role consistency. Device generalization rejects shared physical
+devices. Every multi-view run requires distinct source roles, a timestamp
+tolerance, clock strategy, relative-camera calibration slot, calibration hash
+at evidence time, and a frozen missing-view policy.
+
+Bindings are isolated digests rather than participant/session IDs. Unbound
+slots do not count, while withdrawal requires clearing the digest and
+propagating withdrawal to repeated sessions. Audit results contain aggregate
+counts and codes only.
+
+## 2026-08-08 — verification result
+
+- Focused suite: `16/16` tests passed.
+- Schema type fuzz: `470` mutations, `0` uncaught exceptions. The first pass
+  found eight unhashable-role crashes; implementation fixes removed all eight
+  without weakening a gate.
+- Template target: `template_valid`; its collection target correctly returned
+  `not_ready` with `PLAN_NOT_FROZEN`.
+- Repository offline gate: `140/140` tests across 19 explicit targets, zero
+  failures/errors/skips.
+- Safeguards: zero network attempts, provider credentials cleared, process and
+  network probes blocked, Torch not imported, `CUDA_VISIBLE_DEVICES=-1`, and no
+  tracked artifact mutation.
+- Participant audit: `dry_run_ready=true`, `pilot_ready=false`, with all 20
+  external/governance activation requirements still visible.
+- Ruff, Python byte-compilation, JSON parsing, and `git diff --check` passed.
+- Production gaze SHA-256 remained
+  `ab6ecdd4db6c7ebfbf1a55c51cc123ba487dc4a04f8c37ef4574ef5d60229f1b`.
+
+Result artifact:
+`results/2026-08-08-independent-capture-readiness-v1.json`.
+
+## Decision
+
+Status: `passed` for engineering readiness only. Real participant collection,
+dataset export, model effectiveness, and production promotion remain false.
+The example keeps its synthetic three-slot minimums and `template_only` status,
+so it cannot be mistaken for the final sample-size or split decision.
+
+The next independent model experiment may evaluate Columbia Gaze, but it must
+use a new branch and freeze eye-crop, label-convention, coordinate-mapping,
+baseline, and resource rules before inspecting a LexiGaze model outcome.
