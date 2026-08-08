@@ -42,6 +42,7 @@ TEST_TARGETS = (
     "scripts.test_cognitive_inspector",
     "scripts.test_text_artifact",
     "scripts.test_text_model_generalization",
+    "scripts.test_personalized_backbone_matching",
     "scripts.test_provenance_fusion",
     "scripts.test_quality_aware_fusion_v2",
     "scripts.test_subject_holdout_gaze_diversity",
