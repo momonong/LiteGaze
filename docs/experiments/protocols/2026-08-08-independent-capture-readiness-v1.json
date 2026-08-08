@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "protocol_id": "independent-capture-readiness-v1",
+  "status": "frozen_before_implementation",
+  "frozen_on": "2026-08-08",
+  "branch": "feat/independent-capture-readiness-v1",
+  "objective": "Make a future participant, session, device, article, and optional multi-view validation plan mechanically auditable before any real collection or outcome inspection.",
+  "scope": {
+    "real_participant_collection": false,
+    "real_dataset_export": false,
+    "model_training": false,
+    "gpu_allowed": false,
+    "network_allowed_during_validation": false,
+    "production_defaults_may_change": false,
+    "canonical_pilot_status_may_change": false
+  },
+  "threats": [
+    "the same participant appearing in development and confirmation",
+    "sessions or paired sensor artifacts from one physical capture crossing analysis roles",
+    "the same article or near-duplicate article family crossing analysis roles",
+    "claiming device generalization while reusing one physical device across roles",
+    "claiming multi-view benefit without paired timestamps, declared synchronization tolerance, relative-camera calibration, or missing-view behavior",
+    "adding observed answers, scores, gaze errors, predictions, or reading outcomes to the planning artifact",
+    "echoing pseudonymous identifiers in aggregate audit output",
+    "treating engineering readiness as authorization to recruit participants"
+  ],
+  "required_contract": {
+    "analysis_roles": [
+      "development",
+      "validation",
+      "confirmation"
+    ],
+    "primary_capture_unit": "participant-session-device-capture-run",
+    "participant_role_disjoint": true,
+    "session_role_disjoint": true,
+    "capture_run_role_disjoint": true,
+    "article_family_role_disjoint": true,
+    "device_role_disjoint_when_claimed": true,
+    "multi_view_requires": [
+      "at least two distinct source roles per capture run",
+      "declared maximum timestamp offset",
+      "relative-camera calibration slot",
+      "frozen missing-view policy"
+    ],
+    "outcome_values_allowed": false,
+    "direct_identifiers_allowed": false,
+    "unknown_schema_fields_allowed": false,
+    "audit_output": "aggregate_only"
+  },
+  "implementation": {
+    "module": "core/participant_study/independent_capture.py",
+    "cli": "scripts/audit_independent_capture_plan.py",
+    "tests": "scripts/test_independent_capture_plan.py",
+    "template": "docs/participant_study/independent_capture_plan.example.json",
+    "documentation": "docs/participant_study/INDEPENDENT_CAPTURE_PLAN.md"
+  },
+  "preregistered_gates": {
+    "strict_schema_rejects_unknown_or_outcome_fields": true,
+    "valid_template_passes_template_target": true,
+    "unfrozen_template_fails_collection_target": true,
+    "valid_frozen_plan_passes_collection_target": true,
+    "participant_cross_role_leakage_is_rejected": true,
+    "session_or_capture_reference_mismatch_is_rejected": true,
+    "article_family_cross_role_leakage_is_rejected": true,
+    "device_reuse_is_rejected_when_device_holdout_is_claimed": true,
+    "multiview_without_sync_or_extrinsics_is_rejected": true,
+    "withdrawn_or_unbound_slots_do_not_count_as_collected_evidence": true,
+    "audit_is_deterministic_and_identifier_free": true,
+    "module_imports_without_torch": true,
+    "focused_tests_pass_cpu_only": true,
+    "offline_repository_gate_passes": true,
+    "pilot_remains_locked": true,
+    "production_hash_unchanged": true
+  },
+  "decision_rule": {
+    "pass": "Retain the tooling as an engineering prerequisite. It does not authorize recruitment, export a dataset, or establish model effectiveness.",
+    "fail": "Preserve the failure and keep participant collection and dataset export locked until a separately reviewed v2 contract passes."
+  },
+  "external_dataset_screen": {
+    "columbia_gaze": {
+      "availability": "direct_noncommercial_download",
+      "approximate_download_size": "2.38 GB",
+      "use_boundary": "Potential independent stress test only after a separate frozen label-convention and preprocessing protocol."
+    },
+    "eth_xgaze": {
+      "availability": "request_with_institutional_email_and_terms",
+      "smallest_face_patch_package": "approximately 130 GB",
+      "use_boundary": "Do not request or download automatically."
+    },
+    "gaze_capture": {
+      "availability": "registration_required",
+      "scale": "approximately 2.5 million frames",
+      "use_boundary": "Do not download before a separate storage, license, and preprocessing review."
+    },
+    "eyediap": {
+      "availability": "provider access process",
+      "use_boundary": "Do not treat as immediately available."
+    }
+  },
+  "primary_sources": [
+    "https://www.cs.columbia.edu/CAVE/databases/columbia_gaze/",
+    "https://ait.ethz.ch/xgaze",
+    "https://xgaze.ait.ethz.ch/",
+    "https://gazecapture.csail.mit.edu/",
+    "https://www.idiap.ch/en/scientific-research/data/eyediap",
+    "https://openaccess.thecvf.com/content/WACV2024/html/Hisadome_Rotation-Constrained_Cross-View_Feature_Fusion_for_Multi-View_Appearance-Based_Gaze_Estimation_WACV_2024_paper.html"
+  ]
+}
