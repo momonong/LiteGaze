@@ -65,6 +65,15 @@ repair; the successful run used that clean commit.
 - No prepared GECO surprisal, attention, or cognitive-mass feature was used.
 - No QA data or OneStop data was accessed.
 
+## Final validation
+
+- Text-backbone, GECO replication, and runtime source-policy tests: 24/24
+  passed on the CPU validation path.
+- Repository offline quality gate: 151/151 passed with zero failures, errors,
+  skips, or unexpected successes.
+- The offline gate imported no Torch, blocked network and child-process access,
+  changed no tracked artifact scope, and left GPU memory unchanged at 742 MiB.
+
 Machine-readable results are in
 [`results/2026-08-08-pythia-geco-l2-replication-v2-run-001.json`](results/2026-08-08-pythia-geco-l2-replication-v2-run-001.json).
 

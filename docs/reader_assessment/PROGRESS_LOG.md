@@ -24,6 +24,7 @@
 - 第一次 evaluation 因共用 evaluator 與 GECO protocol 的 gate JSON key 不同而在產生結果前停止；只加入 exact-object schema alias 與 regression test，沒有改 data/features/folds/alpha/outcomes/thresholds，clean commit `f780bff` 完成正式 run。
 - ADR 0005 決定保留 GPT-2 production backbone；Pythia 僅作 research comparator，不再開 OneStop 或增加 public corpus 尋找 favorable result。下一個有效證據必須來自 independent v3 word-review outcome。
 - Runtime source policy 同步移除 `uer/gpt2-chinese-cluecorpussmall`；中文若誤選 GPT-2，會在任何下載／載入前 fail-closed，英文 GPT-2 與既有中文 BERT 預設不變，並明確停用 remote code。
+- Final validation：文字 backbone／GECO／source-policy 專項測試 24/24；repository offline gate 151/151，0 failure/error/skip，Torch 未 import、network/process probes 均被阻擋、artifact 與 GPU memory 皆無變動。
 
 ## 2026-08-08 — branch `research/reader-assessment-validity-v3`
 
