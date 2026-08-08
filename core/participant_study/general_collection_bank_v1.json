@@ -1,0 +1,262 @@
+{
+  "schema_version": 1,
+  "bank_id": "lexigaze-general-reading-rehearsal-v1",
+  "bank_version": "2026-08-08.v1",
+  "status": "rehearsal_only_pending_two_independent_human_reviews",
+  "dataset_role": "workflow_quality_and_development_exploration_only",
+  "language": "en",
+  "authorship": {
+    "type": "researcher_authored",
+    "legacy_passages_migrated": 6,
+    "new_passages_added": 6,
+    "copyrighted_benchmark_text_used": false,
+    "question_answer_benchmark_text_used": false
+  },
+  "review": {
+    "required_independent_reviewers": 2,
+    "completed_independent_reviewers": 0,
+    "review_dimensions": [
+      "factual_coherence",
+      "naturalness",
+      "difficulty_band",
+      "probe_eligibility",
+      "cultural_and_accessibility_risk"
+    ]
+  },
+  "forms": {
+    "A": [
+      "foundation-a-seed-library",
+      "foundation-b-bus-signs",
+      "standard-a-urban-trees",
+      "standard-b-bird-counts",
+      "advanced-a-feedback-loops",
+      "advanced-b-preregistration"
+    ],
+    "B": [
+      "foundation-c-repair-cafe",
+      "foundation-d-rain-gardens",
+      "standard-c-container-deposits",
+      "standard-d-coastal-sensors",
+      "advanced-c-algorithm-audits",
+      "advanced-d-historical-maps"
+    ]
+  },
+  "passages": [
+    {
+      "passage_id": "foundation-a-seed-library",
+      "family_id": "community-resource-sharing",
+      "difficulty_band": "foundation",
+      "genre": "expository",
+      "domain": "community",
+      "text": "A neighborhood library started a seed exchange beside its usual book shelves. Residents may take packets of vegetable or flower seeds at no cost. In return, they are encouraged to save seeds from healthy plants and bring some back after the growing season. The library does not promise that every seed will grow, so volunteers label packets with the year, plant type, and any useful growing notes. The project has become more than a way to share supplies. Monthly meetings let new gardeners compare results with experienced neighbors and learn which plants cope well with the area's soil and weather.",
+      "probes": [
+        {"probe_id": "p01", "surface": "neighborhood", "stratum": "long_mid_frequency"},
+        {"probe_id": "p02", "surface": "exchange", "stratum": "mid_frequency"},
+        {"probe_id": "p03", "surface": "encouraged", "stratum": "long_mid_frequency"},
+        {"probe_id": "p04", "surface": "healthy", "stratum": "high_frequency_control"},
+        {"probe_id": "p05", "surface": "promise", "stratum": "high_frequency_control"},
+        {"probe_id": "p06", "surface": "volunteers", "stratum": "long_mid_frequency"},
+        {"probe_id": "p07", "surface": "experienced", "stratum": "long_mid_frequency"},
+        {"probe_id": "p08", "surface": "cope", "stratum": "short_low_frequency"}
+      ]
+    },
+    {
+      "passage_id": "foundation-b-bus-signs",
+      "family_id": "public-transport-information",
+      "difficulty_band": "foundation",
+      "genre": "expository",
+      "domain": "transport",
+      "text": "The city placed electronic arrival signs at several busy bus stops. The signs use location data from buses to estimate how many minutes passengers must wait. They are especially useful for people who do not own smartphones or who have limited mobile data. During the first month, however, riders noticed that the times were sometimes wrong when traffic was heavy. The transport office responded by showing a wider time range whenever the prediction was uncertain. It also added a symbol when a delay came from an accident or road closure. Riders said the revised signs were less precise, but more trustworthy.",
+      "probes": [
+        {"probe_id": "p01", "surface": "electronic", "stratum": "long_mid_frequency"},
+        {"probe_id": "p02", "surface": "estimate", "stratum": "mid_frequency"},
+        {"probe_id": "p03", "surface": "passengers", "stratum": "long_mid_frequency"},
+        {"probe_id": "p04", "surface": "limited", "stratum": "high_frequency_control"},
+        {"probe_id": "p05", "surface": "traffic", "stratum": "high_frequency_control"},
+        {"probe_id": "p06", "surface": "wider", "stratum": "high_frequency_control"},
+        {"probe_id": "p07", "surface": "uncertain", "stratum": "long_mid_frequency"},
+        {"probe_id": "p08", "surface": "trustworthy", "stratum": "long_low_frequency"}
+      ]
+    },
+    {
+      "passage_id": "standard-a-urban-trees",
+      "family_id": "urban-heat-mitigation",
+      "difficulty_band": "standard",
+      "genre": "argumentative_expository",
+      "domain": "environment",
+      "text": "Cities often promote tree planting as a simple response to extreme heat, but the benefits depend on where and how trees are maintained. A mature canopy can shade pavement and cool nearby air through evaporation. Yet young trees provide little shade, require water, and may die before reaching maturity if maintenance budgets are unstable. Placement also matters. Planting only in parks can improve pleasant areas that are already cool while leaving exposed bus stops and dense residential streets unchanged. Some cities therefore combine temperature maps with information about pedestrian activity and household vulnerability. This approach does not make planting less important; it treats limited trees, water, and labor as resources that should be directed toward locations where they can reduce risk most effectively.",
+      "probes": [
+        {"probe_id": "p01", "surface": "extreme", "stratum": "mid_frequency"},
+        {"probe_id": "p02", "surface": "maintained", "stratum": "long_mid_frequency"},
+        {"probe_id": "p03", "surface": "canopy", "stratum": "short_low_frequency"},
+        {"probe_id": "p04", "surface": "evaporation", "stratum": "long_low_frequency"},
+        {"probe_id": "p05", "surface": "maturity", "stratum": "mid_low_frequency"},
+        {"probe_id": "p06", "surface": "residential", "stratum": "long_mid_frequency"},
+        {"probe_id": "p07", "surface": "vulnerability", "stratum": "long_low_frequency"},
+        {"probe_id": "p08", "surface": "effectively", "stratum": "long_mid_frequency"}
+      ]
+    },
+    {
+      "passage_id": "standard-b-bird-counts",
+      "family_id": "citizen-science-sampling",
+      "difficulty_band": "standard",
+      "genre": "methodological_expository",
+      "domain": "ecology",
+      "text": "A volunteer bird count can cover far more territory than a small research team, but a large sample is not automatically a representative one. Volunteers tend to visit convenient parks, and experienced observers identify more species than beginners. If researchers simply total every report, differences in access and skill may look like ecological change. Modern projects address this problem by recording how long each observer searched, how far they traveled, and whether they reported every species they could identify. Statistical models can then account for uneven effort. The corrections are imperfect, yet they make the limits of the data visible. Citizen science is most valuable not when volunteer observations are treated as error-free, but when the project design anticipates how those observations were produced.",
+      "probes": [
+        {"probe_id": "p01", "surface": "territory", "stratum": "mid_frequency"},
+        {"probe_id": "p02", "surface": "representative", "stratum": "long_mid_frequency"},
+        {"probe_id": "p03", "surface": "convenient", "stratum": "long_mid_frequency"},
+        {"probe_id": "p04", "surface": "ecological", "stratum": "long_low_frequency"},
+        {"probe_id": "p05", "surface": "recording", "stratum": "high_frequency_control"},
+        {"probe_id": "p06", "surface": "uneven", "stratum": "mid_low_frequency"},
+        {"probe_id": "p07", "surface": "imperfect", "stratum": "mid_low_frequency"},
+        {"probe_id": "p08", "surface": "anticipates", "stratum": "long_low_frequency"}
+      ]
+    },
+    {
+      "passage_id": "advanced-a-feedback-loops",
+      "family_id": "institutional-feedback-loops",
+      "difficulty_band": "advanced",
+      "genre": "analytical",
+      "domain": "algorithmic_governance",
+      "text": "Predictive systems used to allocate inspections or patrols are often evaluated by asking whether their forecasts match later records. That comparison can be circular. Suppose an algorithm sends more inspectors to neighborhoods with historically high violation counts. Increased inspection will reveal more violations there, even if the underlying rate is identical elsewhere. When those newly observed cases become training data, the system may interpret its own allocation decision as confirmation of the original forecast. This feedback loop does not prove that every geographic prediction is biased, but it changes what counts as persuasive validation. Researchers need outcomes collected independently of the model's recommendations, randomized audits, or explicit estimates of detection probability. Otherwise, a model can appear increasingly accurate while merely becoming better at predicting where institutions will choose to look.",
+      "probes": [
+        {"probe_id": "p01", "surface": "allocate", "stratum": "mid_low_frequency"},
+        {"probe_id": "p02", "surface": "circular", "stratum": "mid_low_frequency"},
+        {"probe_id": "p03", "surface": "underlying", "stratum": "long_mid_frequency"},
+        {"probe_id": "p04", "surface": "confirmation", "stratum": "long_mid_frequency"},
+        {"probe_id": "p05", "surface": "validation", "stratum": "long_mid_frequency"},
+        {"probe_id": "p06", "surface": "randomized", "stratum": "long_low_frequency"},
+        {"probe_id": "p07", "surface": "detection", "stratum": "mid_frequency"},
+        {"probe_id": "p08", "surface": "institutions", "stratum": "long_mid_frequency"}
+      ]
+    },
+    {
+      "passage_id": "advanced-b-preregistration",
+      "family_id": "research-transparency",
+      "difficulty_band": "advanced",
+      "genre": "analytical",
+      "domain": "research_methods",
+      "text": "Preregistration asks researchers to record hypotheses and analysis plans before seeing the relevant outcomes. Its purpose is not to forbid exploration. Rather, it preserves a distinction between tests that were planned in advance and patterns noticed after many analytical choices. Without that distinction, a surprising association can be presented as though it had been predicted all along, making ordinary chance variation look more compelling. Preregistration does not repair weak measurements, biased samples, or careless implementation, and an inflexible plan can ignore legitimate complications. For this reason, transparent deviations are often more informative than mechanical obedience. A useful record states what changed, when it changed, and why. The central benefit is therefore not purity of procedure, but a clearer audit trail for judging which conclusions are confirmatory and which remain exploratory.",
+      "probes": [
+        {"probe_id": "p01", "surface": "hypotheses", "stratum": "long_low_frequency"},
+        {"probe_id": "p02", "surface": "exploration", "stratum": "long_mid_frequency"},
+        {"probe_id": "p03", "surface": "analytical", "stratum": "long_low_frequency"},
+        {"probe_id": "p04", "surface": "association", "stratum": "long_mid_frequency"},
+        {"probe_id": "p05", "surface": "compelling", "stratum": "long_mid_frequency"},
+        {"probe_id": "p06", "surface": "inflexible", "stratum": "long_low_frequency"},
+        {"probe_id": "p07", "surface": "deviations", "stratum": "long_low_frequency"},
+        {"probe_id": "p08", "surface": "confirmatory", "stratum": "long_low_frequency"}
+      ]
+    },
+    {
+      "passage_id": "foundation-c-repair-cafe",
+      "family_id": "community-repair",
+      "difficulty_band": "foundation",
+      "genre": "expository",
+      "domain": "community",
+      "text": "A repair cafe opens in the town hall twice each month. People bring lamps, fans, toys, and other small objects that no longer work. Volunteers first help each visitor inspect the object and describe the problem. They may tighten a loose wire, clean a blocked part, or explain which replacement piece is needed. The service is free, although visitors pay for any new parts they choose to buy. Not every object can be fixed safely, and volunteers refuse repairs that require special licenses. Even so, the cafe keeps useful items out of the trash and gives visitors practical knowledge they can use at home.",
+      "probes": [
+        {"probe_id": "p01", "surface": "repair", "stratum": "high_frequency_control"},
+        {"probe_id": "p02", "surface": "objects", "stratum": "high_frequency_control"},
+        {"probe_id": "p03", "surface": "inspect", "stratum": "mid_frequency"},
+        {"probe_id": "p04", "surface": "tighten", "stratum": "mid_low_frequency"},
+        {"probe_id": "p05", "surface": "blocked", "stratum": "mid_frequency"},
+        {"probe_id": "p06", "surface": "replacement", "stratum": "long_mid_frequency"},
+        {"probe_id": "p07", "surface": "licenses", "stratum": "mid_low_frequency"},
+        {"probe_id": "p08", "surface": "practical", "stratum": "mid_frequency"}
+      ]
+    },
+    {
+      "passage_id": "foundation-d-rain-gardens",
+      "family_id": "neighborhood-rain-gardens",
+      "difficulty_band": "foundation",
+      "genre": "expository",
+      "domain": "environment",
+      "text": "After heavy rain, water used to collect beside the school entrance and flow across the sidewalk. The school replaced a patch of grass with a shallow rain garden. Its soil and stones slow the water, while plants help it soak into the ground. A small sign explains that the garden may look dry on sunny days and temporarily fill during a storm. Students measure the water level and remove litter, but they do not add fertilizer because extra nutrients can wash into nearby streams. The garden has not stopped every puddle, yet it has reduced flooding and created a small habitat for insects.",
+      "probes": [
+        {"probe_id": "p01", "surface": "entrance", "stratum": "mid_frequency"},
+        {"probe_id": "p02", "surface": "shallow", "stratum": "mid_low_frequency"},
+        {"probe_id": "p03", "surface": "soak", "stratum": "short_low_frequency"},
+        {"probe_id": "p04", "surface": "temporarily", "stratum": "long_mid_frequency"},
+        {"probe_id": "p05", "surface": "fertilizer", "stratum": "long_low_frequency"},
+        {"probe_id": "p06", "surface": "nutrients", "stratum": "mid_low_frequency"},
+        {"probe_id": "p07", "surface": "flooding", "stratum": "mid_frequency"},
+        {"probe_id": "p08", "surface": "habitat", "stratum": "mid_frequency"}
+      ]
+    },
+    {
+      "passage_id": "standard-c-container-deposits",
+      "family_id": "reusable-container-systems",
+      "difficulty_band": "standard",
+      "genre": "analytical_expository",
+      "domain": "circular_economy",
+      "text": "Several restaurants in one district introduced a shared system for reusable food containers. Customers pay a small refundable deposit and may return the container to any participating shop. A central service collects, washes, inspects, and redistributes the containers. Sharing one standard design makes returns convenient, but it also requires the restaurants to coordinate storage and delivery schedules. The environmental benefit depends on how many times each container is reused and how far collection trucks travel. If many customers keep the containers or return them with heavy contamination, the system can consume more material and energy than expected. The project therefore reports return rates and transport distances instead of counting every reusable container as an automatic success.",
+      "probes": [
+        {"probe_id": "p01", "surface": "refundable", "stratum": "long_low_frequency"},
+        {"probe_id": "p02", "surface": "participating", "stratum": "long_mid_frequency"},
+        {"probe_id": "p03", "surface": "redistributes", "stratum": "long_low_frequency"},
+        {"probe_id": "p04", "surface": "coordinate", "stratum": "mid_frequency"},
+        {"probe_id": "p05", "surface": "environmental", "stratum": "long_mid_frequency"},
+        {"probe_id": "p06", "surface": "contamination", "stratum": "long_low_frequency"},
+        {"probe_id": "p07", "surface": "transport", "stratum": "mid_frequency"},
+        {"probe_id": "p08", "surface": "automatic", "stratum": "mid_frequency"}
+      ]
+    },
+    {
+      "passage_id": "standard-d-coastal-sensors",
+      "family_id": "coastal-monitoring",
+      "difficulty_band": "standard",
+      "genre": "methodological_expository",
+      "domain": "environmental_science",
+      "text": "Researchers placed inexpensive sensors along an estuary to measure temperature and salinity every fifteen minutes. Frequent measurements can reveal short events that monthly sampling misses, such as a sudden pulse of fresh water after a storm. Low-cost instruments, however, may drift as their batteries weaken or as algae grow across the sensing surface. The team therefore keeps several reference instruments in the laboratory and rotates field sensors back for comparison. Volunteers also photograph each site so unusual readings can be checked against visible changes. The network is valuable because it provides broad temporal coverage, not because every measurement is equally reliable. Calibration records, missing intervals, and maintenance visits remain part of the dataset rather than being hidden during cleaning.",
+      "probes": [
+        {"probe_id": "p01", "surface": "estuary", "stratum": "mid_low_frequency"},
+        {"probe_id": "p02", "surface": "salinity", "stratum": "mid_low_frequency"},
+        {"probe_id": "p03", "surface": "pulse", "stratum": "short_low_frequency"},
+        {"probe_id": "p04", "surface": "laboratory", "stratum": "long_mid_frequency"},
+        {"probe_id": "p05", "surface": "reference", "stratum": "mid_frequency"},
+        {"probe_id": "p06", "surface": "rotates", "stratum": "mid_low_frequency"},
+        {"probe_id": "p07", "surface": "temporal", "stratum": "mid_low_frequency"},
+        {"probe_id": "p08", "surface": "maintenance", "stratum": "long_mid_frequency"}
+      ]
+    },
+    {
+      "passage_id": "advanced-c-algorithm-audits",
+      "family_id": "deployment-aware-algorithm-audits",
+      "difficulty_band": "advanced",
+      "genre": "analytical",
+      "domain": "algorithmic_governance",
+      "text": "An algorithmic audit can produce reassuring results while missing the conditions that matter after deployment. A benchmark may contain balanced examples, complete records, and stable labels, whereas the operating system encounters missing fields, changing populations, and decisions that alter future data. Aggregate accuracy can also conceal a failure concentrated in a small subgroup or a costly class of errors. A deployment-aware audit therefore traces the full decision pipeline: how cases enter the system, which proxy variables are available, when people can override a recommendation, and what happens when the model abstains. It also separates retrospective fit from prospective monitoring. The goal is not to demand perfect prediction, but to determine whether evidence remains informative under the institutional process in which the model will actually operate.",
+      "probes": [
+        {"probe_id": "p01", "surface": "reassuring", "stratum": "long_low_frequency"},
+        {"probe_id": "p02", "surface": "deployment", "stratum": "long_mid_frequency"},
+        {"probe_id": "p03", "surface": "benchmark", "stratum": "mid_frequency"},
+        {"probe_id": "p04", "surface": "aggregate", "stratum": "mid_frequency"},
+        {"probe_id": "p05", "surface": "subgroup", "stratum": "mid_low_frequency"},
+        {"probe_id": "p06", "surface": "proxy", "stratum": "short_low_frequency"},
+        {"probe_id": "p07", "surface": "retrospective", "stratum": "long_low_frequency"},
+        {"probe_id": "p08", "surface": "prospective", "stratum": "long_low_frequency"}
+      ]
+    },
+    {
+      "passage_id": "advanced-d-historical-maps",
+      "family_id": "historical-map-reconstruction",
+      "difficulty_band": "advanced",
+      "genre": "methodological_expository",
+      "domain": "digital_humanities",
+      "text": "Digitized historical maps appear precise because modern software displays them as sharp, movable images. Their coordinates can nevertheless be uncertain. A paper map may stretch with humidity, a surveyor may simplify a winding boundary, and the original projection may distort distance differently across the page. To compare an old map with current geography, researchers select landmarks that still exist and use them as control points for georeferencing. Adding more points does not automatically improve the result if several refer to the same local area or if their identities are doubtful. Good reconstructions preserve the residual error and the chosen transformation alongside the image. This allows later users to distinguish evidence contained in the historical document from assumptions introduced while aligning it to a modern coordinate system.",
+      "probes": [
+        {"probe_id": "p01", "surface": "digitized", "stratum": "mid_low_frequency"},
+        {"probe_id": "p02", "surface": "coordinates", "stratum": "long_mid_frequency"},
+        {"probe_id": "p03", "surface": "surveyor", "stratum": "mid_low_frequency"},
+        {"probe_id": "p04", "surface": "projection", "stratum": "long_mid_frequency"},
+        {"probe_id": "p05", "surface": "landmarks", "stratum": "mid_frequency"},
+        {"probe_id": "p06", "surface": "georeferencing", "stratum": "long_low_frequency"},
+        {"probe_id": "p07", "surface": "residual", "stratum": "mid_low_frequency"},
+        {"probe_id": "p08", "surface": "transformation", "stratum": "long_mid_frequency"}
+      ]
+    }
+  ]
+}

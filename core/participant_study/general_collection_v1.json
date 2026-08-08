@@ -1,0 +1,208 @@
+{
+  "schema_version": 1,
+  "protocol_id": "lexigaze-generalizable-participant-collection-v1",
+  "protocol_version": "2026-08-08.v1",
+  "parent_validity_protocol": "lexigaze-reader-assessment-validity-v3",
+  "status": "standardized_rehearsal_ready_formal_collection_blocked",
+  "study_track": "personalized_word_fusion",
+  "dataset_role": "workflow_quality_and_development_exploration_only",
+  "primary_goal": "Collect participant-independent, passage-linked word-review labels and quality-audited reading telemetry using the same procedure for every participant.",
+  "claim_boundary": {
+    "allowed": [
+      "workflow completion and attrition",
+      "capture quality and missingness",
+      "session repeatability descriptions",
+      "development-only software and feature feasibility"
+    ],
+    "prohibited": [
+      "production model promotion",
+      "confirmatory model comparison",
+      "cognitive ability, attention, fatigue, CEFR, or proficiency classification",
+      "threshold tuning followed by evaluation on the same participants, passages, or probes"
+    ]
+  },
+  "sessions": {
+    "required_per_participant": 2,
+    "minimum_interval_hours": 18,
+    "maximum_interval_hours": 72,
+    "primary_retest_device_policy": "same_device_class_and_browser_family",
+    "optional_device_transfer_visit": "requires_a_separate_future_protocol",
+    "alternate_form_sequences": ["A_then_B", "B_then_A"],
+    "passages_per_session": 6,
+    "word_probes_per_passage": 8
+  },
+  "standard_flow": [
+    "versioned consent and comprehension check",
+    "coarse language-background and vision questionnaire",
+    "privacy-preserving device and environment preflight",
+    "motion-diverse calibration and independent five-point validation",
+    "one practice passage excluded from analysis",
+    "six fixed-form passages with fixed typography and no adaptive routing",
+    "hidden model outputs and post-reading word-review audit",
+    "end-of-session five-point drift validation",
+    "quality summary, debrief, withdrawal reminder, and retest scheduling"
+  ],
+  "profile_schema": {
+    "required": {
+      "english_l1": ["yes", "no", "prefer_not_to_say"],
+      "english_age_of_acquisition_band": ["0_5", "6_11", "12_17", "18_plus", "prefer_not_to_say"],
+      "weekly_english_reading_band": ["under_1h", "1_3h", "4_7h", "8_plus_h", "prefer_not_to_say"],
+      "vision_correction": ["none", "glasses", "contacts", "other", "prefer_not_to_say"],
+      "education_band": ["secondary_or_less", "some_tertiary", "bachelors", "postgraduate", "prefer_not_to_say"]
+    },
+    "direct_identifiers_prohibited": ["name", "email", "phone", "address", "exact_birth_date", "exact_age"]
+  },
+  "system_check": {
+    "minimum_viewport": {"width_px": 1024, "height_px": 700},
+    "minimum_camera": {"width_px": 640, "height_px": 480},
+    "required": [
+      "secure_context",
+      "camera_api",
+      "camera_permission",
+      "minimum_viewport",
+      "minimum_camera_resolution",
+      "document_visible",
+      "stable_network",
+      "single_participant_private_space",
+      "face_evenly_lit",
+      "screen_at_comfortable_distance"
+    ],
+    "coarse_device_fields": [
+      "device_class",
+      "browser_family",
+      "viewport_width",
+      "viewport_height",
+      "device_pixel_ratio_bucket",
+      "camera_width",
+      "camera_height",
+      "estimated_camera_fps_band"
+    ],
+    "user_agent_or_hardware_fingerprint_stored": false
+  },
+  "reading_layout": {
+    "font_family": "system_sans_serif",
+    "font_size_px": 16,
+    "line_width_px": 650,
+    "line_height": 1.7,
+    "zoom_required": 1.0,
+    "scrolling_during_reading_allowed": false,
+    "minimum_reading_seconds": 20,
+    "maximum_reading_minutes": 8
+  },
+  "gaze_collection": {
+    "raw_reading_frames_persisted": false,
+    "transient_frame_transport": "same_origin_https_or_localhost_only",
+    "one_prediction_in_flight": true,
+    "target_sampling_interval_ms": 250,
+    "stored_derived_fields": [
+      "monotonic_elapsed_ms",
+      "screen_xy_norm",
+      "screen_xy_px",
+      "gaze_pitch_yaw",
+      "head_pose_pitch_yaw",
+      "normalized_face_bbox",
+      "viewport",
+      "nearest_word_index",
+      "prediction_success",
+      "coarse_failure_code"
+    ],
+    "word_layout_snapshot_required": true,
+    "client_clock_used_for_order_not_wall_time": true
+  },
+  "gaze_quality": {
+    "independent_validation_points": 5,
+    "validation_samples_per_point": 3,
+    "start_and_end_validation_required": true,
+    "metrics": [
+      "median_spatial_error_px",
+      "p90_spatial_error_px",
+      "precision_rms_px",
+      "prediction_success_fraction",
+      "effective_sampling_hz",
+      "head_pose_range",
+      "face_scale_range",
+      "drift_change_px"
+    ],
+    "analysis_policy": "quality_changes_gaze_eligibility_or_causes_gaze_abstention_but_does_not_remove_behavioral_word_reviews",
+    "rehearsal_quality_bands": {
+      "word_level_candidate": {
+        "maximum_median_error_px": 60,
+        "maximum_p90_error_px": 120,
+        "minimum_success_fraction": 0.7,
+        "minimum_effective_sampling_hz": 3.0
+      },
+      "passage_level_only": {
+        "maximum_median_error_px": 120,
+        "minimum_success_fraction": 0.4,
+        "minimum_effective_sampling_hz": 1.0
+      },
+      "otherwise": "behavioral_only"
+    },
+    "threshold_status": "rehearsal_descriptive_not_promotion_thresholds"
+  },
+  "outcomes": {
+    "primary": {
+      "id": "post_reading_word_review_need",
+      "levels": ["no_review", "unsure", "review_needed"],
+      "timing": "after_reading_before_any_feedback",
+      "model_and_gaze_scores_visible_to_participant": false
+    },
+    "passage_self_report": {
+      "understanding": [1, 2, 3, 4, 5],
+      "mental_effort": [1, 2, 3, 4, 5],
+      "read_complete": [true, false],
+      "interrupted": [true, false]
+    },
+    "question_answer_correctness_used_as_model_target": false
+  },
+  "assignment": {
+    "unit": "one_time_invitation_pair",
+    "schedule_cells": 12,
+    "sequence_cells": ["A_then_B", "B_then_A"],
+    "order_cells_per_sequence": 6,
+    "order_design": "six_sequence_Williams_style_rotation",
+    "participant_partition": "development_only_during_rehearsal",
+    "same_participant_same_partition": true,
+    "assignment_frozen_before_outcomes": true
+  },
+  "data_contract": {
+    "observation_units": [
+      "participant",
+      "capture_session",
+      "passage",
+      "word_probe",
+      "derived_gaze_sample",
+      "validation_target"
+    ],
+    "required_group_ids": [
+      "participant_id",
+      "study_session_id",
+      "visit_index",
+      "capture_session_id",
+      "device_class",
+      "form_id",
+      "passage_id",
+      "passage_family_id",
+      "probe_id"
+    ],
+    "append_only_observation_files": true,
+    "protocol_and_bank_sha256_required": true,
+    "withdrawal_deletes_entire_session_directory": true,
+    "tracked_exports_contain_aggregate_data_only": true
+  },
+  "formal_collection_blockers": [
+    "ethics approval or exempt determination covering the revised word-review and retest procedures",
+    "authorized external lexical or reading anchor",
+    "48-family fusion bank with two independent human reviews",
+    "frozen development validation confirmation assignment manifest",
+    "simulation-based sample-size and subgroup plan",
+    "predeclared practical-utility threshold",
+    "end-to-end moderated dress rehearsal"
+  ],
+  "compute": {
+    "collection_and_audit_device": "cpu",
+    "gpu_required": false,
+    "language_model_inference_during_collection": false,
+    "future_model_training_requires_a_new_frozen_experiment_protocol": true
+  }
+}
