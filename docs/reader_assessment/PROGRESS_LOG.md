@@ -1,5 +1,19 @@
 # Reader Assessment v2 Progress Log
 
+## 2026-08-08 — branch `research/non-cn-text-backbone-benchmark`
+
+### Text-backbone development screen
+
+- 將 GPT-2 固定為歷史 baseline，而非直接以大型 chat LLM 取代；凍結非中國來源的 exact allowlist、immutable revisions、禁止 remote code 與 base-only 規則。
+- 在任何新 backbone outcome 開啟前，固定 Provo development-only protocol、完整 passage holdout、shared lexical / tokenization / causal-surprisal feature sets、shortlist gate 與 1.5 GPU-hour 上限。
+- GPT-2、Pythia-410M-deduped step1000 與 full checkpoint 均完成 2,743 items 的 label-free extraction；所有 outcome 欄位直到五個候選的技術檢查結束後才開啟。
+- SmolLM2-360M 與 OLMo 2 1B 都在相同 display 位置產生 separator-only offset，依 v1 frozen alignment contract 原樣記為技術失敗，未查看 outcome、未放寬規則、未重跑。
+- 三個成功 backbone 的 causal surprisal 相對 lexical + tokenizer controls 都有小型正增益且 5/5 folds 為正；GPT-2 仍是穩定基準。
+- Pythia full 相對 GPT-2 的 primary M1 participant delta `+0.0008`、text delta `+0.0039`，但 text CI 跨 0 且只有 3/5 folds 較高；依預註冊 point-rule 成為唯一 shortlist，但不構成 replacement evidence。
+- Pythia step1000 相對 GPT-2 為 participant `-0.0004`、text `-0.0024`，未入選；預先指定的 early-minus-full contrast 方向偏向 full，但 participant/text CI 均跨 0，不能宣稱 training-token effect。
+- 成功 forward 合計 `31.04` 秒／`0.00862` GPU-hours，只使用 1.5-hour budget 的 0.57%；peak reserved 為 GPT-2 `0.371 GiB`、Pythia `0.924 GiB`，全程一次只載入一個模型，沒有 training/fine-tuning。
+- Product model 維持 GPT-2 frozen；下一步只能先凍結 GECO L2 replication，再開啟 full Pythia 的 GECO outcome。OneStop 不再用於候選選模。
+
 ## 2026-08-08 — branch `research/reader-assessment-validity-v3`
 
 ### 問題重構

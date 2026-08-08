@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "experiment": "non_cn_text_backbone_provo_development_run_001",
+  "date": "2026-08-08",
+  "branch": "research/non-cn-text-backbone-benchmark",
+  "protocol_commit": "62f6f83",
+  "feature_implementation_commit": "7c72aa7",
+  "evaluation_commit": "51f7219",
+  "protocol_sha256": "4b748d72e551efcddb8811338c7a5a1d46bc81fd56c454b2fda0ebe6c6726906",
+  "dataset": {
+    "name": "Provo Corpus",
+    "sha256": "38aedcb29bc9171009916eb2bcc2375729f104a2a1005c64a563da94b611b9e7",
+    "participants": 84,
+    "texts": 55,
+    "items": 2743,
+    "role": "historically_inspected_development_only",
+    "question_answer_dataset_used": false
+  },
+  "primary_outcome": "total_reading_time",
+  "successful_backbones": {
+    "gpt2": {
+      "revision": "607a30d783dfa663caf39e06633721c8d4cfcd7e",
+      "parameters": 124439808,
+      "m1_participant_rho": 0.3197,
+      "m1_text_rho": 0.7199,
+      "m1_minus_m0_tokenization_participant": {
+        "mean": 0.0112,
+        "ci_95": [0.0089, 0.0135]
+      },
+      "m1_minus_m0_tokenization_text": {
+        "mean": 0.0267,
+        "ci_95": [0.0167, 0.0370]
+      },
+      "positive_increment_outer_folds": 5,
+      "outer_folds": 5,
+      "feature_sha256": "6afcc7db5090d2d880065bcdd1a2ee22a2b039d58bbeb482254f3e791fd3a133",
+      "inference_seconds": 13.648740299977362,
+      "tokens_scored": 3202,
+      "peak_cuda_reserved_bytes": 398458880
+    },
+    "pythia_410m_deduped_step1000": {
+      "revision": "a3b3aff9a656ab34fec3474eb60bb5b487639539",
+      "parameters": 405334016,
+      "m1_participant_rho": 0.3193,
+      "m1_text_rho": 0.7175,
+      "m1_minus_m0_tokenization_participant": {
+        "mean": 0.0103,
+        "ci_95": [0.0083, 0.0124]
+      },
+      "m1_minus_m0_tokenization_text": {
+        "mean": 0.0241,
+        "ci_95": [0.0154, 0.0326]
+      },
+      "positive_increment_outer_folds": 5,
+      "outer_folds": 5,
+      "m1_minus_gpt2_participant": {
+        "mean": -0.0004,
+        "ci_95": [-0.0017, 0.0009]
+      },
+      "m1_minus_gpt2_text": {
+        "mean": -0.0024,
+        "ci_95": [-0.0107, 0.0060]
+      },
+      "positive_vs_gpt2_outer_folds": 3,
+      "feature_sha256": "53e4a72a3bc1a61e94d4d0070bc267c908b8857a55aa5b959f95ba600a7d057e",
+      "inference_seconds": 15.082974000135437,
+      "tokens_scored": 3240,
+      "peak_cuda_reserved_bytes": 991952896
+    },
+    "pythia_410m_deduped_full": {
+      "revision": "c4fc8d586d62df497f1f9b69d66d3ca419992d3e",
+      "parameters": 405334016,
+      "m1_participant_rho": 0.3205,
+      "m1_text_rho": 0.7238,
+      "m1_minus_m0_tokenization_participant": {
+        "mean": 0.0116,
+        "ci_95": [0.0091, 0.0140]
+      },
+      "m1_minus_m0_tokenization_text": {
+        "mean": 0.0303,
+        "ci_95": [0.0200, 0.0406]
+      },
+      "positive_increment_outer_folds": 5,
+      "outer_folds": 5,
+      "m1_minus_gpt2_participant": {
+        "mean": 0.0008,
+        "ci_95": [0.0000, 0.0016]
+      },
+      "m1_minus_gpt2_text": {
+        "mean": 0.0039,
+        "ci_95": [-0.0006, 0.0088]
+      },
+      "positive_vs_gpt2_outer_folds": 3,
+      "feature_sha256": "3461228d427559e2ce249ebefb8dae88022714d4beb3fb0a8886385e9457daa4",
+      "inference_seconds": 2.3086424003122374,
+      "tokens_scored": 3240,
+      "peak_cuda_reserved_bytes": 991952896
+    }
+  },
+  "planned_training_contrast": {
+    "comparison": "pythia_step1000_minus_pythia_full",
+    "participant": {
+      "mean": -0.0012,
+      "ci_95": [-0.0026, 0.0001]
+    },
+    "text": {
+      "mean": -0.0063,
+      "ci_95": [-0.0145, 0.0016]
+    },
+    "positive_outer_folds": 1,
+    "outer_folds": 5,
+    "interpretation": "direction favors full training but both confidence intervals include zero"
+  },
+  "frozen_technical_failures": {
+    "smollm2_360m": {
+      "error": "token offset 45 (228, 229) overlaps 0 displayed words",
+      "outcome_columns_read": false
+    },
+    "olmo2_1b": {
+      "error": "token offset 43 (228, 229) overlaps 0 displayed words",
+      "outcome_columns_read": false
+    }
+  },
+  "decision": {
+    "label": "development_challengers_shortlisted",
+    "shortlist": ["pythia_410m_deduped_full"],
+    "production_model_changed": false,
+    "confirmation_claim_allowed": false,
+    "next_step": "freeze GECO L2 replication before accessing Pythia challenger outcomes there"
+  },
+  "compute": {
+    "device": "cuda",
+    "dtype": "bfloat16",
+    "one_backbone_loaded_at_a_time": true,
+    "total_inference_seconds": 31.040356700425036,
+    "total_inference_gpu_hours": 0.008622321305673621,
+    "gpu_budget_hours": 1.5,
+    "gpu_budget_exceeded": false,
+    "throughput_selection_allowed": false,
+    "throughput_caveat": "cold-download and kernel warm-up conditions differed across separate processes"
+  },
+  "guardrails": {
+    "exact_non_cn_source_allowlist": true,
+    "immutable_model_revisions": true,
+    "features_extracted_before_outcomes_loaded": true,
+    "complete_text_holdout": true,
+    "scaler_fit_on_training_only": true,
+    "target_shuffle_sentinel_included": true,
+    "language_model_fine_tuned": false,
+    "question_answer_dataset_used": false,
+    "onestop_accessed": false
+  }
+}
