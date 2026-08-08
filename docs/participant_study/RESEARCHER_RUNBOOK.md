@@ -19,11 +19,14 @@
 1. 由所屬機構／合格審查者取得 `approved` 或正式 `exempt_determination` 與 reference；不要自行判定。
 2. 補齊研究主持人、研究聯絡、受試者權益獨立聯絡與最終同意文字。
 3. 在招募前選定外部效標、確認使用授權並預註冊主要分析、participant split、item/text split、排除規則與停止條件。
-4. 核准 HTTPS/network processor；關閉 local inspection 與 dashboard full-body capture，記錄第三方 metadata 留存。
-5. 確認加密 storage、位置、存取角色、保留天數、備份與 raw-frame TTL（1–24 小時）。
-6. 產生至少 32 字元的 adaptive signing key 及獨立 researcher API key；只放本機 secret store／`.env`。
-7. 經審查後把 canonical JSON 的 `collection_status` 由 `dry_run_only` 改為 `approved_for_pilot`，更新版本與 digest，重新保存正式同意文件。
-8. 執行：
+4. 依 `INDEPENDENT_CAPTURE_PLAN.md` 建立正式 numeric-slot plan，在未查看任何
+   participant outcome 前提交 freeze commit，並確認 `--target collection`
+   exit code 0。Example template 不得直接用於招募。
+5. 核准 HTTPS/network processor；關閉 local inspection 與 dashboard full-body capture，記錄第三方 metadata 留存。
+6. 確認加密 storage、位置、存取角色、保留天數、備份與 raw-frame TTL（1–24 小時）。
+7. 產生至少 32 字元的 adaptive signing key 及獨立 researcher API key；只放本機 secret store／`.env`。
+8. 經審查後把 canonical JSON 的 `collection_status` 由 `dry_run_only` 改為 `approved_for_pilot`，更新版本與 digest，重新保存正式同意文件。
+9. 執行：
 
    ```powershell
    .\.venv\Scripts\python.exe -X utf8 -m scripts.audit_participant_study_readiness --target pilot
@@ -31,13 +34,13 @@
 
    只有 exit code 0 才能繼續。
 
-9. 建立一次性邀請碼：
+10. 建立一次性邀請碼：
 
    ```powershell
    .\.venv\Scripts\python.exe -X utf8 -m scripts.create_pilot_invites --count 1
    ```
 
-10. 啟動 participant-only tunnel：
+11. 啟動 participant-only tunnel：
 
     ```powershell
     .\.venv\Scripts\python.exe -X utf8 run.py --study-tunnel

@@ -34,6 +34,7 @@ TEST_TARGETS = (
     "scripts.test_gaze_motion_robustness",
     "scripts.test_gaze_session_independence",
     "scripts.test_gaze_torch_runtime",
+    "scripts.test_independent_capture_plan",
     "scripts.test_adaptive_stepper",
     "scripts.test_participant_study",
     "scripts.test_cognitive_policy",

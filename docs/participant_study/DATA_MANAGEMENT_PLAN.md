@@ -36,3 +36,9 @@
 ## Dataset 階段的硬性前置條件
 
 本分支不建立可訓練的受試者 dataset export。進入 dataset 階段前，需先完成 schema、資料字典、split manifest、去識別化風險評估、外部效標授權、缺失／退出處理及版本化 export 測試。
+
+Independent Capture Plan 已提供 outcome-blind schema、資料單位字典、split
+isolation、withdrawal counting 與 aggregate-only audit。它只完成上述前置條件的
+工程骨架；正式樣本數、文章／外部效標授權、完整去識別化風險評估、實際
+binding manifest、加密 export 與版本化刪除測試仍未完成，因此目前仍不可
+建立 trainable participant export。

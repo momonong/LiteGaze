@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "result_id": "independent-capture-readiness-v1-run-001",
+  "created_at_utc": "2026-08-08T02:04:23Z",
+  "branch": "feat/independent-capture-readiness-v1",
+  "protocol": {
+    "id": "independent-capture-readiness-v1",
+    "freeze_commit": "c1700cd",
+    "sha256": "2e1a88b4de8fd6af1c11dbeb5b1eb5b3213c534ecb2142086adc24762fbb3c69"
+  },
+  "artifacts": {
+    "implementation_sha256": "b2acf4c9725ffafab3a4a1c1183c0aa58010bcb275e019ac3fd62679d60ae810",
+    "template_sha256": "3cab274949ed4d137b86b3f79ab2cb813993b16016781fc577878092f1d40d44",
+    "production_sha256_before": "ab6ecdd4db6c7ebfbf1a55c51cc123ba487dc4a04f8c37ef4574ef5d60229f1b",
+    "production_sha256_after": "ab6ecdd4db6c7ebfbf1a55c51cc123ba487dc4a04f8c37ef4574ef5d60229f1b"
+  },
+  "focused_validation": {
+    "tests_run": 16,
+    "failures": 0,
+    "errors": 0,
+    "schema_type_fuzz_cases": 470,
+    "schema_type_fuzz_exceptions": 0,
+    "template_target_status": "template_valid",
+    "template_collection_target_status": "not_ready",
+    "template_collection_expected_errors": [
+      "PLAN_NOT_FROZEN",
+      "ARTICLE_ASSET_NOT_FROZEN"
+    ]
+  },
+  "offline_repository_gate": {
+    "status": "passed",
+    "test_targets": 19,
+    "tests_run": 140,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "network_attempts": 0,
+    "network_probe_blocked": true,
+    "process_probe_blocked": true,
+    "provider_credentials_cleared": true,
+    "torch_imported": false,
+    "cuda_visible_devices": "-1",
+    "tracked_artifact_changes": []
+  },
+  "participant_readiness": {
+    "dry_run_ready": true,
+    "pilot_ready": false,
+    "pilot_missing_requirement_count": 20,
+    "canonical_collection_status": "dry_run_only",
+    "protocol_digest_sha256": "696a236d5d75aa6822b93f57d3e8cd09f72715a20698eab48e7573268e03452f",
+    "consent_digest_sha256": "699a748eb6dca19c9f4abb0b3bdd543354717e7a0bc7866e50f0cd3468b6c999"
+  },
+  "gates": {
+    "strict_schema_rejects_unknown_or_outcome_fields": true,
+    "valid_template_passes_template_target": true,
+    "unfrozen_template_fails_collection_target": true,
+    "valid_frozen_plan_passes_collection_target": true,
+    "participant_cross_role_leakage_is_rejected": true,
+    "session_or_capture_reference_mismatch_is_rejected": true,
+    "article_family_cross_role_leakage_is_rejected": true,
+    "device_reuse_is_rejected_when_device_holdout_is_claimed": true,
+    "multiview_without_sync_or_extrinsics_is_rejected": true,
+    "withdrawn_or_unbound_slots_do_not_count_as_collected_evidence": true,
+    "audit_is_deterministic_and_identifier_free": true,
+    "module_imports_without_torch": true,
+    "focused_tests_pass_cpu_only": true,
+    "offline_repository_gate_passes": true,
+    "pilot_remains_locked": true,
+    "production_hash_unchanged": true
+  },
+  "decision": {
+    "status": "passed",
+    "engineering_readiness": "available",
+    "real_participant_collection_authorized": false,
+    "dataset_export_authorized": false,
+    "model_effectiveness_claimed": false,
+    "production_changed": false,
+    "next_action": "Obtain the non-software pilot approvals and freeze a reviewed numeric-slot plan, or open a separate Columbia Gaze coordinate-contract experiment."
+  }
+}

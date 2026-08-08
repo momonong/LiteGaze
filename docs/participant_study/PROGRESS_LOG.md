@@ -40,3 +40,22 @@
 - In-app browser dry run：必要同意與理解確認預設皆未勾選；建立 pseudonymous session 後可跨重新整理續接，並依序通過 `consented → system_check_passed → calibration_complete → assessment_in_progress → completed`。
 - Dry-run browser safeguards：未要求攝影機權限、未使用 local/session storage、console 0 errors；撤回後回傳 receipt 並清除 session，`deleted_scopes=[]` 符合不產生真人研究資料的設計。
 - 未具有效 session 的 `/study/assessment` 會 redirect 回 `/study`，無法繞過受試者流程直接進入評量。
+
+## 2026-08-08 — independent capture-plan readiness
+
+在未查看新 participant outcome、未下載外部資料且 GPU 使用量為零的情況下，
+新增 strict capture-plan contract。它把 participant、repeated session、physical
+capture run、article family、device 與 sensor source 在 development、validation、
+confirmation 間的關係變成 machine-checkable，而不是只靠文件約定。
+
+Optional laptop-plus-phone plan 必須提供 paired source、timestamp tolerance、
+clock strategy、relative-camera calibration slot／artifact hash 與 missing-view
+policy；同一次實體 capture 的兩個來源不能跨 split 或被算成獨立 evidence。
+
+工具只接受 numeric slots 與 isolated binding digests，withdrawal 會清除 digest，
+audit 輸出不回傳 slot 或 binding。Template、pre-collection freeze 與 post-binding
+evidence 分成三個不同 target，避免把 schema-valid 誤寫成可招募或有效模型。
+
+這項里程碑沒有解除 `dry_run_only`。倫理／豁免判定、正式聯絡、樣本數、外部
+效標與文章授權、storage、HTTPS、retention、正式 frozen manifest 及 dress
+rehearsal 仍是 pilot blockers。
