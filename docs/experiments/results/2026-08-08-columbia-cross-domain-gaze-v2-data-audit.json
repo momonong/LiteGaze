@@ -1,0 +1,28 @@
+{
+  "annotation_archive_sha256": "5ab6cedbc4ea6c174f3aa90e71735856f7e9586d89e8d4cf80ad3c96dd5a19f6",
+  "archive_sha256": "d342deb319d7c34d8a662d1f18a7176ae289f0fac078893eda57e5d156d8bcda",
+  "base_protocol_sha256": "1dda7cf10d164e5cdcac0d870c6bfe8e970b9223192c58b026a32ba5cbf84e78",
+  "created_at": "2026-08-08T02:56:40.776359+00:00",
+  "data_audit": {
+    "corrupt_image_count": 0,
+    "decoded_all_images": true,
+    "dimension_mismatch_count": 0,
+    "duplicate_image_identity_count": 0,
+    "extra_annotation_count": 0,
+    "image_count": 5880,
+    "image_identity_sha256": "7389732b4a1e27df5882875b2294dff8f93d2de89eceaf4b33351d781e0d6bb0",
+    "images_per_subject_max": 105,
+    "images_per_subject_min": 105,
+    "missing_annotation_count": 15,
+    "missing_annotation_identity_sha256": "66a55ddb5ce4b478afa1d15da0db96efcebe8ea5c37496f0ce05559ba6098ce8",
+    "official_annotation_count": 5865,
+    "status": "passed",
+    "subject_count": 56,
+    "subject_grid_failure_count": 0
+  },
+  "experiment": "columbia-cross-domain-gaze-v2",
+  "model_runtime_imported": false,
+  "protocol_sha256": "6f0f03c60365ac5e7d735cecff24064d8c52a6a28c20a83c257dc94319633fee",
+  "schema_version": 1,
+  "source_audit_implementation_sha256": "ffc0eab7252ab25e72475106932e2897020e15260af8eb5d1a4bae77307d0a57"
+}

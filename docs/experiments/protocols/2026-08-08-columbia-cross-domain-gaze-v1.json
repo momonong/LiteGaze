@@ -1,0 +1,251 @@
+{
+  "schema_version": 1,
+  "protocol_id": "columbia-cross-domain-gaze-v1",
+  "frozen_date": "2026-08-08",
+  "branch": "experiment/columbia-cross-domain-gaze-v1",
+  "status": "frozen_before_external_data_download_or_model_execution",
+  "objective": "Measure whether the unchanged LexiGaze UniGaze full-face path and the retained MPIIGaze EyePoseTinyCNN-v1 research candidate generalize to the independently collected Columbia Gaze Data Set without calibration, fine-tuning, outcome-driven preprocessing changes, or production mutation.",
+  "claim_boundary": {
+    "external_public_dataset_engineering_evidence_only": true,
+    "independent_of_mpiigaze_subjects": true,
+    "real_lexigaze_webcam_generalization_claimed": false,
+    "production_accuracy_improvement_claimed": false,
+    "cognitive_reading_or_english_ability_claimed": false,
+    "participant_pilot_authorized": false
+  },
+  "confirmation_policy": {
+    "columbia_is_one_time_confirmation_set": true,
+    "outcomes_may_not_select_model_preprocessing_sign_epoch_seed_or_threshold": true,
+    "post_result_parameter_tuning_allowed": false,
+    "failed_or_negative_results_must_be_preserved": true,
+    "same_columbia_outcomes_may_not_support_a_future_independent_confirmation_claim": true
+  },
+  "data": {
+    "dataset": "Columbia Gaze Data Set",
+    "official_page": "https://ceal.cs.columbia.edu/columbiagaze/",
+    "archive_url": "https://ceal.cs.columbia.edu/static/materials/columbiagaze/columbia_gaze_data_set.zip",
+    "eye_corner_url": "https://ceal.cs.columbia.edu/static/materials/columbiagaze/eye_corner_locations.zip",
+    "local_root": "data/external/columbia_gaze",
+    "license": "non-commercial use only; cite Smith et al., UIST 2013",
+    "redistribution_allowed_by_this_experiment": false,
+    "expected": {
+      "subjects": 56,
+      "images_per_subject": 105,
+      "total_images": 5880,
+      "image_width": 5184,
+      "image_height": 3456,
+      "head_pose_degrees": [
+        -30,
+        -15,
+        0,
+        15,
+        30
+      ],
+      "vertical_gaze_degrees": [
+        -10,
+        0,
+        10
+      ],
+      "horizontal_gaze_degrees": [
+        -15,
+        -10,
+        -5,
+        0,
+        5,
+        10,
+        15
+      ],
+      "one_image_per_subject_pose_vertical_horizontal_cell": true
+    },
+    "filename_contract": "<subject>_2m_<head>P_<vertical>V_<horizontal>H.jpg",
+    "coordinate_contract": {
+      "model_output_order": [
+        "pitch_radians",
+        "yaw_radians"
+      ],
+      "target_pitch": "radians(vertical gaze label)",
+      "target_yaw": "radians(horizontal gaze label)",
+      "positive_vertical": "up",
+      "positive_horizontal": "image-left / subject-left",
+      "positive_head_pose": "image-left / subject-left",
+      "zero_vertical_and_horizontal": "camera-directed gaze",
+      "sign_mapping_is_frozen_before_outcomes": true
+    },
+    "excluded_inputs": [
+      "question-answer datasets",
+      "LexiGaze participant-study data",
+      "OneStop, GECO, and PROVO outcomes",
+      "Columbia demographic attributes",
+      "Columbia model outcomes during implementation",
+      "legacy EAI checkpoints and pseudo-labels"
+    ]
+  },
+  "source_audit": {
+    "archive_and_annotation_sha256_must_be_recorded": true,
+    "exact_expected_grid_required": true,
+    "duplicate_image_identity_count_equals": 0,
+    "unexpected_jpeg_count_equals": 0,
+    "missing_eye_annotation_count_equals": 0,
+    "unparseable_filename_count_equals": 0,
+    "corrupt_image_count_equals": 0,
+    "source_images_or_annotations_must_not_be_committed": true
+  },
+  "production_baseline": {
+    "name": "unigaze_b16_joint-current-production-path",
+    "mode": "frozen_external_evaluation_only",
+    "training_data_from_official_joint_config": [
+      "ETH-XGaze",
+      "GazeCapture",
+      "MPIIGaze",
+      "EYEDIAP-CS",
+      "EYEDIAP-FT",
+      "Gaze360"
+    ],
+    "columbia_in_official_joint_training_config": false,
+    "preprocessing": {
+      "source": "core.unigaze_personalization.preprocess.MediaPipeUniGazePreprocessor",
+      "input_resize": "resize original image to width 640 preserving aspect ratio with cv2.INTER_AREA before production preprocessing",
+      "mirroring": false,
+      "face_policy": "exactly one production preprocessor attempt; do not retry at another resolution",
+      "normalized_face_size": [
+        224,
+        224
+      ],
+      "tensor_transform": "core.unigaze_personalization.transforms.to_unigaze_tensor",
+      "calibration": "none",
+      "augmentation": "none"
+    },
+    "prediction": {
+      "checkpoint": "unigaze_b16_joint",
+      "checkpoint_sha256_must_be_recorded": true,
+      "output": "raw normalized-face [pitch, yaw] radians",
+      "screen_scaling_or_clipping_used": false,
+      "failed_preprocessing_rows_are_not_imputed": true
+    }
+  },
+  "research_candidate": {
+    "name": "EyePoseTinyCNN-v1-final-ensemble",
+    "mode": "frozen_external_evaluation_only",
+    "source_training_data": "exact official MPIIGaze 3000-row-per-person evaluation subset, all 15 subjects and 45000 rows",
+    "architecture_and_optimizer": "unchanged from subject-heldout-gaze-diversity-v1",
+    "seeds": [
+      20260808,
+      20260809,
+      20260810
+    ],
+    "training": {
+      "epochs": 11,
+      "epoch_rationale": "median validation-selected best epoch across the 45 previously frozen MPIIGaze candidate jobs, computed before Columbia access",
+      "batch_size": 512,
+      "optimizer": "AdamW",
+      "learning_rate": 0.001,
+      "weight_decay": 0.0001,
+      "loss": "SmoothL1Loss(beta=0.05 radians)",
+      "gradient_norm_clip": 1.0,
+      "automatic_mixed_precision": false,
+      "tf32_allowed": false,
+      "augmentation": "none",
+      "validation_or_early_stopping": "none; fixed epoch count",
+      "pose_standardization": "fit once on all 45000 MPIIGaze training rows",
+      "columbia_used_during_training": false
+    },
+    "columbia_eye_preprocessing": {
+      "source": "official eye-corner annotations only",
+      "pair_assignment": "group official corner fields by eye; image-right pair is anatomical left eye and image-left pair is anatomical right eye",
+      "within_pair_order": "sort corners by image x",
+      "affine_contract": "map each ordered corner pair to (15,18) and (45,18) in a 60x36 output; use the source pair plus its image-down 90-degree vector and the corresponding target triplet to define the affine transform",
+      "color": "cv2 grayscale uint8",
+      "border": "cv2.BORDER_REPLICATE",
+      "right_eye_transform": {
+        "horizontal_image_flip": true,
+        "negate_input_head_yaw": true,
+        "negate_prediction_yaw_before_image_level_fusion": true
+      },
+      "left_eye_transform": "none",
+      "head_pose_input": "[0, radians(filename head-pose label)] before the right-eye transform",
+      "augmentation_or_calibration": "none"
+    },
+    "ensemble": {
+      "within_image": "convert each seed-by-eye prediction to a unit vector in the common unflipped frame, arithmetic-mean all six vectors, normalize, then convert back to [pitch,yaw]",
+      "missing_eye_policy": "the source audit fails; do not silently evaluate a single eye",
+      "checkpoint_files_must_not_be_committed": true
+    }
+  },
+  "baselines": {
+    "zero_gaze": "predict [0,0] for every image; valid because the complete label grid is symmetric",
+    "preprocessing_coverage": "report attempted, successful, failed, and reason counts for the production path"
+  },
+  "metrics": {
+    "primary": "macro mean of per-subject mean 3D angular error in degrees",
+    "secondary": [
+      "micro mean angular error",
+      "median angular error",
+      "p90 angular error",
+      "worst subject mean",
+      "subjects beating zero-gaze baseline",
+      "paired subject-bootstrap confidence interval for model minus zero-gaze",
+      "per-head-pose mean",
+      "per-horizontal-gaze mean",
+      "per-vertical-gaze mean",
+      "production preprocessing coverage"
+    ],
+    "participant_bootstrap_resamples": 20000,
+    "participant_bootstrap_seed": 20260813,
+    "production_metric_population": "successfully preprocessed rows only, with coverage reported separately and no imputation",
+    "candidate_metric_population": "all 5880 audited images"
+  },
+  "effectiveness_decisions": {
+    "candidate_confirmed_if": {
+      "macro_mean_less_than_zero_gaze": true,
+      "candidate_minus_zero_subject_bootstrap_ci_upper_less_than": 0.0,
+      "subjects_beating_zero_gaze_at_least": 42
+    },
+    "production_external_baseline_supported_if": {
+      "preprocessing_coverage_at_least": 0.95,
+      "macro_mean_less_than_zero_gaze": true,
+      "production_minus_zero_subject_bootstrap_ci_upper_less_than": 0.0,
+      "subjects_beating_zero_gaze_at_least": 42
+    },
+    "candidate_pass_action": "retain only as a research baseline pending fresh LexiGaze participant/session/device confirmation",
+    "candidate_fail_action": "record the negative cross-domain result and do not tune on Columbia",
+    "production_pass_action": "retain the current production baseline without claiming webcam improvement",
+    "production_fail_action": "record the external failure mode and prioritize a newly frozen real-capture or different-dataset investigation"
+  },
+  "execution_gates": {
+    "source_audit_passes": true,
+    "all_candidate_images_scored": true,
+    "network_attempts_during_model_execution_equal": 0,
+    "finite_metrics": true,
+    "protocol_implementation_data_and_checkpoint_hashes_recorded": true,
+    "gpu_peak_process_memory_at_most_gib": 6.0,
+    "gpu_temperature_must_remain_below_celsius": 82,
+    "model_wall_time_at_most_hours": 8.0,
+    "production_source_may_change": false
+  },
+  "compute": {
+    "training_and_inference_device": "cuda:0",
+    "cuda_required_for_formal_model_run": true,
+    "per_process_memory_fraction": 0.25,
+    "maximum_expected_vram_gib": 6.0,
+    "maximum_temperature_celsius": 82,
+    "maximum_model_wall_time_hours": 8.0,
+    "cpu_threads": 8,
+    "dataloader_workers": 0,
+    "production_inference_batch_size": 32,
+    "network_allowed_during_download_and_checkpoint_preflight": true,
+    "network_allowed_during_training_or_inference": false
+  },
+  "mutation_policy": {
+    "production_model_or_default_must_not_change": true,
+    "dataset_archives_extracted_images_eye_annotations_and_checkpoints_must_not_be_committed": true,
+    "result_directory": "docs/experiments/results",
+    "report_directory": "docs/experiments",
+    "after_result": "Preserve the exact result. Any outcome-driven model, sign, crop, resolution, epoch, seed, threshold, population, or metric change invalidates independence and may not be presented as a fresh Columbia confirmation."
+  },
+  "research_basis": [
+    "https://ceal.cs.columbia.edu/columbiagaze/",
+    "https://www.cs.columbia.edu/CAVE/databases/columbia_gaze/",
+    "https://github.com/ut-vision/UniGaze",
+    "https://openaccess.thecvf.com/content/WACV2026/papers/Qin_UniGaze_Towards_Universal_Gaze_Estimation_via_Large-scale_Pre-Training_WACV_2026_paper.pdf"
+  ]
+}

@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "protocol_id": "columbia-cross-domain-gaze-v2",
+  "frozen_date": "2026-08-08",
+  "branch": "experiment/columbia-cross-domain-gaze-v2",
+  "status": "frozen_after_source_metadata_preflight_before_archive_extraction_image_decode_or_model_execution",
+  "objective": "Execute the unchanged v1 Columbia cross-domain confirmation design while resolving the official eye-corner archive's documented 15 missing rows through a deterministic, pre-outcome MediaPipe landmark fallback.",
+  "base_protocol": {
+    "path": "docs/experiments/protocols/2026-08-08-columbia-cross-domain-gaze-v1.json",
+    "commit": "26003f6c5904e1cebe5b678ce26deaa0d4cab272",
+    "sha256": "1dda7cf10d164e5cdcac0d870c6bfe8e970b9223192c58b026a32ba5cbf84e78",
+    "inherit_all_unmodified_fields": true
+  },
+  "v1_preflight": {
+    "result": "docs/experiments/results/2026-08-08-columbia-cross-domain-gaze-v1-source-preflight.json",
+    "status": "failed_source_preflight",
+    "reason": "The official README documents 5,865 annotated images and 15 missing annotations, while v1 required zero missing annotations.",
+    "archive_extracted": false,
+    "columbia_image_decoded": false,
+    "model_runtime_imported": false,
+    "prediction_count": 0,
+    "gpu_used": false,
+    "columbia_model_confirmation_consumed": false
+  },
+  "allowed_delta_from_v1": {
+    "scope": "source annotation completeness and the exact fallback for the documented missing rows only",
+    "official_annotated_images_expected": 5865,
+    "official_missing_annotations_expected": 15,
+    "all_other_v1_model_data_label_crop_training_metric_effectiveness_compute_and_mutation_fields_unchanged": true
+  },
+  "source_audit_override": {
+    "archive_sha256_equals": "d342deb319d7c34d8a662d1f18a7176ae289f0fac078893eda57e5d156d8bcda",
+    "archive_bytes_equals": 2378561401,
+    "eye_corner_archive_sha256_equals": "5ab6cedbc4ea6c174f3aa90e71735856f7e9586d89e8d4cf80ad3c96dd5a19f6",
+    "eye_corner_archive_bytes_equals": 103165,
+    "total_images_equals": 5880,
+    "official_annotation_rows_equals": 5865,
+    "official_missing_annotation_rows_equals": 15,
+    "official_extra_annotation_rows_equals": 0,
+    "duplicate_image_identity_count_equals": 0,
+    "unexpected_jpeg_count_equals": 0,
+    "unparseable_filename_count_equals": 0,
+    "corrupt_image_count_equals": 0,
+    "exact_subject_pose_vertical_horizontal_grid_required": true
+  },
+  "missing_annotation_fallback": {
+    "eligible_rows": "only the exact 15 image identities absent from the official eye-corner CSV",
+    "attempts_per_eligible_image": 1,
+    "input": "resize the original image to width 1280 preserving aspect ratio with cv2.INTER_AREA",
+    "detector": "the repository-pinned MediaPipe FaceLandmarker used by MediaPipeUniGazePreprocessor",
+    "minimum_detection_confidence": 0.5,
+    "num_faces": 1,
+    "landmark_indices": {
+      "right_eye_out": 33,
+      "right_eye_in": 133,
+      "left_eye_in": 362,
+      "left_eye_out": 263
+    },
+    "coordinate_mapping": "multiply detected x and y coordinates by original_width/resized_width and original_height/resized_height respectively before applying the inherited v1 affine eye crop",
+    "second_detector_or_resolution_allowed": false,
+    "manual_labeling_allowed": false,
+    "outcome_based_selection_allowed": false,
+    "fallback_failure_policy": "fail candidate completeness; do not drop, impute, hand-label, or substitute a single eye"
+  },
+  "reporting_override": {
+    "candidate_metric_population": "all 5880 images only if all 15 fallback rows succeed",
+    "required_eye_corner_strata": [
+      "official_annotation_5865",
+      "mediapipe_fallback_15"
+    ],
+    "required_fallback_fields": [
+      "eligible",
+      "attempted",
+      "succeeded",
+      "failed",
+      "failure_reasons"
+    ],
+    "fallback_stratum_is_diagnostic_only": true,
+    "fallback_stratum_may_not_select_or_reweight_the_model": true
+  },
+  "execution_gate_override": {
+    "official_annotation_count_equals": 5865,
+    "fallback_eligible_count_equals": 15,
+    "fallback_success_count_equals": 15,
+    "all_candidate_images_scored": true
+  },
+  "confirmation_policy": {
+    "columbia_is_one_time_confirmation_set": true,
+    "v2_frozen_before_any_image_decode_or_prediction": true,
+    "outcomes_may_not_select_model_preprocessing_sign_epoch_seed_threshold_or_fallback": true,
+    "post_result_parameter_tuning_allowed": false,
+    "failed_or_negative_results_must_be_preserved": true,
+    "same_columbia_outcomes_may_not_support_a_future_independent_confirmation_claim": true
+  },
+  "mutation_policy": {
+    "production_model_or_default_must_not_change": true,
+    "dataset_archives_extracted_images_eye_annotations_and_checkpoints_must_not_be_committed": true,
+    "result_directory": "docs/experiments/results",
+    "report_directory": "docs/experiments",
+    "after_result": "Preserve the exact result. Any outcome-driven model, sign, crop, resolution, fallback, epoch, seed, threshold, population, or metric change invalidates independence and may not be presented as a fresh Columbia confirmation."
+  }
+}
