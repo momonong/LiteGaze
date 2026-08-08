@@ -81,8 +81,12 @@ A challenger passes the development incremental gate only when the primary
 M1-M0-tokenization paired bootstrap lower bound is above zero for both
 participants and texts and at least four of five folds are positive. Because
 multiple candidates are screened on a known corpus, this is not confirmation.
-At most two challengers can proceed, and an unfavorable result is reported
-without changing the model list, checkpoint, feature set, fold, or threshold.
+To proceed, a challenger must also have nonnegative participant and text point
+differences relative to GPT-2 under the held-out M1 model. Eligible challengers
+are ranked by the smaller of those two differences, with the backbone key as a
+fixed tie-breaker, and at most two can proceed. An unfavorable result is
+reported without changing the model list, checkpoint, feature set, fold, or
+threshold.
 
 The complete executable contract is
 [`protocols/2026-08-08-non-cn-text-backbone-provo-dev-v1.json`](protocols/2026-08-08-non-cn-text-backbone-provo-dev-v1.json).
