@@ -68,3 +68,27 @@ or metric invalidates Columbia as an independent confirmation set.
 Protocol commit and SHA-256 are recorded immediately after this entry is
 committed.
 
+### 2026-08-08 — source preflight stopped v1
+
+The protocol was committed as `26003f6c5904e1cebe5b678ce26deaa0d4cab272`
+with SHA-256
+`1dda7cf10d164e5cdcac0d870c6bfe8e970b9223192c58b026a32ba5cbf84e78`
+before the official archives were downloaded.
+
+The archive byte-length check passed, and both official source files were
+hashed. Before extraction or image decoding, the eye-corner archive README
+revealed that it contains annotations for 5,865 of 5,880 images and is missing
+15. The frozen v1 source gate required zero missing eye annotations, while the
+candidate path also prohibited silently scoring a single eye or dropping a
+row. Therefore v1 failed at source preflight and stopped as designed.
+
+No Columbia image was extracted or decoded, no model runtime was imported, no
+checkpoint was loaded, no prediction was produced, and no GPU work was
+started. The failure is preserved in
+`results/2026-08-08-columbia-cross-domain-gaze-v1-source-preflight.json`.
+
+Because this is an official source-format discovery rather than a model
+outcome, a separately frozen v2 may define a deterministic fallback for exactly
+the documented 15 missing annotations. It must be committed before any image
+decode or model execution, and it may not change any model, label sign, crop,
+epoch, seed, metric, or effectiveness decision from v1.

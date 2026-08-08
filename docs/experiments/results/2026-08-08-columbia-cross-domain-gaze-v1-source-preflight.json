@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "experiment": "columbia-cross-domain-gaze-v1",
+  "run_id": "source-preflight",
+  "created_at": "2026-08-08T02:27:23.9795393Z",
+  "status": "failed_source_preflight",
+  "protocol": {
+    "commit": "26003f6c5904e1cebe5b678ce26deaa0d4cab272",
+    "sha256": "1dda7cf10d164e5cdcac0d870c6bfe8e970b9223192c58b026a32ba5cbf84e78"
+  },
+  "sources": {
+    "archive": {
+      "url": "https://ceal.cs.columbia.edu/static/materials/columbiagaze/columbia_gaze_data_set.zip",
+      "bytes": 2378561401,
+      "expected_bytes": 2378561401,
+      "sha256": "d342deb319d7c34d8a662d1f18a7176ae289f0fac078893eda57e5d156d8bcda"
+    },
+    "eye_corner_annotations": {
+      "url": "https://ceal.cs.columbia.edu/static/materials/columbiagaze/eye_corner_locations.zip",
+      "bytes": 103165,
+      "sha256": "5ab6cedbc4ea6c174f3aa90e71735856f7e9586d89e8d4cf80ad3c96dd5a19f6",
+      "official_readme_total_dataset_images": 5880,
+      "official_readme_annotated_images": 5865,
+      "official_readme_missing_annotations": 15
+    }
+  },
+  "failed_gate": {
+    "name": "missing_eye_annotation_count_equals",
+    "expected": 0,
+    "observed_from_official_readme": 15
+  },
+  "execution_boundary": {
+    "archive_extracted": false,
+    "columbia_image_decoded": false,
+    "model_runtime_imported": false,
+    "checkpoint_loaded": false,
+    "prediction_count": 0,
+    "gpu_used": false,
+    "production_source_changed": false
+  },
+  "decision": {
+    "action": "halt v1 without model execution; preserve the failure and require a separately frozen protocol before defining any missing-annotation fallback",
+    "columbia_model_confirmation_consumed": false
+  }
+}
