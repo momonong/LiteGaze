@@ -821,7 +821,17 @@ def evaluate(
     eligible: list[tuple[float, str]] = []
     eligibility: dict[str, Any] = {}
     for spec in specs:
-        if spec.key == "gpt2" or spec.key not in outcomes_by_backbone:
+        if spec.key == "gpt2":
+            continue
+        if spec.key not in outcomes_by_backbone:
+            status = metadata_by_backbone.get(spec.key, {}).get(
+                "status", "not_available"
+            )
+            eligibility[spec.key] = {
+                "incremental_gate_passed": False,
+                "eligible": False,
+                "reason": status,
+            }
             continue
         cross = vs_gpt2[spec.key]
         participant_delta = cross["participant_bootstrap"]["mean_difference"]
@@ -960,6 +970,28 @@ def write_report(path: Path, summary: Mapping[str, Any]) -> None:
             f"{model['peak_cuda_reserved_bytes'] / 2**30:.3f} | "
             f"{model['tokens_per_second']:.1f} |"
         )
+
+    failures = {
+        key: metadata
+        for key, metadata in summary["backbone_features"].items()
+        if metadata.get("status") != "complete"
+    }
+    if failures:
+        lines.extend(
+            [
+                "",
+                "## Frozen technical failures",
+                "",
+                "| Backbone | Status | Recorded error | Outcome columns read |",
+                "| --- | --- | --- | ---: |",
+            ]
+        )
+        for key, metadata in failures.items():
+            error = str(metadata.get("error", "not run")).replace("|", "\\|")
+            lines.append(
+                f"| `{key}` | `{metadata.get('status')}` | {error} | "
+                f"{str(metadata.get('outcome_columns_read', False)).lower()} |"
+            )
 
     lines.extend(
         [
@@ -1107,29 +1139,33 @@ def main() -> int:
         _write_json(cache_dir / "extraction-index.json", extraction_index)
 
     if args.phase == "evaluate":
-        for spec in specs:
-            feature_path, metadata_path, _ = _cache_paths(cache_dir, spec.key)
-            if not feature_path.exists() or not metadata_path.exists():
-                continue
-            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            if metadata.get("status") != "complete":
-                continue
-            features_by_backbone[spec.key] = pd.read_csv(
-                feature_path,
-                dtype={"Text_ID": str, "IA_ID": int},
+        for spec in all_specs:
+            feature_path, metadata_path, failure_path = _cache_paths(
+                cache_dir, spec.key
             )
-            metadata_by_backbone[spec.key] = metadata
+            if feature_path.exists() and metadata_path.exists():
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                if metadata.get("status") == "complete":
+                    features_by_backbone[spec.key] = pd.read_csv(
+                        feature_path,
+                        dtype={"Text_ID": str, "IA_ID": int},
+                    )
+                    metadata_by_backbone[spec.key] = metadata
+                    continue
+            if failure_path.exists():
+                metadata_by_backbone[spec.key] = json.loads(
+                    failure_path.read_text(encoding="utf-8")
+                )
 
     if args.phase == "extract":
         completed = len(features_by_backbone)
         print(f"[complete] extracted {completed}/{len(specs)} backbones", flush=True)
         return 0 if completed == len(specs) else 2
 
-    evaluable_specs = [spec for spec in all_specs if spec.key in features_by_backbone]
     summary, _ = evaluate(
         protocol,
         protocol_path,
-        evaluable_specs,
+        all_specs,
         features_by_backbone,
         metadata_by_backbone,
         provo_path=provo_path,
