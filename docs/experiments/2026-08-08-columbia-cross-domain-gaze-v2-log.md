@@ -46,3 +46,40 @@ The v2 delta was written after reading the official source README but before
 archive extraction, Columbia image decoding, model import, checkpoint loading,
 prediction, or GPU execution. Protocol commit and SHA-256 are recorded after
 this file is committed.
+
+### 2026-08-08 - formal source audit passed
+
+The staged runner verified both downloaded archive hashes, reconstructed the
+complete filename-encoded design, and decoded every source JPEG on CPU before
+any model runtime was imported.
+
+- Subjects: `56`
+- Images: `5,880` (`105` for every subject)
+- Subject x head-pose x vertical x horizontal grid failures: `0`
+- Duplicate image identities: `0`
+- Official eye-corner rows: `5,865`
+- Officially missing rows: `15`
+- Extra annotation rows: `0`
+- Corrupt images: `0`
+- Dimension mismatches: `0`
+- Image-identity SHA-256:
+  `7389732b4a1e27df5882875b2294dff8f93d2de89eceaf4b33351d781e0d6bb0`
+- Missing-identity SHA-256:
+  `66a55ddb5ce4b478afa1d15da0db96efcebe8ea5c37496f0ce05559ba6098ce8`
+- Torch imported during audit: `false`
+- GPU utilization before and after the audit: `0%`
+
+The committed aggregate audit is
+`results/2026-08-08-columbia-cross-domain-gaze-v2-data-audit.json`. Raw images,
+annotations, prepared tensors, checkpoints, and row-level prediction evidence
+remain local and excluded from version control.
+
+### Pre-model implementation safeguards
+
+The runner is staged as audit-only, prepare-only, and formal model execution.
+Twelve focused CPU tests freeze filename signs, annotation bounds, affine crop
+geometry, anatomical-right-eye mirroring, vector fusion, participant-level
+metrics, protocol inheritance, aggregate failure codes, and the ignored
+prediction-evidence schema. A separate CPU audit can recompute every committed
+aggregate and effectiveness decision from that local evidence after the model
+run. No Columbia outcome may be used to change these contracts.

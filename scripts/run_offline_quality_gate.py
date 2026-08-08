@@ -43,6 +43,7 @@ TEST_TARGETS = (
     "scripts.test_provenance_fusion",
     "scripts.test_quality_aware_fusion_v2",
     "scripts.test_subject_holdout_gaze_diversity",
+    "scripts.test_columbia_cross_domain_gaze",
     "scripts.test_onestop_confirmation_preparation",
     "scripts.test_fusion_routes",
 )
