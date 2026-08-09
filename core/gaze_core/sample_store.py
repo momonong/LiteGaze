@@ -11,6 +11,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from .capture_contract import normalize_capture_contract, validate_transport_frame
 from .motion_robustness import capture_metadata
 
 # Thread-safe locks
@@ -196,6 +197,24 @@ def save_sample(root: Path, payload: dict) -> tuple[dict, int]:
     if not raw or len(raw) > MAX_IMAGE_BYTES:
         return {"ok": False, "error": "image payload size is invalid"}, 413
 
+    capture_contract = None
+    if payload.get("capture_contract") is not None:
+        try:
+            capture_contract = normalize_capture_contract(payload["capture_contract"])
+            contract_frame = cv2.imdecode(
+                np.frombuffer(raw, dtype=np.uint8),
+                cv2.IMREAD_COLOR,
+            )
+            if contract_frame is None:
+                raise ValueError("cannot decode image")
+            validate_transport_frame(
+                capture_contract,
+                frame_width_px=int(contract_frame.shape[1]),
+                frame_height_px=int(contract_frame.shape[0]),
+            )
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}, 400
+
     # Ensure thread-safe index reading and writing to manifest
     with _manifest_lock:
         manifest = session_dir / "manifest.jsonl"
@@ -247,6 +266,8 @@ def save_sample(root: Path, payload: dict) -> tuple[dict, int]:
             "created_at_unix": time.time(),
         }
         record.update(capture_metadata(payload))
+        if capture_contract is not None:
+            record["capture_contract"] = capture_contract
 
         # Decode image and run the MediaPipe facial-normalization preprocessor.
         try:

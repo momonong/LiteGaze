@@ -57,6 +57,9 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--teal); }
 .passage.reading { border-top: 1px solid #d8e2e5; border-bottom: 1px solid #d8e2e5; }
 .assessment-word { border-radius: 2px; }
 .layout-rule { text-align: center; color: var(--muted); font-size: 12px; background: var(--wash); border-radius: 999px; padding: 7px 12px; }
+.quality-notice { margin: 0 0 16px; padding: 13px 15px; border-radius: 10px; line-height: 1.55; border: 1px solid #c9e4de; background: #eef8f5; color: #175f58; }
+.quality-notice.coarse { border-color: #f0cf9e; background: #fff8e8; color: #74511d; }
+.quality-notice.degraded { border-color: #ebb6ad; background: #fff1ef; color: var(--danger); }
 .round-meta { display: flex; align-items: center; gap: 13px; color: var(--muted); }
 .round-meta strong { font-variant-numeric: tabular-nums; color: var(--ink); }
 .review-list { display: grid; gap: 11px; }

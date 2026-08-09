@@ -6,6 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <title>LexiGaze｜標準化閱讀資料收集</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='participant_collection.css') }}">
+  <script defer src="{{ url_for('static', filename='gaze_capture_contract.js') }}"></script>
   <script defer src="{{ url_for('static', filename='participant_collection.js') }}"></script>
 </head>
 <body>
@@ -77,6 +78,7 @@
 
     <section id="readingPanel" class="panel hidden">
       <div class="panel-heading"><div><span id="roundLabel" class="step">文章 — / 6</span><h2>自然閱讀英文文章</h2></div><div class="round-meta"><span id="difficulty">—</span><strong id="timer">00:00</strong></div></div>
+      <p id="geometryQualityNotice" class="quality-notice hidden" role="status"></p>
       <div class="layout-rule">16 px · 650 px 行寬 · 1.7 行高 · 不捲動 · 不縮放</div>
       <div id="passage" class="passage" lang="en"></div>
       <p id="readingHint" class="hint">按下開始後才計時；至少閱讀 20 秒。</p>

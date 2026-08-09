@@ -5,6 +5,7 @@ from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 
+from core.gaze_core.capture_contract import load_participant_gaze_measurement_contract
 from core.gaze_core.model_registry import delete_model
 from core.gaze_core.sample_store import delete_dataset, purge_session_images
 from core.gaze_core.training import train_placeholder
@@ -119,7 +120,12 @@ def get_study_protocol():
 def get_general_collection_protocol():
     protocol = load_general_protocol()
     bank = load_general_bank()
-    audit = validate_general_design(protocol, bank)
+    gaze_measurement_contract = load_participant_gaze_measurement_contract()
+    audit = validate_general_design(
+        protocol,
+        bank,
+        gaze_measurement_contract,
+    )
     return jsonify(
         {
             "ok": True,
@@ -131,6 +137,7 @@ def get_general_collection_protocol():
                 "review": bank["review"],
             },
             "design_audit": audit,
+            "gaze_measurement_contract": gaze_measurement_contract,
             "practice": public_practice(bank=bank),
             "activation": _store().activation,
         }
@@ -234,6 +241,7 @@ def start_participant_general_collection(session_id: str):
         session = _store().start_general_collection(
             session_id,
             _access_token(body),
+            assessment_viewport=body.get("assessment_viewport"),
         )
         return jsonify({"ok": True, "session": session})
     except (
@@ -254,6 +262,7 @@ def participant_general_validation(session_id: str):
             _access_token(body),
             phase=str(body.get("phase") or ""),
             samples=body.get("samples", []),
+            capture_contract=body.get("capture_contract"),
         )
         return jsonify({"ok": True, "session": session})
     except (
@@ -527,6 +536,11 @@ def complete_participant_calibration(session_id: str):
                     "session": session,
                 }
             ), 422
+
+        if isinstance(training.get("capture_contract"), dict):
+            quality["capture_contract"] = training["capture_contract"]
+        if isinstance(training.get("fit_target_contract"), dict):
+            quality["fit_target_contract"] = training["fit_target_contract"]
 
         try:
             purge = purge_session_images(gaze_root, gaze_session_id)

@@ -19,9 +19,49 @@ from core.gaze_core.calibration_regression import (
     standardized_design,
 )
 from core.gaze_core.model_registry import list_models
+from core.gaze_core.motion_experiment import BASELINE_MODEL, CHALLENGER_MODEL
+from core.gaze_core.training import _selected_motion_validation_metrics
 
 
 class CalibrationRegressionTests(unittest.TestCase):
+    def test_selected_motion_validation_metrics_are_distinct_for_both_paths(
+        self,
+    ) -> None:
+        self.assertEqual(
+            _selected_motion_validation_metrics(
+                BASELINE_MODEL,
+                baseline_error=204.5,
+                challenger_error=243.9,
+                baseline_hyperparameter_error=199.1,
+                challenger_hyperparameter_error=216.6,
+            ),
+            {
+                "validation_px_error": 204.5,
+                "hyperparameter_cv_px_error": 199.1,
+            },
+        )
+        self.assertEqual(
+            _selected_motion_validation_metrics(
+                CHALLENGER_MODEL,
+                baseline_error=330.2,
+                challenger_error=228.9,
+                baseline_hyperparameter_error=310.4,
+                challenger_hyperparameter_error=216.7,
+            ),
+            {
+                "validation_px_error": 228.9,
+                "hyperparameter_cv_px_error": 216.7,
+            },
+        )
+        with self.assertRaisesRegex(ValueError, "unknown motion calibration model"):
+            _selected_motion_validation_metrics(
+                "unknown",
+                baseline_error=1.0,
+                challenger_error=2.0,
+                baseline_hyperparameter_error=3.0,
+                challenger_hyperparameter_error=4.0,
+            )
+
     def test_model_registry_prefers_held_out_metric_but_keeps_legacy_compatibility(self) -> None:
         with tempfile.TemporaryDirectory(prefix="lexigaze-model-registry-") as name:
             root = Path(name)

@@ -26,14 +26,22 @@ DEFAULT_TIMEOUT_SECONDS = 180
 # Explicit IDs keep heavyweight/model tests out of this lane. In particular,
 # cross-attention imports PyTorch and belongs in the separately managed heavy
 # suite; fatigue-adaptive fusion exercises the same Flask route without it.
+# Frontend behavior stays independently runnable with Node; the worker-safe
+# Python contract verifies those entrypoints without spawning a child process.
 TEST_TARGETS = (
     "scripts.test_app_factory",
     "scripts.test_gaze_benchmark",
     "scripts.test_gaze_calibration_regression",
+    "scripts.test_gaze_capture_contract",
+    "scripts.test_gaze_frontend_node_contracts",
     "scripts.test_gaze_motion_experiment",
     "scripts.test_gaze_motion_robustness",
+    "scripts.test_gaze_line_decoder_contract",
+    "scripts.test_gaze_mapping_separation",
+    "scripts.test_gaze_provenance_contract",
     "scripts.test_gaze_session_independence",
     "scripts.test_gaze_torch_runtime",
+    "scripts.test_general_collection_export",
     "scripts.test_independent_capture_plan",
     "scripts.test_adaptive_stepper",
     "scripts.test_participant_study",
@@ -49,6 +57,8 @@ TEST_TARGETS = (
     "scripts.test_subject_holdout_gaze_diversity",
     "scripts.test_onestop_confirmation_preparation",
     "scripts.test_fusion_routes",
+    "scripts.test_webcam_gaze_measurement_ceiling",
+    "scripts.test_webcam_gaze_measurement_protocol",
 )
 
 PROVIDER_CREDENTIALS = (

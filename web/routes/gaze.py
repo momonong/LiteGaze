@@ -18,6 +18,9 @@ from core.gaze_core.model_registry import (
     rename_model,
 )
 from core.gaze_core.motion_robustness import audit_payload, load_motion_samples
+from core.gaze_core.capture_contract import (
+    authoritative_participant_calibration_labels,
+)
 from core.gaze_core.sample_store import (
     create_session,
     delete_dataset,
@@ -106,6 +109,24 @@ def _participant_session(
     return store, store.get_session(study_session_id, access_token)
 
 
+def _authoritative_capture_payload(body: dict, metadata: dict) -> dict:
+    """Bind sample provenance to the server-created capture session.
+
+    Capture identity is a property of the dataset session, not of an
+    individual browser request. Removing client values before copying the
+    linked metadata prevents stale or forged sample payloads from creating a
+    session/manifest provenance conflict.
+    """
+
+    resolved = dict(body)
+    for field in ("capture_run_id", "capture_source", "source_session_id"):
+        resolved.pop(field, None)
+        value = str(metadata.get(field) or "").strip()
+        if value:
+            resolved[field] = value
+    return resolved
+
+
 def _create_gaze_session(body: dict) -> tuple[dict, int]:
     study_session_id = _study_session_id(body)
     if not study_session_id:
@@ -174,6 +195,7 @@ def _save_gaze_sample(body: dict) -> tuple[dict, int]:
     except (FileNotFoundError, ValueError, json.JSONDecodeError):
         return {"ok": False, "error": "session not found"}, 404
     linked_study_id = str(metadata.get("study_session_id") or "")
+    resolved_body = _authoritative_capture_payload(body, metadata)
     if linked_study_id:
         if _study_session_id(body) != linked_study_id:
             return {"ok": False, "error": "study session does not match dataset"}, 403
@@ -188,9 +210,21 @@ def _save_gaze_sample(body: dict) -> tuple[dict, int]:
                 "ok": False,
                 "error": "gaze session is not linked to participant",
             }, 403
+        try:
+            resolved_body.update(
+                authoritative_participant_calibration_labels(
+                    body,
+                    session_id=session_id,
+                )
+            )
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}, 400
     elif _public_study_mode():
         return {"ok": False, "error": "non-study samples are disabled"}, 403
-    return save_sample(_gaze_root(), body)
+    return save_sample(
+        _gaze_root(),
+        resolved_body,
+    )
 
 
 def _participant_model_list() -> tuple[dict, int]:

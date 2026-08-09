@@ -191,28 +191,22 @@ async function postJson(url, body, signal) {
 }
 
 async function startCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
-    audio: false,
-  });
+  if (!globalThis.LexiGazeCapture) throw new Error("camera capture contract helper is unavailable");
+  const stream = await navigator.mediaDevices.getUserMedia(
+    globalThis.LexiGazeCapture.mediaConstraints(),
+  );
   els.video.srcObject = stream;
   await els.video.play();
 }
 
-function captureFrame() {
-  const width = 640;
-  const aspect = els.video.videoHeight ? els.video.videoWidth / els.video.videoHeight : 4 / 3;
-  const height = Math.round(width / aspect);
-  els.canvas.width = width;
-  els.canvas.height = height;
-  const ctx = els.canvas.getContext("2d");
-  ctx.drawImage(els.video, 0, 0, width, height);
-  return els.canvas.toDataURL("image/jpeg", 0.8);
+function captureSnapshot() {
+  return globalThis.LexiGazeCapture.captureSnapshot(els.video, els.canvas);
 }
 
 function captureDeviceMetadata() {
   const videoTrack = els.video.srcObject?.getVideoTracks?.()[0];
   const settings = videoTrack?.getSettings?.() || {};
+  const contract = globalThis.LexiGazeCapture.captureContract(els.video);
   const userAgent = navigator.userAgent.toLowerCase();
   let deviceClass = "desktop";
   if (/ipad|tablet/.test(userAgent) || (/android/.test(userAgent) && !/mobile/.test(userAgent))) deviceClass = "tablet";
@@ -221,9 +215,9 @@ function captureDeviceMetadata() {
   return {
     // Store a role label rather than the browser's persistent device ID.
     camera_id: settings.facingMode ? `primary-${settings.facingMode}` : "primary-webcam",
-    camera_width: Number(settings.width || els.video.videoWidth || 0),
-    camera_height: Number(settings.height || els.video.videoHeight || 0),
-    camera_frame_rate: Number(settings.frameRate || 0),
+    camera_width: contract.source_width_px,
+    camera_height: contract.source_height_px,
+    camera_frame_rate: contract.source_frame_rate_hz,
     device_class: deviceClass,
   };
 }
@@ -409,6 +403,7 @@ async function saveSample(point, pointIndex, repeatIndex, captureContext, settle
   const rect = els.stage.getBoundingClientRect();
   const targetXNorm = (pos.pageX / window.innerWidth) * 2 - 1;
   const targetYNorm = (pos.pageY / window.innerHeight) * 2 - 1;
+  const snapshot = captureSnapshot();
   
   if (els.recordVideo && els.recordVideo.checked && state.recordingStartTime > 0) {
     const timeOffsetMs = performance.now() - state.recordingStartTime;
@@ -423,6 +418,7 @@ async function saveSample(point, pointIndex, repeatIndex, captureContext, settle
       phase: "calibration",
       screen_width: window.innerWidth,
       screen_height: window.innerHeight,
+      capture_contract: snapshot.capture_contract,
       ...captureContext,
     });
   }
@@ -432,7 +428,8 @@ async function saveSample(point, pointIndex, repeatIndex, captureContext, settle
       method: "POST",
       body: JSON.stringify({
         session_id: state.sessionId,
-        image_data: captureFrame(),
+        image_data: snapshot.image_data,
+        capture_contract: snapshot.capture_contract,
         target_x: pos.pageX,
         target_y: pos.pageY,
         target_x_norm: targetXNorm,
@@ -449,15 +446,24 @@ async function saveSample(point, pointIndex, repeatIndex, captureContext, settle
       }),
       headers: studyHeaders({ "Content-Type": "application/json" }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({
+      ok: false,
+      error: `sample endpoint returned HTTP ${res.status}`,
+    }));
+    if (!res.ok || data.ok === false) {
+      throw new Error(data.error || `sample endpoint returned HTTP ${res.status}`);
+    }
     if (data.face_detected === false) {
       log(`[!] 點 ${pointIndex + 1}: 偵測不到臉部，已跳過此幀（請確保臉部在鏡頭範圍內）`);
     }
   } catch (err) {
-    // Network or server error — log but don't abort the whole calibration loop
-    log(`[!] 點 ${pointIndex + 1} 上傳失敗: ${err.message}，繼續下一點...`);
+    // A rejected label contract must stop collection. Continuing would only
+    // create a partial dataset that fails the final participant audit.
+    log(`[!] 點 ${pointIndex + 1} 上傳失敗: ${err.message}，已停止收集。`);
+    throw err;
+  } finally {
+    els.target.classList.remove("capturing");
   }
-  els.target.classList.remove("capturing");
 }
 
 async function collect() {
@@ -677,8 +683,10 @@ async function train() {
 }
 
 async function predictOnce(signal) {
+  const snapshot = captureSnapshot();
   const data = await postJson("/api/gaze/predict", {
-    image_data: captureFrame(),
+    image_data: snapshot.image_data,
+    capture_contract: snapshot.capture_contract,
     model_name: els.testModeSelect.value,
     viewport_width: window.innerWidth,
     viewport_height: window.innerHeight,

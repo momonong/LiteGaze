@@ -1,0 +1,1801 @@
+"""Deterministic, CPU-only audit of webcam gaze measurement resolution.
+
+This module intentionally uses only the Python standard library. It evaluates
+explicit fixed-target observations and never treats natural-reading word
+assignments as gaze ground truth.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import math
+import statistics
+from collections import defaultdict
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from typing import Any
+
+
+SCHEMA_VERSION = 1
+ANALYSIS_ID = "webcam-gaze-measurement-ceiling-v1"
+CORRECTION_ID = "start_trained_median_translation"
+DEFAULT_TARGET_OVERLAP_TOLERANCE_SIGNED = 0.2
+FROZEN_PROTOCOL_TARGET_SEPARATION_VIEWPORT_FRACTION = 0.1
+MAX_CROSS_PHASE_CAMERA_ASPECT_RATIO_DIFFERENCE = 0.02
+SIGNED_COORDINATE_MIN = -1.0
+SIGNED_COORDINATE_MAX = 1.0
+COORDINATE_ABS_TOLERANCE = 1e-12
+
+
+class MeasurementCeilingError(ValueError):
+    """Raised when input artifacts cannot support the bounded audit."""
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _load_object(path: Path, *, label: str) -> dict[str, Any]:
+    try:
+        decoded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise MeasurementCeilingError(f"cannot read {label}: {exc}") from exc
+    if not isinstance(decoded, dict):
+        raise MeasurementCeilingError(f"{label} must contain a JSON object")
+    return decoded
+
+
+def _load_jsonl(path: Path, *, label: str) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as exc:
+        raise MeasurementCeilingError(f"cannot read {label}: {exc}") from exc
+    for line_number, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        try:
+            decoded = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise MeasurementCeilingError(
+                f"{label} line {line_number} is not valid JSON"
+            ) from exc
+        if not isinstance(decoded, dict):
+            raise MeasurementCeilingError(
+                f"{label} line {line_number} must contain an object"
+            )
+        records.append(decoded)
+    if not records:
+        raise MeasurementCeilingError(f"{label} has no records")
+    return records
+
+
+def _finite(value: Any, *, field: str) -> float:
+    if isinstance(value, bool):
+        raise MeasurementCeilingError(f"{field} must be numeric")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise MeasurementCeilingError(f"{field} must be numeric") from exc
+    if not math.isfinite(number):
+        raise MeasurementCeilingError(f"{field} must be finite")
+    return number
+
+
+def _positive(value: Any, *, field: str) -> float:
+    number = _finite(value, field=field)
+    if number <= 0:
+        raise MeasurementCeilingError(f"{field} must be positive")
+    return number
+
+
+def _signed_normalized(value: Any, *, field: str) -> float:
+    number = _finite(value, field=field)
+    if not SIGNED_COORDINATE_MIN <= number <= SIGNED_COORDINATE_MAX:
+        raise MeasurementCeilingError(f"{field} must be within [-1, 1]")
+    return number
+
+
+def _signed_distance_tolerance(value: Any) -> float:
+    number = _positive(value, field="target_overlap_tolerance")
+    maximum = math.hypot(
+        SIGNED_COORDINATE_MAX - SIGNED_COORDINATE_MIN,
+        SIGNED_COORDINATE_MAX - SIGNED_COORDINATE_MIN,
+    )
+    if number > maximum:
+        raise MeasurementCeilingError(
+            "target_overlap_tolerance exceeds the signed-coordinate diagonal"
+        )
+    return number
+
+
+def _quantile(values: Sequence[float], fraction: float) -> float:
+    if not values:
+        raise MeasurementCeilingError("cannot calculate a quantile without values")
+    if not 0 <= fraction <= 1:
+        raise MeasurementCeilingError("quantile fraction must be between zero and one")
+    ordered = sorted(float(value) for value in values)
+    if len(ordered) == 1:
+        return ordered[0]
+    position = fraction * (len(ordered) - 1)
+    lower = int(math.floor(position))
+    upper = int(math.ceil(position))
+    if lower == upper:
+        return ordered[lower]
+    weight = position - lower
+    return ordered[lower] * (1.0 - weight) + ordered[upper] * weight
+
+
+def _nearest_rank(values: Sequence[float], fraction: float) -> float:
+    """Match the participant collection's empirical percentile contract."""
+
+    if not values:
+        raise MeasurementCeilingError("cannot calculate a percentile without values")
+    if not 0 < fraction <= 1:
+        raise MeasurementCeilingError(
+            "nearest-rank fraction must be greater than zero and at most one"
+        )
+    ordered = sorted(float(value) for value in values)
+    index = max(0, math.ceil(len(ordered) * fraction) - 1)
+    return ordered[index]
+
+
+def _value_summary(values: Sequence[float]) -> dict[str, float | int]:
+    if not values:
+        raise MeasurementCeilingError("metric summary has no values")
+    return {
+        "count": len(values),
+        "mean": statistics.fmean(values),
+        "median": statistics.median(values),
+        "p90": _nearest_rank(values, 0.90),
+        "p95": _nearest_rank(values, 0.95),
+    }
+
+
+def _axis_summary(values: Sequence[float]) -> dict[str, float | int]:
+    absolute = [abs(value) for value in values]
+    return {
+        "count": len(values),
+        "signed_mean": statistics.fmean(values),
+        "signed_median": statistics.median(values),
+        "absolute_mean": statistics.fmean(absolute),
+        "absolute_median": statistics.median(absolute),
+        "absolute_p90": _nearest_rank(absolute, 0.90),
+        "absolute_p95": _nearest_rank(absolute, 0.95),
+    }
+
+
+def _validation_records(
+    validation: Mapping[str, Any],
+    *,
+    phase: str,
+) -> tuple[list[dict[str, Any]], int]:
+    raw_samples = validation.get("samples")
+    if not isinstance(raw_samples, list) or not raw_samples:
+        raise MeasurementCeilingError(f"{phase} validation has no samples")
+    successful: list[dict[str, Any]] = []
+    for index, sample in enumerate(raw_samples):
+        if not isinstance(sample, Mapping):
+            raise MeasurementCeilingError(
+                f"{phase} validation sample {index} must be an object"
+            )
+        if sample.get("prediction_success") is not True:
+            continue
+        target_id = str(sample.get("target_id") or "").strip()
+        if not target_id:
+            raise MeasurementCeilingError(
+                f"{phase} validation sample {index} lacks target_id"
+            )
+        target_x = _finite(
+            sample.get("target_x_px"), field=f"{phase}.target_x_px"
+        )
+        target_y = _finite(
+            sample.get("target_y_px"), field=f"{phase}.target_y_px"
+        )
+        predicted_x = _finite(
+            sample.get("predicted_x_px"), field=f"{phase}.predicted_x_px"
+        )
+        predicted_y = _finite(
+            sample.get("predicted_y_px"), field=f"{phase}.predicted_y_px"
+        )
+        delta_x = predicted_x - target_x
+        delta_y = predicted_y - target_y
+        successful.append(
+            {
+                "target_id": target_id,
+                "target_x_px": target_x,
+                "target_y_px": target_y,
+                "predicted_x_px": predicted_x,
+                "predicted_y_px": predicted_y,
+                "signed_error_x_px": delta_x,
+                "signed_error_y_px": delta_y,
+                "spatial_error_px": math.hypot(delta_x, delta_y),
+            }
+        )
+    if not successful:
+        raise MeasurementCeilingError(
+            f"{phase} validation has no successful predictions"
+        )
+    return successful, len(raw_samples)
+
+
+def _target_coordinates(
+    records: Sequence[Mapping[str, Any]],
+) -> dict[str, tuple[float, float]]:
+    grouped: dict[str, list[tuple[float, float]]] = defaultdict(list)
+    for record in records:
+        grouped[str(record["target_id"])].append(
+            (float(record["target_x_px"]), float(record["target_y_px"]))
+        )
+    coordinates: dict[str, tuple[float, float]] = {}
+    for target_id in sorted(grouped):
+        values = grouped[target_id]
+        x_values = [item[0] for item in values]
+        y_values = [item[1] for item in values]
+        if max(x_values) - min(x_values) > 1e-6 or max(y_values) - min(y_values) > 1e-6:
+            raise MeasurementCeilingError(
+                f"target {target_id} has inconsistent coordinates"
+            )
+        coordinates[target_id] = (x_values[0], y_values[0])
+    target_ids = sorted(coordinates)
+    for position, target_id in enumerate(target_ids):
+        for other_id in target_ids[position + 1 :]:
+            if math.dist(coordinates[target_id], coordinates[other_id]) <= 1e-9:
+                raise MeasurementCeilingError(
+                    f"targets {target_id} and {other_id} share one coordinate"
+                )
+    return coordinates
+
+
+def _nearest_target(
+    predicted_x: float,
+    predicted_y: float,
+    targets: Mapping[str, tuple[float, float]],
+) -> str:
+    return min(
+        sorted(targets),
+        key=lambda target_id: (
+            (predicted_x - targets[target_id][0]) ** 2
+            + (predicted_y - targets[target_id][1]) ** 2,
+            target_id,
+        ),
+    )
+
+
+def _phase_metrics(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    attempted_count: int,
+) -> dict[str, Any]:
+    targets = _target_coordinates(records)
+    by_target: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    confusion: dict[str, dict[str, int]] = {
+        target_id: {predicted_id: 0 for predicted_id in sorted(targets)}
+        for target_id in sorted(targets)
+    }
+    correct = 0
+    for record in records:
+        target_id = str(record["target_id"])
+        by_target[target_id].append(record)
+        predicted_id = _nearest_target(
+            float(record["predicted_x_px"]),
+            float(record["predicted_y_px"]),
+            targets,
+        )
+        confusion[target_id][predicted_id] += 1
+        correct += int(predicted_id == target_id)
+
+    target_metrics: dict[str, dict[str, Any]] = {}
+    macro_mean_errors: list[float] = []
+    macro_median_errors: list[float] = []
+    target_bias_x: list[float] = []
+    target_bias_y: list[float] = []
+    target_bias_magnitudes: list[float] = []
+    for target_id in sorted(by_target):
+        target_records = by_target[target_id]
+        errors = [float(item["spatial_error_px"]) for item in target_records]
+        x_errors = [float(item["signed_error_x_px"]) for item in target_records]
+        y_errors = [float(item["signed_error_y_px"]) for item in target_records]
+        mean_error = statistics.fmean(errors)
+        median_error = statistics.median(errors)
+        mean_bias_x = statistics.fmean(x_errors)
+        mean_bias_y = statistics.fmean(y_errors)
+        macro_mean_errors.append(mean_error)
+        macro_median_errors.append(median_error)
+        target_bias_x.append(mean_bias_x)
+        target_bias_y.append(mean_bias_y)
+        bias_magnitude = math.hypot(mean_bias_x, mean_bias_y)
+        target_bias_magnitudes.append(bias_magnitude)
+        target_metrics[target_id] = {
+            "sample_count": len(target_records),
+            "target_x_px": targets[target_id][0],
+            "target_y_px": targets[target_id][1],
+            "predicted_centroid_x_px": statistics.fmean(
+                float(item["predicted_x_px"]) for item in target_records
+            ),
+            "predicted_centroid_y_px": statistics.fmean(
+                float(item["predicted_y_px"]) for item in target_records
+            ),
+            "signed_bias_x_px": mean_bias_x,
+            "signed_bias_y_px": mean_bias_y,
+            "bias_magnitude_px": bias_magnitude,
+            "mean_spatial_error_px": mean_error,
+            "median_spatial_error_px": median_error,
+            "p90_spatial_error_px": _nearest_rank(errors, 0.90),
+        }
+
+    errors = [float(record["spatial_error_px"]) for record in records]
+    x_errors = [float(record["signed_error_x_px"]) for record in records]
+    y_errors = [float(record["signed_error_y_px"]) for record in records]
+    return {
+        "attempted_sample_count": attempted_count,
+        "successful_sample_count": len(records),
+        "prediction_success_fraction": len(records) / attempted_count,
+        "target_count": len(targets),
+        "spatial_error_px": _value_summary(errors),
+        "x_error_px": _axis_summary(x_errors),
+        "y_error_px": _axis_summary(y_errors),
+        "target_macro": {
+            "mean_spatial_error_px": statistics.fmean(macro_mean_errors),
+            "median_spatial_error_px": statistics.median(macro_median_errors),
+            "signed_bias_x_px": statistics.fmean(target_bias_x),
+            "signed_bias_y_px": statistics.fmean(target_bias_y),
+            "mean_bias_magnitude_px": statistics.fmean(target_bias_magnitudes),
+            "median_bias_magnitude_px": statistics.median(target_bias_magnitudes),
+        },
+        "coarse_region": {
+            "definition": "nearest explicit evaluation target in pixel space",
+            "correct_count": correct,
+            "sample_count": len(records),
+            "accuracy": correct / len(records),
+            "confusion": confusion,
+        },
+        "targets": target_metrics,
+    }
+
+
+def _target_independence(
+    calibration_records: Sequence[Mapping[str, Any]],
+    evaluation_targets: Mapping[str, tuple[float, float]],
+    *,
+    viewport_width: float,
+    viewport_height: float,
+    tolerance: float,
+) -> dict[str, Any]:
+    calibration_points: set[tuple[float, float]] = set()
+    for index, record in enumerate(calibration_records):
+        if record.get("ok") is not True:
+            continue
+        calibration_points.add(
+            (
+                _signed_normalized(
+                    record.get("target_x_norm"),
+                    field=f"calibration[{index}].target_x_norm",
+                ),
+                _signed_normalized(
+                    record.get("target_y_norm"),
+                    field=f"calibration[{index}].target_y_norm",
+                ),
+            )
+        )
+    if not calibration_points:
+        raise MeasurementCeilingError("calibration manifest has no usable targets")
+
+    evaluation_norm: dict[str, tuple[float, float]] = {}
+    for target_id, target in evaluation_targets.items():
+        if not 0.0 <= target[0] <= viewport_width:
+            raise MeasurementCeilingError(
+                f"evaluation target {target_id} x is outside the viewport"
+            )
+        if not 0.0 <= target[1] <= viewport_height:
+            raise MeasurementCeilingError(
+                f"evaluation target {target_id} y is outside the viewport"
+            )
+        evaluation_norm[target_id] = (
+            target[0] / viewport_width * 2.0 - 1.0,
+            target[1] / viewport_height * 2.0 - 1.0,
+        )
+    overlaps: list[str] = []
+    target_distances: dict[str, dict[str, float]] = {}
+    minimum_distance = float("inf")
+    for target_id, evaluation_point in evaluation_norm.items():
+        distance = min(
+            math.hypot(
+                evaluation_point[0] - calibration_point[0],
+                evaluation_point[1] - calibration_point[1],
+            )
+            for calibration_point in calibration_points
+        )
+        minimum_distance = min(minimum_distance, distance)
+        target_distances[target_id] = {
+            "signed_normalized_euclidean": distance,
+            "viewport_fraction_euclidean": distance / 2.0,
+        }
+        if distance < tolerance and not math.isclose(
+            distance,
+            tolerance,
+            rel_tol=0.0,
+            abs_tol=COORDINATE_ABS_TOLERANCE,
+        ):
+            overlaps.append(target_id)
+    frozen_threshold_match = math.isclose(
+        tolerance,
+        DEFAULT_TARGET_OVERLAP_TOLERANCE_SIGNED,
+        rel_tol=0.0,
+        abs_tol=COORDINATE_ABS_TOLERANCE,
+    )
+    return {
+        "status": (
+            "passed" if not overlaps and frozen_threshold_match else "failed"
+        ),
+        "definition": (
+            "evaluation targets must be at least the configured Euclidean separation "
+            "from every calibration target"
+        ),
+        "coordinate_range": "signed normalized screen coordinates [-1, 1]",
+        "coordinate_transform": "signed = 2 * viewport_fraction - 1",
+        "distance_metric": "two-dimensional Euclidean distance",
+        "independence_rule": "distance >= tolerance",
+        "overlap_rule": "distance < tolerance",
+        "frozen_protocol_threshold_match": frozen_threshold_match,
+        "threshold_source": (
+            "frozen_protocol_default"
+            if frozen_threshold_match
+            else "explicit_non_protocol_override"
+        ),
+        "normalized_coordinate_tolerance": tolerance,
+        "signed_normalized_tolerance": tolerance,
+        "viewport_fraction_tolerance_equivalent": tolerance / 2.0,
+        "frozen_protocol_viewport_fraction_separation": (
+            FROZEN_PROTOCOL_TARGET_SEPARATION_VIEWPORT_FRACTION
+        ),
+        "calibration_target_count": len(calibration_points),
+        "evaluation_target_count": len(evaluation_norm),
+        "overlap_count": len(overlaps),
+        "overlapping_evaluation_target_ids": sorted(overlaps),
+        "minimum_normalized_target_distance": minimum_distance,
+        "minimum_signed_normalized_euclidean_distance": minimum_distance,
+        "minimum_viewport_fraction_euclidean_distance": minimum_distance / 2.0,
+        "evaluation_target_minimum_distances": {
+            target_id: target_distances[target_id]
+            for target_id in sorted(target_distances)
+        },
+    }
+
+
+def _drift_vectors(
+    start_metrics: Mapping[str, Any],
+    end_metrics: Mapping[str, Any],
+) -> dict[str, Any]:
+    start_targets = start_metrics["targets"]
+    end_targets = end_metrics["targets"]
+    if set(start_targets) != set(end_targets):
+        return {
+            "status": "not_evaluable",
+            "reason": "start and end validation target sets differ",
+        }
+    vectors: dict[str, dict[str, float]] = {}
+    magnitudes: list[float] = []
+    for target_id in sorted(start_targets):
+        start = start_targets[target_id]
+        end = end_targets[target_id]
+        delta_x = (
+            float(end["predicted_centroid_x_px"])
+            - float(start["predicted_centroid_x_px"])
+        )
+        delta_y = (
+            float(end["predicted_centroid_y_px"])
+            - float(start["predicted_centroid_y_px"])
+        )
+        magnitude = math.hypot(delta_x, delta_y)
+        magnitudes.append(magnitude)
+        vectors[target_id] = {
+            "predicted_centroid_delta_x_px": delta_x,
+            "predicted_centroid_delta_y_px": delta_y,
+            "predicted_centroid_drift_magnitude_px": magnitude,
+            "signed_bias_delta_x_px": (
+                float(end["signed_bias_x_px"])
+                - float(start["signed_bias_x_px"])
+            ),
+            "signed_bias_delta_y_px": (
+                float(end["signed_bias_y_px"])
+                - float(start["signed_bias_y_px"])
+            ),
+            "median_spatial_error_change_px": (
+                float(end["median_spatial_error_px"])
+                - float(start["median_spatial_error_px"])
+            ),
+        }
+    return {
+        "status": "evaluable",
+        "target_count": len(vectors),
+        "target_macro_mean_drift_magnitude_px": statistics.fmean(magnitudes),
+        "target_macro_median_drift_magnitude_px": statistics.median(magnitudes),
+        "targets": vectors,
+    }
+
+
+def _corrected_records(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    correction_x: float,
+    correction_y: float,
+) -> list[dict[str, Any]]:
+    corrected: list[dict[str, Any]] = []
+    for record in records:
+        item = dict(record)
+        predicted_x = float(record["predicted_x_px"]) + correction_x
+        predicted_y = float(record["predicted_y_px"]) + correction_y
+        delta_x = predicted_x - float(record["target_x_px"])
+        delta_y = predicted_y - float(record["target_y_px"])
+        item.update(
+            {
+                "predicted_x_px": predicted_x,
+                "predicted_y_px": predicted_y,
+                "signed_error_x_px": delta_x,
+                "signed_error_y_px": delta_y,
+                "spatial_error_px": math.hypot(delta_x, delta_y),
+            }
+        )
+        corrected.append(item)
+    return corrected
+
+
+def _cluster_bootstrap(
+    raw_records: Sequence[Mapping[str, Any]],
+    corrected_records: Sequence[Mapping[str, Any]],
+    *,
+    resamples: int,
+    seed: int,
+) -> dict[str, Any]:
+    if resamples <= 0:
+        raise MeasurementCeilingError("bootstrap resamples must be positive")
+    raw_target_sequence = [str(record["target_id"]) for record in raw_records]
+    corrected_target_sequence = [
+        str(record["target_id"]) for record in corrected_records
+    ]
+    if raw_target_sequence != corrected_target_sequence:
+        raise MeasurementCeilingError(
+            "raw and corrected records must retain paired target order"
+        )
+    raw_by_target: dict[str, list[float]] = defaultdict(list)
+    corrected_by_target: dict[str, list[float]] = defaultdict(list)
+    for record in raw_records:
+        raw_by_target[str(record["target_id"])].append(
+            float(record["spatial_error_px"])
+        )
+    for record in corrected_records:
+        corrected_by_target[str(record["target_id"])].append(
+            float(record["spatial_error_px"])
+        )
+    target_ids = sorted(raw_by_target)
+    if set(target_ids) != set(corrected_by_target):
+        raise MeasurementCeilingError("raw and corrected target clusters differ")
+    if len(target_ids) < 2:
+        raise MeasurementCeilingError(
+            "cluster bootstrap requires at least two evaluation targets"
+        )
+    if any(
+        len(raw_by_target[target_id]) != len(corrected_by_target[target_id])
+        for target_id in target_ids
+    ):
+        raise MeasurementCeilingError(
+            "raw and corrected target cluster sizes must match"
+        )
+    deltas: list[float] = []
+    for resample_index in range(resamples):
+        selected: list[str] = []
+        for draw_index in range(len(target_ids)):
+            digest = hashlib.sha256(
+                f"{seed}:{resample_index}:{draw_index}".encode("ascii")
+            ).digest()
+            selected.append(
+                target_ids[int.from_bytes(digest, "big") % len(target_ids)]
+            )
+        raw_values = [value for target in selected for value in raw_by_target[target]]
+        corrected_values = [
+            value for target in selected for value in corrected_by_target[target]
+        ]
+        deltas.append(
+            statistics.median(corrected_values) - statistics.median(raw_values)
+        )
+    return {
+        "cluster_unit": "evaluation_target_id",
+        "paired_raw_and_corrected": True,
+        "target_cluster_count": len(target_ids),
+        "cluster_draws_per_resample": len(target_ids),
+        "resamples": resamples,
+        "seed": seed,
+        "deterministic_sampler": "sha256(seed:resample_index:draw_index) modulo target_count",
+        "delta_definition": "corrected minus raw end-validation median error",
+        "interval_quantile_method": "linear interpolation at (n - 1) * p",
+        "ci95_lower_px": _quantile(deltas, 0.025),
+        "ci95_upper_px": _quantile(deltas, 0.975),
+        "fraction_improved": sum(delta < 0 for delta in deltas) / resamples,
+        "fraction_unchanged": sum(delta == 0 for delta in deltas) / resamples,
+        "inferential_claim_authorized": False,
+        "limitation": (
+            "resamples only the observed target clusters; the interval is descriptive "
+            "and does not establish population-level correction benefit"
+        ),
+    }
+
+
+def _temporal_correction(
+    start_records: Sequence[Mapping[str, Any]],
+    end_records: Sequence[Mapping[str, Any]],
+    *,
+    end_attempted_count: int,
+    bootstrap_resamples: int,
+    bootstrap_seed: int,
+) -> dict[str, Any]:
+    correction_x = statistics.median(
+        float(record["target_x_px"]) - float(record["predicted_x_px"])
+        for record in start_records
+    )
+    correction_y = statistics.median(
+        float(record["target_y_px"]) - float(record["predicted_y_px"])
+        for record in start_records
+    )
+    corrected = _corrected_records(
+        end_records,
+        correction_x=correction_x,
+        correction_y=correction_y,
+    )
+    raw_metrics = _phase_metrics(end_records, attempted_count=end_attempted_count)
+    corrected_metrics = _phase_metrics(
+        corrected,
+        attempted_count=end_attempted_count,
+    )
+    raw_median = float(raw_metrics["spatial_error_px"]["median"])
+    corrected_median = float(corrected_metrics["spatial_error_px"]["median"])
+    raw_p90 = float(raw_metrics["spatial_error_px"]["p90"])
+    corrected_p90 = float(corrected_metrics["spatial_error_px"]["p90"])
+    bootstrap = _cluster_bootstrap(
+        end_records,
+        corrected,
+        resamples=bootstrap_resamples,
+        seed=bootstrap_seed,
+    )
+    return {
+        "correction_id": CORRECTION_ID,
+        "fit_scope": "start validation successful samples only",
+        "evaluation_scope": "temporally later end validation only",
+        "selected_using_end_validation": False,
+        "translation_x_px": correction_x,
+        "translation_y_px": correction_y,
+        "raw_end": {
+            "median_spatial_error_px": raw_median,
+            "p90_spatial_error_px": raw_p90,
+        },
+        "corrected_end": {
+            "median_spatial_error_px": corrected_median,
+            "p90_spatial_error_px": corrected_p90,
+        },
+        "corrected_minus_raw": {
+            "median_spatial_error_px": corrected_median - raw_median,
+            "p90_spatial_error_px": corrected_p90 - raw_p90,
+        },
+        "bootstrap": bootstrap,
+        "decision": "development_only_no_model_or_quality_band_promotion",
+    }
+
+
+def _manifest_provenance(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    usable = [record for record in records if record.get("ok") is True]
+
+    def distinct(field: str) -> list[str]:
+        return sorted(
+            {
+                str(record.get(field)).strip()
+                for record in usable
+                if str(record.get(field) or "").strip()
+            }
+        )
+
+    return {
+        "row_count": len(records),
+        "usable_row_count": len(usable),
+        "capture_run_count": len(distinct("capture_run_id")),
+        "capture_sources": distinct("capture_source"),
+        "collection_protocols": distinct("collection_protocol"),
+        "motion_blocks": distinct("motion_block_id"),
+    }
+
+
+def _capture_provenance(
+    session_metadata: Mapping[str, Any],
+    records: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Compare every manifest row to authoritative server session metadata."""
+
+    def value(item: Mapping[str, Any], field: str) -> str:
+        return str(item.get(field) or "").strip()
+
+    def distinct(field: str) -> list[str]:
+        return sorted(
+            {value(record, field) for record in records if value(record, field)}
+        )
+
+    session_capture_run_id = value(session_metadata, "capture_run_id")
+    session_capture_source = value(session_metadata, "capture_source")
+    session_source_session_id = value(session_metadata, "source_session_id")
+    manifest_capture_run_ids = distinct("capture_run_id")
+    manifest_capture_sources = distinct("capture_source")
+    manifest_source_session_ids = distinct("source_session_id")
+    checks = {
+        "manifest_capture_run_id_matches_session_metadata": (
+            bool(session_capture_run_id)
+            and all(
+                value(record, "capture_run_id") == session_capture_run_id
+                for record in records
+            )
+        ),
+        "manifest_capture_source_matches_session_metadata": (
+            bool(session_capture_source)
+            and all(
+                value(record, "capture_source") == session_capture_source
+                for record in records
+            )
+        ),
+        "manifest_source_session_id_matches_session_metadata": (
+            all(
+                value(record, "source_session_id") == session_source_session_id
+                for record in records
+            )
+        ),
+    }
+    return {
+        "status": "passed" if all(checks.values()) else "failed",
+        "authority": "server-side calibration session metadata",
+        "checks": checks,
+        "session_metadata": {
+            "capture_run_id_present": bool(session_capture_run_id),
+            "capture_run_id_sha256": hashlib.sha256(
+                session_capture_run_id.encode("utf-8")
+            ).hexdigest(),
+            "capture_source": session_capture_source or None,
+            "source_session_id_present": bool(session_source_session_id),
+            "source_session_id_sha256": hashlib.sha256(
+                session_source_session_id.encode("utf-8")
+            ).hexdigest(),
+        },
+        "manifest": {
+            "row_scope": "all manifest records, including non-usable rows",
+            "row_count": len(records),
+            "capture_run_id_count": len(manifest_capture_run_ids),
+            "capture_run_ids_match_one_authoritative_value": checks[
+                "manifest_capture_run_id_matches_session_metadata"
+            ],
+            "capture_sources": manifest_capture_sources,
+            "source_session_id_count": len(manifest_source_session_ids),
+        },
+    }
+
+
+def _calibration_viewport_provenance(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    evaluation_width: float,
+    evaluation_height: float,
+) -> dict[str, Any]:
+    usable = [record for record in records if record.get("ok") is True]
+    viewports: set[tuple[float, float]] = set()
+    rows_with_viewport = 0
+    for index, record in enumerate(usable):
+        if record.get("viewport_width") is None or record.get("viewport_height") is None:
+            continue
+        rows_with_viewport += 1
+        viewports.add(
+            (
+                _positive(
+                    record.get("viewport_width"),
+                    field=f"calibration[{index}].viewport_width",
+                ),
+                _positive(
+                    record.get("viewport_height"),
+                    field=f"calibration[{index}].viewport_height",
+                ),
+            )
+        )
+    expected = (evaluation_width, evaluation_height)
+    complete = rows_with_viewport == len(usable)
+    consistent = complete and viewports == {expected}
+    return {
+        "status": "passed" if consistent else "failed",
+        "usable_row_count": len(usable),
+        "rows_with_viewport_count": rows_with_viewport,
+        "distinct_calibration_viewport_count": len(viewports),
+        "matches_evaluation_viewport": consistent,
+        "evaluation_viewport": {
+            "width_px": evaluation_width,
+            "height_px": evaluation_height,
+        },
+    }
+
+
+def _estimated_frame_rate_band(
+    value: Any,
+) -> tuple[str | None, float | None, float | None]:
+    """Return the participant UI's coarse FPS band as [lower, upper)."""
+
+    band = str(value or "").strip()
+    ranges: dict[str, tuple[float | None, float | None]] = {
+        "under_15": (None, 15.0),
+        "15_23": (15.0, 24.0),
+        "24_30": (24.0, 31.0),
+        "over_30": (31.0, None),
+    }
+    if band not in ranges:
+        return (band or None, None, None)
+    lower, upper = ranges[band]
+    return band, lower, upper
+
+
+def _cross_phase_camera_geometry(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    participant_device: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Audit calibration camera metadata against the participant system check.
+
+    Aspect ratio is the only numeric camera-geometry integrity gate here.
+    Absolute resolution and frame rate are retained as diagnostics because the
+    runtime contract permits those values to change while preserving geometry.
+    """
+
+    usable = [record for record in records if record.get("ok") is True]
+    calibration_resolutions: set[tuple[float, float]] = set()
+    calibration_frame_rates: set[float] = set()
+    rows_with_camera_geometry = 0
+    rows_with_frame_rate = 0
+    for index, record in enumerate(usable):
+        width = record.get("camera_width")
+        height = record.get("camera_height")
+        if width is not None and height is not None:
+            rows_with_camera_geometry += 1
+            calibration_resolutions.add(
+                (
+                    _positive(width, field=f"calibration[{index}].camera_width"),
+                    _positive(height, field=f"calibration[{index}].camera_height"),
+                )
+            )
+        frame_rate = record.get("camera_frame_rate")
+        if frame_rate is not None:
+            rows_with_frame_rate += 1
+            calibration_frame_rates.add(
+                _positive(
+                    frame_rate,
+                    field=f"calibration[{index}].camera_frame_rate",
+                )
+            )
+
+    participant_width_raw = participant_device.get("camera_width")
+    participant_height_raw = participant_device.get("camera_height")
+    participant_width = (
+        _positive(participant_width_raw, field="participant.camera_width")
+        if participant_width_raw is not None
+        else None
+    )
+    participant_height = (
+        _positive(participant_height_raw, field="participant.camera_height")
+        if participant_height_raw is not None
+        else None
+    )
+    participant_geometry_present = (
+        participant_width is not None and participant_height is not None
+    )
+    participant_aspect_ratio = (
+        participant_width / participant_height
+        if participant_geometry_present
+        else None
+    )
+
+    calibration_geometry_complete = (
+        bool(usable) and rows_with_camera_geometry == len(usable)
+    )
+    resolution_rows = [
+        {
+            "width_px": width,
+            "height_px": height,
+            "aspect_ratio": width / height,
+        }
+        for width, height in sorted(calibration_resolutions)
+    ]
+    aspect_differences = (
+        [
+            abs(float(item["aspect_ratio"]) - participant_aspect_ratio)
+            for item in resolution_rows
+        ]
+        if participant_aspect_ratio is not None
+        else []
+    )
+    maximum_aspect_difference = max(aspect_differences, default=None)
+    aspect_ratio_matches = (
+        calibration_geometry_complete
+        and participant_geometry_present
+        and maximum_aspect_difference is not None
+        and maximum_aspect_difference
+        <= MAX_CROSS_PHASE_CAMERA_ASPECT_RATIO_DIFFERENCE
+        + COORDINATE_ABS_TOLERANCE
+    )
+
+    exact_resolution_matches = (
+        calibration_geometry_complete
+        and participant_geometry_present
+        and calibration_resolutions == {(participant_width, participant_height)}
+    )
+    participant_band, band_lower, band_upper = _estimated_frame_rate_band(
+        participant_device.get("estimated_camera_fps_band")
+    )
+    frame_rate_comparable = (
+        rows_with_frame_rate == len(usable)
+        and bool(calibration_frame_rates)
+        and participant_band is not None
+        and (band_lower is not None or band_upper is not None)
+    )
+    frame_rate_matches_band: bool | None = None
+    if frame_rate_comparable:
+        frame_rate_matches_band = all(
+            (band_lower is None or rate >= band_lower)
+            and (band_upper is None or rate < band_upper)
+            for rate in calibration_frame_rates
+        )
+
+    warnings: list[str] = []
+    if calibration_geometry_complete and participant_geometry_present:
+        if not exact_resolution_matches:
+            warnings.append("absolute_camera_resolution_changed_diagnostic_only")
+    if rows_with_frame_rate != len(usable):
+        warnings.append("calibration_frame_rate_missing_on_some_usable_rows")
+    if not calibration_frame_rates:
+        warnings.append("calibration_frame_rate_unavailable")
+    if participant_band is None or (band_lower is None and band_upper is None):
+        warnings.append("participant_estimated_frame_rate_band_unavailable")
+    elif frame_rate_matches_band is False:
+        warnings.append(
+            "calibration_frame_rate_outside_participant_estimated_band_diagnostic_only"
+        )
+
+    hard_failures: list[str] = []
+    if not calibration_geometry_complete:
+        hard_failures.append("calibration_camera_geometry_incomplete")
+    if not participant_geometry_present:
+        hard_failures.append("participant_system_check_camera_geometry_missing")
+    if (
+        calibration_geometry_complete
+        and participant_geometry_present
+        and not aspect_ratio_matches
+    ):
+        hard_failures.append("cross_phase_camera_aspect_ratio_mismatch")
+
+    return {
+        "status": "passed" if not hard_failures else "failed",
+        "hard_integrity_rule": (
+            "every usable calibration row and the participant system check must "
+            "provide camera geometry, and maximum absolute aspect-ratio difference "
+            f"must be <= {MAX_CROSS_PHASE_CAMERA_ASPECT_RATIO_DIFFERENCE}"
+        ),
+        "maximum_allowed_absolute_aspect_ratio_difference": (
+            MAX_CROSS_PHASE_CAMERA_ASPECT_RATIO_DIFFERENCE
+        ),
+        "absolute_resolution_policy": "diagnostic_warning_only",
+        "frame_rate_policy": "diagnostic_warning_only",
+        "calibration_manifest": {
+            "usable_row_count": len(usable),
+            "rows_with_camera_geometry_count": rows_with_camera_geometry,
+            "rows_with_frame_rate_count": rows_with_frame_rate,
+            "distinct_resolutions": resolution_rows,
+            "distinct_frame_rates_fps": sorted(calibration_frame_rates),
+        },
+        "participant_system_check": {
+            "camera_width_px": participant_width,
+            "camera_height_px": participant_height,
+            "aspect_ratio": participant_aspect_ratio,
+            "estimated_frame_rate_band": participant_band,
+            "estimated_frame_rate_band_minimum_inclusive_fps": band_lower,
+            "estimated_frame_rate_band_maximum_exclusive_fps": band_upper,
+        },
+        "checks": {
+            "calibration_camera_geometry_complete": calibration_geometry_complete,
+            "participant_camera_geometry_present": participant_geometry_present,
+            "aspect_ratio_matches_within_tolerance": aspect_ratio_matches,
+            "exact_absolute_resolution_matches_diagnostic": exact_resolution_matches,
+            "frame_rate_matches_participant_estimated_band_diagnostic": (
+                frame_rate_matches_band
+            ),
+        },
+        "maximum_observed_absolute_aspect_ratio_difference": (
+            maximum_aspect_difference
+        ),
+        "hard_failures": hard_failures,
+        "warnings": warnings,
+    }
+
+
+def _model_metrics(model: Mapping[str, Any]) -> dict[str, Any]:
+    stages = model.get("stages")
+    if not isinstance(stages, list) or not stages or not isinstance(stages[-1], Mapping):
+        raise MeasurementCeilingError("model artifact has no calibration stage")
+    stage = stages[-1]
+    comparison = model.get("candidate_comparison")
+    selected_outer: float | None = None
+    stage_name = str(stage.get("calibrator_type") or "gaze_polynomial").strip()
+    selected_name = stage_name
+    comparison_selected: str | None = None
+    comparison_selected_known: bool | None = None
+    if isinstance(comparison, Mapping):
+        comparison_selected = str(comparison.get("selected") or "").strip()
+        selected_name = comparison_selected or stage_name
+        outer_keys = {
+            "gaze_polynomial": "baseline_gaze_only_px",
+            "motion_conditioned_ridge_v1": "motion_conditioned_px",
+        }
+        comparison_selected_known = selected_name in outer_keys
+        if comparison_selected_known:
+            key = outer_keys[selected_name]
+            if comparison.get(key) is not None:
+                selected_outer = _finite(
+                    comparison.get(key),
+                    field=f"model.{key}",
+                )
+    top_level = (
+        _finite(model.get("validation_px_error"), field="model.validation_px_error")
+        if model.get("validation_px_error") is not None
+        else None
+    )
+    stage_validation = (
+        _finite(stage.get("validation_px_error"), field="stage.validation_px_error")
+        if stage.get("validation_px_error") is not None
+        else None
+    )
+    top_hyperparameter = (
+        _finite(
+            model.get("hyperparameter_cv_px_error"),
+            field="model.hyperparameter_cv_px_error",
+        )
+        if model.get("hyperparameter_cv_px_error") is not None
+        else None
+    )
+    stage_hyperparameter = (
+        _finite(
+            stage.get("hyperparameter_cv_px_error"),
+            field="stage.hyperparameter_cv_px_error",
+        )
+        if stage.get("hyperparameter_cv_px_error") is not None
+        else None
+    )
+    hyperparameter_value = (
+        stage_hyperparameter
+        if stage_hyperparameter is not None
+        else top_hyperparameter
+    )
+    expected = selected_outer if selected_outer is not None else stage_validation
+    top_matches_expected = (
+        top_level is not None
+        and expected is not None
+        and math.isclose(top_level, expected, rel_tol=0.0, abs_tol=1e-9)
+    )
+    stage_matches_expected = (
+        stage_validation is not None
+        and expected is not None
+        and math.isclose(stage_validation, expected, rel_tol=0.0, abs_tol=1e-9)
+    )
+    selection_matches_stage = (
+        None
+        if not isinstance(comparison, Mapping)
+        else bool(comparison_selected) and selected_name == stage_name
+    )
+    outer_metric_present = (
+        None if not isinstance(comparison, Mapping) else selected_outer is not None
+    )
+    hyperparameter_fields_match = (
+        None
+        if top_hyperparameter is None or stage_hyperparameter is None
+        else math.isclose(
+            top_hyperparameter,
+            stage_hyperparameter,
+            rel_tol=0.0,
+            abs_tol=1e-9,
+        )
+    )
+    validation_schemes = [
+        str(value).strip()
+        for value in (
+            model.get("validation_scheme"),
+            stage.get("validation_scheme"),
+            comparison.get("validation_scheme")
+            if isinstance(comparison, Mapping)
+            else None,
+        )
+        if str(value or "").strip()
+    ]
+    validation_scheme_consistent = len(set(validation_schemes)) <= 1
+    checks: dict[str, bool | None] = {
+        "top_level_matches_selected_outer_or_stage": top_matches_expected,
+        "selected_stage_matches_selected_outer": stage_matches_expected,
+        "comparison_selected_model_is_known": comparison_selected_known,
+        "comparison_selection_matches_stage": selection_matches_stage,
+        "selected_outer_metric_is_present": outer_metric_present,
+        "top_and_stage_hyperparameter_cv_match_when_both_present": (
+            hyperparameter_fields_match
+        ),
+        "validation_scheme_fields_are_consistent": validation_scheme_consistent,
+    }
+    consistent = all(value is not False for value in checks.values())
+    return {
+        "selected_calibrator": selected_name,
+        "validation_scheme": model.get("validation_scheme"),
+        "top_level_validation_px_error": top_level,
+        "selected_stage_validation_px_error": stage_validation,
+        "selected_nested_outer_macro_px_error": selected_outer,
+        "hyperparameter_cv_px_error": hyperparameter_value,
+        "top_level_hyperparameter_cv_px_error": top_hyperparameter,
+        "selected_stage_hyperparameter_cv_px_error": stage_hyperparameter,
+        "validation_metric_consistency": {
+            "status": "passed" if consistent else "failed",
+            "expected_top_level_px_error": expected,
+            "checks": checks,
+            "note": (
+                "top-level and selected-stage validation must identify the selected "
+                "held-out score; hyperparameter CV remains a separate metric"
+            ),
+        },
+    }
+
+
+def _binding_checks(
+    participant: Mapping[str, Any],
+    session_metadata_path: Path,
+    session_metadata: Mapping[str, Any],
+    manifest_path: Path,
+    model: Mapping[str, Any],
+) -> dict[str, Any]:
+    linked = participant.get("linked_data")
+    if not isinstance(linked, Mapping):
+        raise MeasurementCeilingError("participant session lacks linked_data")
+    gaze_session_id = str(linked.get("gaze_session_id") or "").strip()
+    model_name = str(linked.get("model_name") or "").strip()
+    session_id = str(session_metadata.get("session_id") or "").strip()
+    participant_study_session_id = str(
+        participant.get("study_session_id") or ""
+    ).strip()
+    calibration_study_session_id = str(
+        session_metadata.get("study_session_id") or ""
+    ).strip()
+    checks = {
+        "session_metadata_is_sibling_of_manifest": (
+            session_metadata_path.parent == manifest_path.parent
+        ),
+        "session_metadata_matches_linked_gaze_session": (
+            bool(gaze_session_id) and session_id == gaze_session_id
+        ),
+        "calibration_session_matches_participant_study_session": (
+            bool(participant_study_session_id)
+            and calibration_study_session_id == participant_study_session_id
+        ),
+        "manifest_parent_matches_linked_gaze_session": (
+            bool(gaze_session_id) and manifest_path.parent.name == gaze_session_id
+        ),
+        "model_data_session_matches_linked_gaze_session": (
+            bool(gaze_session_id)
+            and str(model.get("data_session_id") or "").strip() == gaze_session_id
+        ),
+        "model_name_matches_linked_model": (
+            bool(model_name) and str(model.get("name") or "").strip() == model_name
+        ),
+    }
+    return {
+        "status": "passed" if all(checks.values()) else "failed",
+        "checks": checks,
+        "linked_gaze_session_id_sha256": hashlib.sha256(
+            gaze_session_id.encode("utf-8")
+        ).hexdigest(),
+        "linked_model_name_sha256": hashlib.sha256(
+            model_name.encode("utf-8")
+        ).hexdigest(),
+    }
+
+
+def build_measurement_ceiling_result(
+    *,
+    participant_session_path: str | Path,
+    calibration_session_metadata_path: str | Path,
+    calibration_manifest_path: str | Path,
+    model_artifact_path: str | Path,
+    line_gap_px: float,
+    median_word_width_px: float,
+    participant_session_label: str = "participant-session",
+    calibration_manifest_label: str = "calibration-manifest",
+    model_artifact_label: str = "model-artifact",
+    bootstrap_resamples: int = 10_000,
+    bootstrap_seed: int = 20260810,
+    target_overlap_tolerance: float = DEFAULT_TARGET_OVERLAP_TOLERANCE_SIGNED,
+) -> dict[str, Any]:
+    """Build a deterministic aggregate result from explicit target evidence."""
+
+    participant_path = Path(participant_session_path).resolve()
+    session_metadata_path = Path(calibration_session_metadata_path).resolve()
+    manifest_path = Path(calibration_manifest_path).resolve()
+    model_path = Path(model_artifact_path).resolve()
+    line_gap = _positive(line_gap_px, field="line_gap_px")
+    word_width = _positive(median_word_width_px, field="median_word_width_px")
+    tolerance = _signed_distance_tolerance(target_overlap_tolerance)
+    participant = _load_object(participant_path, label="participant session")
+    session_metadata = _load_object(
+        session_metadata_path,
+        label="calibration session metadata",
+    )
+    calibration_records = _load_jsonl(manifest_path, label="calibration manifest")
+    model = _load_object(model_path, label="model artifact")
+
+    general_collection = participant.get("general_collection")
+    if not isinstance(general_collection, Mapping):
+        raise MeasurementCeilingError(
+            "participant session lacks general_collection data"
+        )
+    validations = general_collection.get("validations")
+    if not isinstance(validations, Mapping):
+        raise MeasurementCeilingError("participant session lacks validations")
+    start_validation = validations.get("start")
+    end_validation = validations.get("end")
+    if not isinstance(start_validation, Mapping) or not isinstance(
+        end_validation, Mapping
+    ):
+        raise MeasurementCeilingError("start and end validation are required")
+
+    quality = participant.get("quality")
+    system_check = quality.get("general_system_check") if isinstance(quality, Mapping) else None
+    device = system_check.get("device") if isinstance(system_check, Mapping) else None
+    if not isinstance(device, Mapping):
+        raise MeasurementCeilingError("participant session lacks viewport metadata")
+    viewport_width = _positive(device.get("viewport_width"), field="viewport_width")
+    viewport_height = _positive(device.get("viewport_height"), field="viewport_height")
+
+    start_records, start_attempted = _validation_records(
+        start_validation,
+        phase="start",
+    )
+    end_records, end_attempted = _validation_records(end_validation, phase="end")
+    start_targets = _target_coordinates(start_records)
+    end_targets = _target_coordinates(end_records)
+    if start_targets != end_targets:
+        raise MeasurementCeilingError(
+            "start and end evaluation target coordinates must match"
+        )
+    start_metrics = _phase_metrics(start_records, attempted_count=start_attempted)
+    end_metrics = _phase_metrics(end_records, attempted_count=end_attempted)
+    target_independence = _target_independence(
+        calibration_records,
+        start_targets,
+        viewport_width=viewport_width,
+        viewport_height=viewport_height,
+        tolerance=tolerance,
+    )
+    correction = _temporal_correction(
+        start_records,
+        end_records,
+        end_attempted_count=end_attempted,
+        bootstrap_resamples=bootstrap_resamples,
+        bootstrap_seed=bootstrap_seed,
+    )
+    binding = _binding_checks(
+        participant,
+        session_metadata_path,
+        session_metadata,
+        manifest_path,
+        model,
+    )
+    capture_provenance = _capture_provenance(
+        session_metadata,
+        calibration_records,
+    )
+    viewport_provenance = _calibration_viewport_provenance(
+        calibration_records,
+        evaluation_width=viewport_width,
+        evaluation_height=viewport_height,
+    )
+    camera_geometry = _cross_phase_camera_geometry(
+        calibration_records,
+        participant_device=device,
+    )
+    model_metrics = _model_metrics(model)
+
+    def normalized_resolution(metrics: Mapping[str, Any]) -> dict[str, float]:
+        median_error = float(metrics["spatial_error_px"]["median"])
+        p90_error = float(metrics["spatial_error_px"]["p90"])
+        return {
+            "median_error_in_line_gaps": median_error / line_gap,
+            "p90_error_in_line_gaps": p90_error / line_gap,
+            "median_error_in_median_word_widths": median_error / word_width,
+            "p90_error_in_median_word_widths": p90_error / word_width,
+        }
+
+    integrity_gate_passed = (
+        binding["status"] == "passed"
+        and capture_provenance["status"] == "passed"
+        and viewport_provenance["status"] == "passed"
+        and camera_geometry["status"] == "passed"
+        and target_independence["status"] == "passed"
+        and model_metrics["validation_metric_consistency"]["status"] == "passed"
+    )
+    result_status = "completed" if integrity_gate_passed else "failed_integrity_gate"
+    linked = participant.get("linked_data", {})
+    result = {
+        "schema_version": SCHEMA_VERSION,
+        "analysis_id": ANALYSIS_ID,
+        "status": result_status,
+        "evidence_class": "exploratory_self_development_only",
+        "analysis_contract": {
+            "cpu_only": True,
+            "standard_library_only": True,
+            "images_or_videos_opened": False,
+            "torch_or_gpu_loaded": False,
+            "natural_reading_nearest_word_index_used_as_ground_truth": False,
+            "correction_fit_data": "start validation only",
+            "correction_evaluation_data": "end validation only",
+            "model_or_threshold_selection_authorized": False,
+            "descriptive_percentile_method": "nearest rank at ceil(n * p)",
+        },
+        "inputs": {
+            "participant_session": {
+                "label": participant_session_label,
+                "sha256": _sha256(participant_path),
+            },
+            "calibration_session_metadata": {
+                "label": "linked calibration session metadata",
+                "sha256": _sha256(session_metadata_path),
+            },
+            "calibration_manifest": {
+                "label": calibration_manifest_label,
+                "sha256": _sha256(manifest_path),
+            },
+            "model_artifact": {
+                "label": model_artifact_label,
+                "sha256": _sha256(model_path),
+            },
+        },
+        "provenance": {
+            "participant": {
+                "schema_version": participant.get("schema_version"),
+                "protocol_id": participant.get("protocol_id"),
+                "protocol_version": participant.get("protocol_version"),
+                "mode": participant.get("mode"),
+                "state": participant.get("state"),
+                "dataset_role": participant.get("dataset_role"),
+                "linked_gaze_present": bool(linked.get("gaze_session_id"))
+                if isinstance(linked, Mapping)
+                else False,
+                "linked_model_present": bool(linked.get("model_name"))
+                if isinstance(linked, Mapping)
+                else False,
+            },
+            "calibration_manifest": _manifest_provenance(calibration_records),
+            "capture_contract": capture_provenance,
+            "calibration_viewport_contract": viewport_provenance,
+            "cross_phase_camera_geometry": camera_geometry,
+            "bindings": binding,
+            "model": model_metrics,
+        },
+        "viewport": {
+            "width_px": viewport_width,
+            "height_px": viewport_height,
+        },
+        "target_independence": target_independence,
+        "raw_validation": {
+            "start": start_metrics,
+            "end": end_metrics,
+        },
+        "layout_normalized_resolution": {
+            "status": "descriptive_resolution_only_not_reading_accuracy",
+            "line_gap_px": line_gap,
+            "median_word_width_px": word_width,
+            "start": normalized_resolution(start_metrics),
+            "end": normalized_resolution(end_metrics),
+        },
+        "drift": _drift_vectors(start_metrics, end_metrics),
+        "temporal_correction": correction,
+        "not_evaluable": {
+            "per_sample_uncertainty_calibration": {
+                "status": "not_evaluable",
+                "reason": "fixed-target validation did not record predictive uncertainty",
+            },
+            "natural_reading_line_accuracy": {
+                "status": "not_evaluable",
+                "reason": "no independent line-level gaze ground truth was recorded",
+            },
+            "natural_reading_word_accuracy": {
+                "status": "not_evaluable",
+                "reason": "no independent word-level gaze ground truth was recorded",
+            },
+        },
+        "decision": {
+            "quality_band_changed": False,
+            "production_model_changed": False,
+            "eligible_claim": "coarse fixed-target development evidence only",
+            "line_or_word_accuracy_claimed": False,
+            "integrity_gate_passed": integrity_gate_passed,
+        },
+    }
+    return result
+
+
+def _fmt(value: Any, digits: int = 2) -> str:
+    if value is None:
+        return "n/a"
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    if isinstance(value, (int, float)):
+        return f"{float(value):.{digits}f}"
+    return str(value)
+
+
+def render_measurement_ceiling_markdown(
+    result: Mapping[str, Any],
+    *,
+    result_reference: str = "results/2026-08-10-webcam-gaze-measurement-ceiling-v1.json",
+) -> str:
+    """Render the aggregate result without adding wall-clock state."""
+
+    start = result["raw_validation"]["start"]
+    end = result["raw_validation"]["end"]
+    independence = result["target_independence"]
+    correction = result["temporal_correction"]
+    bootstrap = correction["bootstrap"]
+    model = result["provenance"]["model"]
+    capture = result["provenance"]["capture_contract"]
+    camera_geometry = result["provenance"]["cross_phase_camera_geometry"]
+    drift = result["drift"]
+    lines = [
+        "# Webcam Gaze Measurement Ceiling v1 - Existing-Data Audit",
+        "",
+        f"Status: `{result['status']}`; exploratory self-development evidence only. "
+        "This audit does not promote a model, threshold, gaze quality band, or "
+        "participant claim.",
+        "",
+        f"Machine-readable result: [`{result_reference}`]({result_reference})",
+        "",
+        "## Integrity and provenance",
+        "",
+        "| Check | Result |",
+        "| --- | --- |",
+        f"| Artifact bindings | {result['provenance']['bindings']['status']} |",
+        f"| Server session/manifest capture contract | {capture['status']} |",
+        "| Calibration/evaluation viewport contract | "
+        f"{result['provenance']['calibration_viewport_contract']['status']} |",
+        "| Cross-phase camera aspect-ratio integrity | "
+        f"{camera_geometry['status']} |",
+        f"| Calibration/evaluation target independence | {independence['status']} |",
+        f"| Model validation metric consistency | {model['validation_metric_consistency']['status']} |",
+        f"| Calibration targets | {independence['calibration_target_count']} |",
+        f"| Evaluation targets | {independence['evaluation_target_count']} |",
+        f"| Below-tolerance overlaps | {independence['overlap_count']} |",
+        "| Target-separation tolerance | "
+        f"{_fmt(independence['signed_normalized_tolerance'])} signed = "
+        f"{_fmt(independence['viewport_fraction_tolerance_equivalent'])} "
+        "viewport fraction |",
+        "| Observed minimum target distance | "
+        f"{_fmt(independence['minimum_signed_normalized_euclidean_distance'], 6)} "
+        "signed = "
+        f"{_fmt(independence['minimum_viewport_fraction_euclidean_distance'], 6)} "
+        "viewport fraction |",
+        "| Images, videos, Torch, or GPU opened | no |",
+        "| Natural-reading nearest-word index used as truth | no |",
+        "",
+        "Input SHA-256 values:",
+        "",
+    ]
+    for name in (
+        "participant_session",
+        "calibration_session_metadata",
+        "calibration_manifest",
+        "model_artifact",
+    ):
+        source = result["inputs"][name]
+        lines.append(f"- `{name}`: `{source['sha256']}`")
+    lines.extend(
+        [
+            "",
+            "Target-distance coordinates use `signed = 2 * viewport_fraction - 1`; "
+            f"the frozen `{_fmt(independence['signed_normalized_tolerance'])}` "
+            "signed Euclidean threshold therefore equals "
+            f"`{_fmt(independence['viewport_fraction_tolerance_equivalent'])}` "
+            "in `[0, 1]` viewport-fraction coordinates. Distances equal to the "
+            "threshold are independent; only smaller distances overlap.",
+            "",
+            "Server-side calibration session metadata is authoritative for capture "
+            "provenance.",
+            "",
+            f"- Session capture source: `{capture['session_metadata']['capture_source']}`",
+            "- Manifest capture sources: "
+            f"`{', '.join(capture['manifest']['capture_sources']) or 'missing'}`",
+            "",
+            "Cross-phase camera geometry uses the calibration manifest and the "
+            "participant system-check record. Aspect ratio is a hard integrity "
+            "boundary; absolute resolution and frame rate are diagnostic warnings "
+            "only.",
+            "",
+            "- Calibration camera resolutions: "
+            f"`{json.dumps(camera_geometry['calibration_manifest']['distinct_resolutions'], sort_keys=True)}`",
+            "- Calibration actual frame rates (fps): "
+            f"`{json.dumps(camera_geometry['calibration_manifest']['distinct_frame_rates_fps'])}`",
+            "- Participant system-check camera: "
+            f"`{_fmt(camera_geometry['participant_system_check']['camera_width_px'], 0)}x"
+            f"{_fmt(camera_geometry['participant_system_check']['camera_height_px'], 0)}`; "
+            "estimated FPS band "
+            f"`{camera_geometry['participant_system_check']['estimated_frame_rate_band'] or 'unavailable'}`",
+            "- Maximum absolute aspect-ratio difference: "
+            f"`{_fmt(camera_geometry['maximum_observed_absolute_aspect_ratio_difference'], 6)}` "
+            "(hard maximum "
+            f"`{_fmt(camera_geometry['maximum_allowed_absolute_aspect_ratio_difference'], 2)}`)",
+            "- Diagnostic warnings: "
+            f"`{', '.join(camera_geometry['warnings']) or 'none'}`",
+        ]
+    )
+    if capture["status"] != "passed":
+        lines.extend(
+            [
+                "",
+                "**Hard provenance failure:** at least one manifest capture field does "
+                "not match the server-created calibration session. The numeric audit "
+                "is retained for diagnosis but is ineligible for promotion.",
+            ]
+        )
+    if camera_geometry["status"] != "passed":
+        lines.extend(
+            [
+                "",
+                "**Hard cross-phase camera-geometry failure:** "
+                f"`{', '.join(camera_geometry['hard_failures'])}`. The numeric audit "
+                "is retained for diagnosis but cannot support a matched-capture "
+                "measurement claim.",
+            ]
+        )
+    if not independence["frozen_protocol_threshold_match"]:
+        lines.extend(
+            [
+                "",
+                "**Target-threshold contract failure:** the configured threshold "
+                "does not match the frozen protocol default. Results are development "
+                "diagnostics only.",
+            ]
+        )
+    if independence["overlap_count"]:
+        overlapping_targets = ", ".join(
+            independence["overlapping_evaluation_target_ids"]
+        )
+        lines.extend(
+            [
+                "",
+                "**Target-independence failure:** calibration and evaluation share "
+                f"the following below-tolerance target region(s): "
+                f"`{overlapping_targets}`. The frozen threshold is "
+                f"`{_fmt(independence['signed_normalized_tolerance'])}` in signed "
+                "`[-1, 1]` Euclidean coordinates, equal to "
+                f"`{_fmt(independence['viewport_fraction_tolerance_equivalent'])}` "
+                "in `[0, 1]` viewport-fraction coordinates. Metrics remain "
+                "descriptive and cannot establish target-held-out accuracy.",
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "## Raw fixed-target result",
+            "",
+            "| Phase | Median px | P90 px | Target-macro mean px | Target-macro bias px | Median absolute X px | Median absolute Y px | Coarse nearest-target accuracy |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            (
+                "| Start | "
+                f"{_fmt(start['spatial_error_px']['median'])} | "
+                f"{_fmt(start['spatial_error_px']['p90'])} | "
+                f"{_fmt(start['target_macro']['mean_spatial_error_px'])} | "
+                f"{_fmt(start['target_macro']['mean_bias_magnitude_px'])} | "
+                f"{_fmt(start['x_error_px']['absolute_median'])} | "
+                f"{_fmt(start['y_error_px']['absolute_median'])} | "
+                f"{_fmt(start['coarse_region']['accuracy'] * 100)}% |"
+            ),
+            (
+                "| End | "
+                f"{_fmt(end['spatial_error_px']['median'])} | "
+                f"{_fmt(end['spatial_error_px']['p90'])} | "
+                f"{_fmt(end['target_macro']['mean_spatial_error_px'])} | "
+                f"{_fmt(end['target_macro']['mean_bias_magnitude_px'])} | "
+                f"{_fmt(end['x_error_px']['absolute_median'])} | "
+                f"{_fmt(end['y_error_px']['absolute_median'])} | "
+                f"{_fmt(end['coarse_region']['accuracy'] * 100)}% |"
+            ),
+            "",
+            "The five targets are widely separated. High nearest-target accuracy is "
+            "coarse-region evidence and does not imply line- or word-level resolution.",
+            "Target-macro bias is the equal-weight mean magnitude of each target's "
+            "prediction-centroid bias vector.",
+            "P90 uses the participant collection's nearest-rank `ceil(n * p)` "
+            "definition.",
+            "",
+            "Axis errors preserve direction as well as absolute magnitude:",
+            "",
+            "| Phase | Axis | Signed mean px | Signed median px | Absolute median px | Absolute P90 px |",
+            "| --- | --- | ---: | ---: | ---: | ---: |",
+            (
+                "| Start | X | "
+                f"{_fmt(start['x_error_px']['signed_mean'])} | "
+                f"{_fmt(start['x_error_px']['signed_median'])} | "
+                f"{_fmt(start['x_error_px']['absolute_median'])} | "
+                f"{_fmt(start['x_error_px']['absolute_p90'])} |"
+            ),
+            (
+                "| Start | Y | "
+                f"{_fmt(start['y_error_px']['signed_mean'])} | "
+                f"{_fmt(start['y_error_px']['signed_median'])} | "
+                f"{_fmt(start['y_error_px']['absolute_median'])} | "
+                f"{_fmt(start['y_error_px']['absolute_p90'])} |"
+            ),
+            (
+                "| End | X | "
+                f"{_fmt(end['x_error_px']['signed_mean'])} | "
+                f"{_fmt(end['x_error_px']['signed_median'])} | "
+                f"{_fmt(end['x_error_px']['absolute_median'])} | "
+                f"{_fmt(end['x_error_px']['absolute_p90'])} |"
+            ),
+            (
+                "| End | Y | "
+                f"{_fmt(end['y_error_px']['signed_mean'])} | "
+                f"{_fmt(end['y_error_px']['signed_median'])} | "
+                f"{_fmt(end['y_error_px']['absolute_median'])} | "
+                f"{_fmt(end['y_error_px']['absolute_p90'])} |"
+            ),
+            "",
+            "Coarse nearest-target confusion matrices (rows are actual targets; "
+            "columns are predicted targets):",
+            "",
+            "Start:",
+            "",
+            "```json",
+            json.dumps(
+                start["coarse_region"]["confusion"],
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            ),
+            "```",
+            "",
+            "End:",
+            "",
+            "```json",
+            json.dumps(
+                end["coarse_region"]["confusion"],
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            ),
+            "```",
+            "",
+            "## Layout-relative resolution",
+            "",
+            f"Configured line gap: `{_fmt(result['layout_normalized_resolution']['line_gap_px'])} px`; "
+            f"median word width: `{_fmt(result['layout_normalized_resolution']['median_word_width_px'])} px`.",
+            "",
+            "| Phase | Median in line gaps | P90 in line gaps | Median in word widths | P90 in word widths |",
+            "| --- | ---: | ---: | ---: | ---: |",
+            (
+                "| Start | "
+                f"{_fmt(result['layout_normalized_resolution']['start']['median_error_in_line_gaps'])} | "
+                f"{_fmt(result['layout_normalized_resolution']['start']['p90_error_in_line_gaps'])} | "
+                f"{_fmt(result['layout_normalized_resolution']['start']['median_error_in_median_word_widths'])} | "
+                f"{_fmt(result['layout_normalized_resolution']['start']['p90_error_in_median_word_widths'])} |"
+            ),
+            (
+                "| End | "
+                f"{_fmt(result['layout_normalized_resolution']['end']['median_error_in_line_gaps'])} | "
+                f"{_fmt(result['layout_normalized_resolution']['end']['p90_error_in_line_gaps'])} | "
+                f"{_fmt(result['layout_normalized_resolution']['end']['median_error_in_median_word_widths'])} | "
+                f"{_fmt(result['layout_normalized_resolution']['end']['p90_error_in_median_word_widths'])} |"
+            ),
+            "",
+            "These ratios describe measurement resolution only; the natural-reading "
+            "trace has no independent line or word truth.",
+            "",
+            "## Target-wise drift",
+            "",
+            "| Target | Centroid drift X px | Centroid drift Y px | Drift magnitude px | Median error change px |",
+            "| --- | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    if drift["status"] == "evaluable":
+        for target_id, target in drift["targets"].items():
+            lines.append(
+                f"| {target_id} | "
+                f"{_fmt(target['predicted_centroid_delta_x_px'])} | "
+                f"{_fmt(target['predicted_centroid_delta_y_px'])} | "
+                f"{_fmt(target['predicted_centroid_drift_magnitude_px'])} | "
+                f"{_fmt(target['median_spatial_error_change_px'])} |"
+            )
+    lines.extend(
+        [
+            "",
+            "A single start-minus-end median can conceal target-specific reversals; "
+            "the vectors above remain the primary drift description.",
+            "",
+            "## Start-trained temporal correction",
+            "",
+            f"Frozen correction: `{correction['correction_id']}`. Translation was fit "
+            "only on start validation and applied once to end validation.",
+            "",
+            "| Metric | Raw end | Corrected end | Corrected - raw |",
+            "| --- | ---: | ---: | ---: |",
+            (
+                "| Median spatial error px | "
+                f"{_fmt(correction['raw_end']['median_spatial_error_px'])} | "
+                f"{_fmt(correction['corrected_end']['median_spatial_error_px'])} | "
+                f"{_fmt(correction['corrected_minus_raw']['median_spatial_error_px'])} |"
+            ),
+            (
+                "| P90 spatial error px | "
+                f"{_fmt(correction['raw_end']['p90_spatial_error_px'])} | "
+                f"{_fmt(correction['corrected_end']['p90_spatial_error_px'])} | "
+                f"{_fmt(correction['corrected_minus_raw']['p90_spatial_error_px'])} |"
+            ),
+            "",
+            (
+                f"Target-cluster bootstrap ({bootstrap['resamples']} resamples, seed "
+                f"`{bootstrap['seed']}`) gives a corrected-minus-raw median-error "
+                f"95% interval of `[{_fmt(bootstrap['ci95_lower_px'])}, "
+                f"{_fmt(bootstrap['ci95_upper_px'])}] px`; "
+                f"`{_fmt(bootstrap['fraction_improved'] * 100)}%` of resamples improve."
+            ),
+            (
+                f"The paired resampling unit is `{bootstrap['cluster_unit']}` "
+                f"({bootstrap['target_cluster_count']} observed clusters; "
+                f"{bootstrap['cluster_draws_per_resample']} draws per resample). "
+                f"Sampler: `{bootstrap['deterministic_sampler']}`."
+            ),
+            "The bootstrap interval is descriptive only and does not establish a "
+            "population-level correction benefit.",
+            "",
+            "This result cannot relabel the session or select a production correction.",
+            "",
+            "## Model metric contract",
+            "",
+            "| Field | Value |",
+            "| --- | ---: |",
+            f"| Selected calibrator | {model['selected_calibrator']} |",
+            f"| Selected nested outer macro px | {_fmt(model['selected_nested_outer_macro_px_error'])} |",
+            f"| Selected stage validation px | {_fmt(model['selected_stage_validation_px_error'])} |",
+            f"| Top-level validation px | {_fmt(model['top_level_validation_px_error'])} |",
+            f"| Hyperparameter CV px | {_fmt(model['hyperparameter_cv_px_error'])} |",
+            f"| Stage hyperparameter CV px | {_fmt(model['selected_stage_hyperparameter_cv_px_error'])} |",
+            f"| Top-level hyperparameter CV px | {_fmt(model['top_level_hyperparameter_cv_px_error'])} |",
+            f"| Metric consistency | {model['validation_metric_consistency']['status']} |",
+            "",
+            "A failed consistency check records the historical M0 artifact bug; it does "
+            "not rewrite the artifact or substitute the inner CV score for held-out evidence.",
+            "",
+            "## Not evaluable",
+            "",
+            "- Predictive uncertainty calibration: **not evaluable**; validation samples "
+            "did not record uncertainty.",
+            "- Natural-reading line accuracy: **not evaluable**; no independent line-level "
+            "ground truth exists.",
+            "- Natural-reading word accuracy: **not evaluable**; no independent word-level "
+            "ground truth exists.",
+            "",
+            "## Decision",
+            "",
+            "Preserve the negative and mixed findings. The current data support at most "
+            "coarse fixed-target development evidence. Any failed integrity check is a "
+            "hard stop. No quality band, production model, or line/word claim is promoted.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def deterministic_json(result: Mapping[str, Any]) -> str:
+    """Return the canonical human-readable JSON representation."""
+
+    return json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n"

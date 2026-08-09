@@ -10,13 +10,14 @@ const ui = Object.fromEntries([
   "passage", "readingHint", "videoStatus", "startReadingBtn", "finishReadingBtn", "reviewPanel", "reviewForm",
   "understanding", "mentalEffort", "readComplete", "interrupted", "submitRoundBtn",
   "completePanel", "qualitySummary", "captureCanvas", "liveStatus", "targetOverlay",
-  "validationTarget",
+  "validationTarget", "geometryQualityNotice",
 ].map((id) => [id, document.getElementById(id)]));
 
 const state = {
   context: null,
   session: null,
   protocol: null,
+  gazeMeasurementContract: null,
   practice: null,
   stream: null,
   modelName: "",
@@ -39,6 +40,7 @@ const state = {
   pendingReadingVideo: null,
   readingVideoUploaded: false,
   readingFinishedElapsed: null,
+  captureContract: null,
 };
 
 const READING_VIDEO_SCOPE = "retain_reading_video_self_development";
@@ -131,20 +133,16 @@ async function ensureCamera() {
     throw new Error("此流程只允許 HTTPS 或 localhost 使用相機。");
   }
   if (!navigator.mediaDevices?.getUserMedia) throw new Error("瀏覽器不支援相機 API。");
-  state.stream = await navigator.mediaDevices.getUserMedia({
-    video: {
-      width: { ideal: 640, min: 640 },
-      height: { ideal: 480, min: 480 },
-      frameRate: { ideal: 15, max: 20 },
-      facingMode: "user",
-    },
-    audio: false,
-  });
+  if (!globalThis.LexiGazeCapture) throw new Error("相機 capture contract 元件未載入。");
+  state.stream = await navigator.mediaDevices.getUserMedia(
+    globalThis.LexiGazeCapture.mediaConstraints(),
+  );
   ui.cameraPreview.srcObject = state.stream;
   await ui.cameraPreview.play();
   const settings = state.stream.getVideoTracks()[0].getSettings();
-  const width = Number(settings.width || ui.cameraPreview.videoWidth || 0);
-  const height = Number(settings.height || ui.cameraPreview.videoHeight || 0);
+  state.captureContract = globalThis.LexiGazeCapture.captureContract(ui.cameraPreview);
+  const width = state.captureContract.source_width_px;
+  const height = state.captureContract.source_height_px;
   if (width < 640 || height < 480) throw new Error(`相機解析度 ${width}×${height} 低於 640×480。`);
   state.device = {
     device_class: /Mobi|Android/i.test(navigator.userAgent) ? "mobile" : "desktop",
@@ -154,10 +152,10 @@ async function ensureCamera() {
     device_pixel_ratio_bucket: dprBucket(),
     camera_width: width,
     camera_height: height,
-    estimated_camera_fps_band: fpsBand(Number(settings.frameRate)),
+    estimated_camera_fps_band: fpsBand(state.captureContract.source_frame_rate_hz),
   };
   ui.cameraStatus.textContent = "相機已就緒";
-  ui.deviceSummary.textContent = `${width}×${height} · ${state.device.browser_family} · viewport ${innerWidth}×${innerHeight}`;
+  ui.deviceSummary.textContent = `${width}×${height} @ ${state.captureContract.source_frame_rate_hz || "?"} fps · 傳輸 ${state.captureContract.transport_width_px}×${state.captureContract.transport_height_px}（維持比例） · ${state.device.browser_family}`;
 }
 
 async function ensureCameraAndModel() {
@@ -316,30 +314,65 @@ async function beginCollection() {
     await ensureCameraAndModel();
     const result = await api(`/api/study/sessions/${state.context.study_session_id}/general/start`, {
       method: "POST",
-      body: "{}",
+      body: JSON.stringify({
+        assessment_viewport: {
+          width_px: window.innerWidth,
+          height_px: window.innerHeight,
+        },
+      }),
     });
     state.session = result.session;
+    state.gazeMeasurementContract = state.session.general_collection
+      ?.gaze_measurement_contract?.contract || null;
+    assertAssessmentViewportStable();
     await routeCollectionPhase();
   } catch (error) {
     showAlert(error.message);
   }
 }
 
-function frameData() {
-  const canvas = ui.captureCanvas;
-  const context = canvas.getContext("2d", { alpha: false });
-  context.drawImage(ui.cameraPreview, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", 0.7);
+function frozenAssessmentViewport() {
+  const raw = state.session?.general_collection?.assessment_viewport;
+  const width = Number(raw?.width_px);
+  const height = Number(raw?.height_px);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+    throw new Error("找不到 server-frozen assessment viewport；gaze 已停用，請重新執行 system check。");
+  }
+  return { width_px: width, height_px: height };
+}
+
+function assertAssessmentViewportStable() {
+  const viewport = frozenAssessmentViewport();
+  if (window.innerWidth !== viewport.width_px || window.innerHeight !== viewport.height_px) {
+    const error = new Error(
+      `Assessment viewport 已由 ${viewport.width_px}×${viewport.height_px} 變為 ${window.innerWidth}×${window.innerHeight}；本輪 gaze 已中止，請恢復原尺寸或重新執行 system check。`,
+    );
+    error.code = "assessment_viewport_changed";
+    throw error;
+  }
+  return viewport;
+}
+
+function frameSnapshot() {
+  const snapshot = globalThis.LexiGazeCapture.captureSnapshot(
+    ui.cameraPreview,
+    ui.captureCanvas,
+  );
+  state.captureContract = snapshot.capture_contract;
+  return snapshot;
 }
 
 async function predictFrame() {
+  const viewport = assertAssessmentViewportStable();
+  const snapshot = frameSnapshot();
   return api("/api/gaze/predict", {
     method: "POST",
     body: JSON.stringify({
-      image_data: frameData(),
+      image_data: snapshot.image_data,
+      capture_contract: snapshot.capture_contract,
       model_name: state.modelName,
-      viewport_width: innerWidth,
-      viewport_height: innerHeight,
+      viewport_width: viewport.width_px,
+      viewport_height: viewport.height_px,
       study_session_id: state.context.study_session_id,
       study_access_token: state.context.access_token,
       allow_cuda: false,
@@ -355,15 +388,25 @@ async function runValidation() {
   const phase = state.session.general_collection.phase === "end_validation_required" ? "end" : "start";
   try {
     await ensureCameraAndModel();
-    const points = [
-      ["top_left", 0.12, 0.16], ["top_right", 0.88, 0.16], ["center", 0.5, 0.5],
-      ["bottom_left", 0.12, 0.84], ["bottom_right", 0.88, 0.84],
-    ];
+    const viewport = assertAssessmentViewportStable();
+    const points = state.gazeMeasurementContract?.target_independence
+      ?.selected_validation_targets;
+    if (!Array.isArray(points) || points.length !== 5) {
+      throw new Error("找不到 frozen five-point held-out validation contract。");
+    }
     const samples = [];
     ui.targetOverlay.classList.remove("hidden");
-    for (const [targetId, xNorm, yNorm] of points) {
-      const targetX = Math.round(innerWidth * xNorm);
-      const targetY = Math.round(innerHeight * yNorm);
+    for (const point of points) {
+      const targetId = String(point.target_id || "");
+      const xFraction = Number(point.target_x_viewport_fraction);
+      const yFraction = Number(point.target_y_viewport_fraction);
+      const targetXNorm = Number(point.target_x_norm);
+      const targetYNorm = Number(point.target_y_norm);
+      if (!targetId || ![xFraction, yFraction, targetXNorm, targetYNorm].every(Number.isFinite)) {
+        throw new Error("Frozen validation target contract 格式錯誤。");
+      }
+      const targetX = Math.round(viewport.width_px * xFraction);
+      const targetY = Math.round(viewport.height_px * yFraction);
       ui.validationTarget.style.left = `${targetX}px`;
       ui.validationTarget.style.top = `${targetY}px`;
       await delay(700);
@@ -374,15 +417,20 @@ async function runValidation() {
             target_id: targetId,
             target_x_px: targetX,
             target_y_px: targetY,
+            target_x_norm: targetXNorm,
+            target_y_norm: targetYNorm,
             prediction_success: true,
             predicted_x_px: result.screen_xy_px[0],
             predicted_y_px: result.screen_xy_px[1],
           });
-        } catch (_) {
+        } catch (error) {
+          if (error?.code === "assessment_viewport_changed") throw error;
           samples.push({
             target_id: targetId,
             target_x_px: targetX,
             target_y_px: targetY,
+            target_x_norm: targetXNorm,
+            target_y_norm: targetYNorm,
             prediction_success: false,
           });
         }
@@ -393,7 +441,11 @@ async function runValidation() {
     ui.targetOverlay.classList.add("hidden");
     const result = await api(`/api/study/sessions/${state.context.study_session_id}/general/validation`, {
       method: "POST",
-      body: JSON.stringify({ phase, samples }),
+      body: JSON.stringify({
+        phase,
+        samples,
+        capture_contract: state.captureContract,
+      }),
     });
     state.session = result.session;
     await routeCollectionPhase();
@@ -426,6 +478,7 @@ function renderRound(result) {
   ui.difficulty.textContent = result.passage.difficulty_band;
   ui.timer.textContent = "00:00";
   ui.readingHint.textContent = "按下開始後才計時；至少閱讀 20 秒。";
+  renderProvisionalGeometryQuality();
   if (readingVideoEnabled()) {
     ui.videoStatus.textContent = "本篇開始閱讀後會同步錄製無聲 webcam 影片；只用於你的系統開發資料。";
     ui.videoStatus.classList.remove("hidden");
@@ -474,8 +527,58 @@ function coarseFailure(error) {
   const message = String(error?.message || "").toLowerCase();
   if (message.includes("no face")) return "no_face";
   if (message.includes("timeout")) return "timeout";
+  if (message.includes("capture contract")) return "capture_contract_mismatch";
   if (!navigator.onLine) return "network_error";
   return "prediction_failed";
+}
+
+function renderProvisionalGeometryQuality() {
+  const quality = state.session?.general_collection?.provisional_geometry_quality;
+  const integrity = state.session?.general_collection?.gaze_integrity;
+  ui.geometryQualityNotice.className = "quality-notice hidden";
+  ui.geometryQualityNotice.textContent = "";
+  if (integrity?.eligible === false) {
+    ui.geometryQualityNotice.classList.add("degraded");
+    ui.geometryQualityNotice.textContent = "閱讀 viewport 或 reading segment 已中斷；本次 gaze 已永久降級為 behavioral-only，但仍可完成閱讀與 word-review。";
+    ui.geometryQualityNotice.classList.remove("hidden");
+    return;
+  }
+  if (!quality) return;
+  const mode = quality.recommended_gaze_mode;
+  const captureContractStatus = String(quality.capture_contract_status || "unavailable");
+  const contractMismatch = quality.capture_contract_compatible === false;
+  const captureContractUnavailable = !contractMismatch
+    && (captureContractStatus !== "compatible" || quality.capture_contract_compatible !== true);
+  const targetIndependenceStatus = String(quality.target_independence_status || "unavailable");
+  const independenceFailed = targetIndependenceStatus === "failed"
+    || quality.validation_targets_independent === false;
+  const independenceUnavailable = !independenceFailed
+    && (targetIndependenceStatus !== "passed" || quality.validation_targets_independent !== true);
+  if (mode === "word_level_candidate") {
+    ui.geometryQualityNotice.textContent = "閱讀前 sensor-only 暫定結果：幾何達到 rehearsal 的 word-level candidate 描述帶。最終品質仍需閱讀後驗證，這不是正式通過門檻。";
+  } else if (mode === "passage_level_only") {
+    ui.geometryQualityNotice.classList.add("coarse");
+    ui.geometryQualityNotice.textContent = "閱讀前 sensor-only 暫定結果：眼動只建議用於 passage-level 描述，不應解讀為精確逐字注視。你仍可繼續閱讀；若需要逐字 gaze，建議先重新校準。";
+  } else {
+    ui.geometryQualityNotice.classList.add("degraded");
+    const blockers = [];
+    if (contractMismatch) {
+      blockers.push("相機 capture contract 與校準不一致。");
+    } else if (captureContractUnavailable) {
+      blockers.push("缺少可驗證的 calibration camera capture provenance，capture compatibility 無法證明。");
+    }
+    if (independenceFailed) {
+      blockers.push("held-out targets 與實際 calibration fit targets 重疊，target-independence 驗證失敗。");
+    } else if (independenceUnavailable) {
+      blockers.push("缺少可驗證的 calibration fit-target provenance，target independence 無法證明。");
+    }
+    if (blockers.length) {
+      ui.geometryQualityNotice.textContent = `閱讀前檢查：${blockers.join(" ")}Gaze 應停用，但本次仍可繼續收集 behavioral word-review；若要使用 gaze，請重新校準後再驗證。`;
+    } else {
+      ui.geometryQualityNotice.textContent = "閱讀前 sensor-only 暫定結果：幾何品質不足。本次仍可繼續收集 behavioral word-review，但不應使用逐字 gaze；若要使用 gaze，建議重新校準。";
+    }
+  }
+  ui.geometryQualityNotice.classList.remove("hidden");
 }
 
 function normalizeFaceBox(box) {
@@ -496,7 +599,7 @@ async function flushTelemetry() {
   const payload = {
     batch_id: batchId(),
     passage_id: state.current.passage.passage_id,
-    viewport: { width_px: innerWidth, height_px: innerHeight },
+    viewport: frozenAssessmentViewport(),
     samples,
   };
   try {
@@ -530,11 +633,26 @@ async function samplingLoop() {
         nearest_word_index: Number.isFinite(x) && Number.isFinite(y) ? nearestWord(x, y) : null,
       });
     } catch (error) {
-      state.telemetryQueue.push({
-        monotonic_elapsed_ms: elapsed,
-        prediction_success: false,
-        coarse_failure_code: coarseFailure(error),
-      });
+      if (error?.code === "assessment_viewport_changed") {
+        state.sampling = false;
+        state.telemetryQueue.push({
+          monotonic_elapsed_ms: elapsed,
+          prediction_success: false,
+          coarse_failure_code: "viewport_contract_mismatch",
+        });
+        try {
+          await flushTelemetry();
+        } catch (_) {
+          // The queued integrity failure is retried before behavioral completion.
+        }
+        showAlert(error.message);
+      } else {
+        state.telemetryQueue.push({
+          monotonic_elapsed_ms: elapsed,
+          prediction_success: false,
+          coarse_failure_code: coarseFailure(error),
+        });
+      }
     }
     if (state.telemetryQueue.length >= 16) {
       try { await flushTelemetry(); } catch (_) { /* Retried at reading completion. */ }
@@ -650,6 +768,7 @@ async function startReading() {
   clearAlert();
   ui.startReadingBtn.disabled = true;
   try {
+    assertAssessmentViewportStable();
     await ensureCameraAndModel();
     startReadingVideo();
   } catch (error) {
@@ -822,7 +941,10 @@ async function routeCollectionPhase() {
     ui.validationBtn.textContent = phase === "end_validation_required" ? "開始結束驗證" : "開始 5 點驗證";
     return;
   }
-  if (["reading_ready", "reading_active", "probes_open"].includes(phase)) return beginRound();
+  if (["reading_ready", "reading_active", "probes_open"].includes(phase)) {
+    assertAssessmentViewportStable();
+    return beginRound();
+  }
   throw new Error(`無法恢復收集階段：${phase || "missing"}`);
 }
 
@@ -833,13 +955,17 @@ async function restore() {
     return;
   }
   try {
-    const [design, status] = await Promise.all([
-      api("/api/study/general-collection/protocol"),
-      api(`/api/study/sessions/${state.context.study_session_id}`),
-    ]);
-    state.protocol = design.protocol;
-    state.practice = design.practice;
+    const status = await api(`/api/study/sessions/${state.context.study_session_id}`);
     state.session = status.session;
+    const collection = state.session.general_collection;
+    const design = collection?.assessment_id
+      ? null
+      : await api("/api/study/general-collection/protocol");
+    state.protocol = design?.protocol || null;
+    state.practice = design?.practice || null;
+    state.gazeMeasurementContract = collection?.assessment_id
+      ? collection.gaze_measurement_contract?.contract || null
+      : design?.gaze_measurement_contract || null;
     state.context.optional_scopes = state.session.optional_scopes || state.context.optional_scopes || {};
     ui.participantId.textContent = state.session.participant_id;
     const assignment = state.session.collection_assignment || {};

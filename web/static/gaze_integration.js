@@ -16,6 +16,10 @@
   };
 
   if (!els.toggle) return;
+  const gazeCapture = window.LexiGazeCapture;
+  if (!gazeCapture) {
+    throw new Error("gaze_capture_contract.js must load before gaze_integration.js");
+  }
 
   const state = {
     enabled: false,
@@ -34,7 +38,13 @@
   // Flushed to POST /api/fuse when the user triggers "Export" or session ends.
   const gazeBuffer = {};   // occurrence-keyed; repeated spellings stay independent
   const gazeHistory = [];  // chronological occurrence trace
-  const trackingStats = { inference_samples: 0, mapped_samples: 0 };
+  const trackingStats = {
+    inference_samples: 0,
+    sensor_mapped_samples: 0,
+    // Backward-compatible alias. Both values are updated only by the
+    // geometry-only sensor mapping path.
+    mapped_samples: 0,
+  };
   let _lastGazeOccurrence = null;  // tracks the previous occurrence, not spelling
 
   // ── Mouse Cursor Ground Truth Tracking ──────────────────────────────
@@ -46,7 +56,12 @@
     lastMouseY = e.clientY;
   });
 
-  function recordGazeHit(word, confidence, index, pageNum) {
+  function recordGazeHit(word, confidence, index, pageNum, mappingContext = {}) {
+    const mappingMode = mappingContext.mapping_mode || "geometry_only_v1";
+    if (mappingMode !== "geometry_only_v1" || mappingContext.sensor_accepted !== true) {
+      console.warn("[Gaze] Rejected non-sensor mapping from measurement buffer", mappingMode);
+      return false;
+    }
     const hasIndex = Number.isInteger(index) && index >= 0;
     const normalizedPage = Number.isInteger(pageNum) && pageNum >= 0 ? pageNum : 0;
     const key = hasIndex
@@ -58,6 +73,8 @@
         word,
         word_index: hasIndex ? index : null,
         page_num: hasIndex ? normalizedPage : null,
+        mapping_mode: mappingMode,
+        sensor_accepted: true,
         dwell_count: 0,
         fixation_count: 0,
         hit_count: 0,
@@ -80,7 +97,8 @@
     if ((rank[confidence] || 0) > (rank[gazeBuffer[key].confidence] || 0)) {
       gazeBuffer[key].confidence = confidence;
     }
-    trackingStats.mapped_samples += 1;
+    trackingStats.sensor_mapped_samples += 1;
+    trackingStats.mapped_samples = trackingStats.sensor_mapped_samples;
 
     // Append to chronological sequence log
     gazeHistory.push({
@@ -88,9 +106,12 @@
       word,
       word_index: hasIndex ? index : null,
       page_num: hasIndex ? normalizedPage : null,
+      mapping_mode: mappingMode,
+      sensor_accepted: true,
       confidence,
       timestamp_ms: Date.now(),
     });
+    return true;
   }
 
   function flushGazeBuffer() {
@@ -99,6 +120,8 @@
       word:           entry.word,
       word_index:     entry.word_index,
       page_num:       entry.page_num,
+      mapping_mode:   entry.mapping_mode,
+      sensor_accepted: entry.sensor_accepted,
       confidence:     entry.confidence,
       confidence_counts: { ...entry.confidence_counts },
       dwell_count:    entry.dwell_count,
@@ -119,6 +142,7 @@
     _lastGazeOccurrence = null;
     gazeHistory.length = 0;
     trackingStats.inference_samples = 0;
+    trackingStats.sensor_mapped_samples = 0;
     trackingStats.mapped_samples = 0;
   }
 
@@ -223,10 +247,9 @@
       throw new Error("不支援相機存取");
     }
     try {
-      state.stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
-        audio: false,
-      });
+      state.stream = await navigator.mediaDevices.getUserMedia(
+        gazeCapture.mediaConstraints(),
+      );
       console.log("[Gaze] getUserMedia stream acquired successfully:", state.stream.id);
     } catch (exc) {
       console.error("[Gaze] getUserMedia failed:", exc);
@@ -276,23 +299,18 @@
     }
   }
 
-  function captureFrame() {
-    const width = 240;
-    const aspect = state.video.videoHeight ? state.video.videoWidth / state.video.videoHeight : 4 / 3;
-    const height = Math.round(width / aspect);
-    state.canvas.width = width;
-    state.canvas.height = height;
-    const ctx = state.canvas.getContext("2d");
-    ctx.drawImage(state.video, 0, 0, width, height);
-    return state.canvas.toDataURL("image/jpeg", 0.5);
+  function captureSnapshot() {
+    return gazeCapture.captureSnapshot(state.video, state.canvas);
   }
 
   async function predict(signal) {
+    const snapshot = captureSnapshot();
     const res = await fetch("/api/gaze/predict", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        image_data: captureFrame(),
+        image_data: snapshot.image_data,
+        capture_contract: snapshot.capture_contract,
         model_name: els.modelSelect.value,
         viewport_width: window.innerWidth,
         viewport_height: window.innerHeight,
@@ -429,10 +447,10 @@
           cognitive_result: cognitiveResult || {},
           gaze_events:      events,
           quality_context: {
-            tracking_coverage: trackingStats.inference_samples > 0
-              ? trackingStats.mapped_samples / trackingStats.inference_samples
-              : 0,
             ...(window.lexiGazeQualityContext || {}),
+            tracking_coverage: trackingStats.inference_samples > 0
+              ? trackingStats.sensor_mapped_samples / trackingStats.inference_samples
+              : 0,
           },
         }),
       });

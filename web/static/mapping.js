@@ -1,6 +1,13 @@
 console.log("mapping.js loaded");
+const gazeMappingCore = window.LexiGazeMappingCore;
+if (!gazeMappingCore) {
+  throw new Error("gaze_mapping_core.js must load before mapping.js");
+}
+
+const SENSOR_MAPPING_MODE = "geometry_only_v1";
 let gazeMappingOn = false;
 window.gazeMappingOn = false;
+window.lexiGazeSensorMappingMode = SENSOR_MAPPING_MODE;
 const gazeMappingToggle = document.getElementById("gazeMappingToggle");
 const gazeMappingLabel = document.getElementById("gazeMappingLabel");
 
@@ -44,7 +51,8 @@ function processGazeOnExtractedData(gazeX, gazeY) {
   if (!gazeMappingOn) return;
   gazeMatch = findNearestExtractedWord(gazeX, gazeY);
 
-  // ── Feed the fusion gaze buffer ──────────────────────────────────
+  // Feed only the geometry result into the sensor/fusion buffer. Text or
+  // cognitive priors are downstream-only and must never rescue an abstention.
   // recordGazeHit is exposed by gaze_integration.js via window.recordGazeHit
   if (gazeMatch && typeof window.recordGazeHit === "function") {
     window.recordGazeHit(
@@ -52,6 +60,7 @@ function processGazeOnExtractedData(gazeX, gazeY) {
       gazeMatch.confidence,
       gazeMatch.item.index,
       gazeMatch.pageNum,
+      { mapping_mode: SENSOR_MAPPING_MODE, sensor_accepted: true },
     );
   }
 
@@ -59,17 +68,11 @@ function processGazeOnExtractedData(gazeX, gazeY) {
 }
 
 function distanceToExtractedRect(x, y, item) {
-  const dx = Math.max(item.left - x, 0, x - item.right);
-  const dy = Math.max(item.top - y, 0, y - item.bottom);
-  return Math.sqrt(dx * dx + dy * dy);
+  return gazeMappingCore.distanceToRect(x, y, item);
 }
 
 function findNearestExtractedWord(gazeX, gazeY) {
   let best = null;
-
-  const LINE_Y_THRESHOLD = 90;
-  const MEDIUM_DISTANCE = 35;
-  const LOW_DISTANCE = 90;
 
   const pageWraps = document.querySelectorAll(".page-wrap");
 
@@ -78,91 +81,19 @@ function findNearestExtractedWord(gazeX, gazeY) {
 
   for (const [pageNum, pageData] of overlays.entries()) {
 
-    const { items } = pageData;
-
     const pageWrap = pageWraps[pageNum - 1];
-
     if (!pageWrap) continue;
+    const pageRect = pageWrap.getBoundingClientRect();
+    const candidate = gazeMappingCore.findNearestGeometryCandidate(
+      gazeX - pageRect.left,
+      gazeY - pageRect.top,
+      pageData.items,
+    );
+    if (!candidate) continue;
 
-    const pageRect =
-      pageWrap.getBoundingClientRect();
-
-    const localX =
-      gazeX - pageRect.left;
-
-    const localY =
-      gazeY - pageRect.top;
-
-    for (const item of items) {
-
-      const insideActualBox =
-        localX >= item.left &&
-        localX <= item.right &&
-        localY >= item.top &&
-        localY <= item.bottom;
-
-      const distance =
-        distanceToExtractedRect(localX, localY, item);
-
-      // Apply Cognitive Mass attraction (rare/difficult words reduce effective distance)
-      const cogData = (typeof window.lookupCognitive === 'function') ? window.lookupCognitive(item.text) : null;
-      const loadScore = cogData ? (cogData.score || cogData.load_score || 0.0) : 0.0;
-      const cognitiveMass = 1.0 + 1.8 * loadScore; // More difficult = higher mass = larger pull
-      const effectiveDistance = distance / cognitiveMass;
-
-      const wordCenterY =
-        item.top + item.height / 2;
-
-      const yDistance =
-        Math.abs(localY - wordCenterY);
-
-      // ===== HIGH =====
-
-      if (insideActualBox) {
-
-        return {
-          pageNum,
-          item,
-          confidence: "high",
-          distance: 0
-        };
-      }
-
-      // ===== SAME LINE =====
-
-      if (yDistance <= LINE_Y_THRESHOLD) {
-
-        let confidence = null;
-
-        // ===== MEDIUM =====
-
-        if (effectiveDistance <= MEDIUM_DISTANCE) {
-          confidence = "medium";
-        }
-
-        // ===== LOW =====
-
-        else if (effectiveDistance <= LOW_DISTANCE) {
-          confidence = "low";
-        }
-
-        if (confidence) {
-
-          const candidate = {
-            pageNum,
-            item,
-            confidence,
-            distance: effectiveDistance
-          };
-
-          if (!best ||
-              candidate.distance < best.distance) {
-
-            best = candidate;
-          }
-        }
-      }
-    }
+    const pageCandidate = { pageNum, ...candidate };
+    if (candidate.confidence === "high") return pageCandidate;
+    if (!best || pageCandidate.distance < best.distance) best = pageCandidate;
   }
 
   return best;
@@ -183,7 +114,13 @@ function drawHighlights(gazeX, gazeY) {
 
   if (gazeMatch) {
     highlightExtractedWord(gazeMatch, "gaze");
-    if (gazeX !== undefined && gazeY !== undefined) {
+    // This visualization is an explicit downstream preview. It never changes
+    // gazeMatch, recordGazeHit, sensor coverage, or measurement quality.
+    if (
+      window.lexiEnableCognitiveMappingPreview === true
+      && gazeX !== undefined
+      && gazeY !== undefined
+    ) {
       drawGazeWordFusionAttractor(gazeMatch, gazeX, gazeY);
     }
   }
@@ -209,12 +146,15 @@ function drawGazeWordFusionAttractor(match, gazeX, gazeY) {
   // Retrieve cognitive mass pull
   const cogData = (typeof window.lookupCognitive === 'function') ? window.lookupCognitive(item.text) : null;
   const loadScore = cogData ? (cogData.score || cogData.load_score || 0.0) : 0.0;
-  const cognitiveMass = 1.0 + 1.8 * loadScore; 
-  const pullFactor = 1.0 - (1.0 / cognitiveMass);
-
-  // Fused position pulled towards the word center
-  const fusedX = localGazeX + (wordCenterX - localGazeX) * pullFactor;
-  const fusedY = localGazeY + (wordCenterY - localGazeY) * pullFactor;
+  const preview = gazeMappingCore.cognitivePreviewPoint(
+    { x: localGazeX, y: localGazeY },
+    { x: wordCenterX, y: wordCenterY },
+    loadScore,
+    { enabled: window.lexiEnableCognitiveMappingPreview === true },
+  );
+  const cognitiveMass = preview.cognitiveMass || 1;
+  const fusedX = preview.x;
+  const fusedY = preview.y;
 
   // 1. Draw gravity pull line (Feather-like clean styling)
   ctx.beginPath();
@@ -328,7 +268,7 @@ function highlightExtractedWord(match, type) {
 
 window.processGazeOnExtractedData = processGazeOnExtractedData;
 
-// ── Cognitive lookup helper (case-normalised + hyphen fallback + baseline heuristic) ────────────
+// ── Optional downstream cognitive-preview lookup ─────────────────────────────
 // cognitiveLookup is expected to be set by word_track.html after a
 // /api/cognitive/analyze/* response arrives.
 //   { "word".toLowerCase(): WordResult }
@@ -357,8 +297,7 @@ window.lookupCognitive = function lookupCognitive(text) {
     }
   }
 
-  // Fallback: heuristic cognitive mass based on word features
-  // This ensures that even before running the LLM analysis, the "cognitive mass" attraction is functional and visible!
+  // Preview-only fallback: it cannot affect geometry mapping or sensor quality.
   const clean = text.toLowerCase().replace(/[^a-z0-9]/g, '');
   const stopwords = new Set(['the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i', 'it', 'for', 'not', 'on', 'with', 'he', 'as', 'you', 'do', 'at', 'this', 'but', 'his', 'by', 'from', 'they', 'we', 'say', 'her', 'she', 'or', 'an', 'will', 'my', 'one', 'all', 'would', 'there', 'their', 'what', 'so', 'up', 'out', 'if', 'about', 'who', 'get', 'which', 'go', 'me']);
   if (clean.length > 0 && !stopwords.has(clean)) {

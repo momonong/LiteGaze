@@ -1,0 +1,334 @@
+{
+  "schema_version": 1,
+  "protocol_id": "webcam-gaze-measurement-ceiling-v1",
+  "frozen_date": "2026-08-10",
+  "branch": "experiment/webcam-gaze-measurement-ceiling-v1",
+  "status": "frozen_before_new_capture",
+  "objective": "Measure the finest screen-space resolution that the current single-webcam LexiGaze pipeline can support under independently held-out targets, controlled posture shifts, and temporal drift, before adding text or cognitive priors.",
+  "claim_boundary": {
+    "engineering_and_self-development_evidence_only": true,
+    "natural_reading_word_ground_truth_claimed": false,
+    "cognitive_or_english_ability_claimed": false,
+    "cursor_is_ground_truth": false,
+    "production_model_may_change_from_this_capture": false,
+    "future_participant_and_device_confirmation_required": true
+  },
+  "research_questions": [
+    "Does the sensor and personal calibration preserve coarse target direction on targets never used for fitting?",
+    "What neutral-pose spatial resolution is retained from the start to the end of one capture?",
+    "How much accuracy and coverage change under left, right, near, and far capture blocks?",
+    "Can a sensor-only uncertainty score abstain on high-error samples without using text, cursor, cognitive, or reading outcomes?"
+  ],
+  "capture_contract": {
+    "camera_request": {
+      "width_px": 1280,
+      "height_px": 720,
+      "frame_rate_fps": 30,
+      "facing_mode": "user"
+    },
+    "actual_frame_rate_diagnostic": {
+      "expected_intent_fps": 30,
+      "expected_operating_band_fps": {
+        "minimum_inclusive": 24,
+        "maximum_exclusive": 31
+      },
+      "eligibility_effect": "recorded_warning_only",
+      "hard_integrity_gate": false
+    },
+    "accepted_actual_aspect_ratio": {
+      "policy": "preserve the camera's actual aspect ratio and require the same ratio across calibration, evaluation, and reading",
+      "minimum": 1.3,
+      "maximum": 1.9,
+      "maximum_cross_phase_absolute_difference": 0.02
+    },
+    "inference_frame": {
+      "maximum_width_px": 640,
+      "preserve_actual_aspect_ratio": true,
+      "canvas_stretching_allowed": false
+    },
+    "calibration_validation_and_reading_must_match": [
+      "source_aspect_ratio_within_0.02",
+      "transport_aspect_ratio_within_0.02",
+      "resize_policy",
+      "mirror_policy",
+      "facing_mode"
+    ],
+    "exact_source_resolution_must_match": false,
+    "source_resolution_and_frame_rate_changes_are_recorded_as_warnings": true,
+    "mismatch_action": "abstain_and_require_recalibration_or_continue_as_behavioral_only"
+  },
+  "targets": {
+    "coordinate_system": "normalized viewport fractions",
+    "calibration": {
+      "fit_allowed": true,
+      "points": [
+        [0.08, 0.10],
+        [0.50, 0.10],
+        [0.92, 0.10],
+        [0.08, 0.50],
+        [0.50, 0.50],
+        [0.92, 0.50],
+        [0.08, 0.90],
+        [0.50, 0.90],
+        [0.92, 0.90],
+        [0.29, 0.30],
+        [0.71, 0.30],
+        [0.29, 0.70],
+        [0.71, 0.70]
+      ]
+    },
+    "evaluation": {
+      "fit_allowed": false,
+      "points": [
+        [0.18, 0.20],
+        [0.39, 0.20],
+        [0.61, 0.20],
+        [0.82, 0.20],
+        [0.18, 0.40],
+        [0.39, 0.40],
+        [0.61, 0.40],
+        [0.82, 0.40],
+        [0.18, 0.60],
+        [0.39, 0.60],
+        [0.61, 0.60],
+        [0.82, 0.60],
+        [0.18, 0.80],
+        [0.39, 0.80],
+        [0.61, 0.80],
+        [0.82, 0.80]
+      ],
+      "minimum_normalized_distance_from_any_calibration_point": 0.1
+    },
+    "target_order": {
+      "policy": "deterministic seeded shuffle independently within every block and repeat",
+      "seed_source": "sha256(capture_run_id + block_id + repeat_index)",
+      "target_identity_must_be_saved": true
+    }
+  },
+  "blocks": [
+    {
+      "id": "calibration_neutral",
+      "role": "calibration",
+      "posture": "neutral",
+      "distance": "nominal",
+      "repeats": 1
+    },
+    {
+      "id": "calibration_left",
+      "role": "calibration",
+      "posture": "left",
+      "distance": "nominal",
+      "repeats": 1
+    },
+    {
+      "id": "calibration_right",
+      "role": "calibration",
+      "posture": "right",
+      "distance": "nominal",
+      "repeats": 1
+    },
+    {
+      "id": "calibration_near",
+      "role": "calibration",
+      "posture": "neutral",
+      "distance": "near",
+      "repeats": 1
+    },
+    {
+      "id": "calibration_far",
+      "role": "calibration",
+      "posture": "neutral",
+      "distance": "far",
+      "repeats": 1
+    },
+    {
+      "id": "neutral_start",
+      "role": "evaluation",
+      "posture": "neutral",
+      "distance": "nominal",
+      "repeats": 2
+    },
+    {
+      "id": "evaluation_left",
+      "role": "evaluation",
+      "posture": "left",
+      "distance": "nominal",
+      "repeats": 1
+    },
+    {
+      "id": "evaluation_right",
+      "role": "evaluation",
+      "posture": "right",
+      "distance": "nominal",
+      "repeats": 1
+    },
+    {
+      "id": "evaluation_near",
+      "role": "evaluation",
+      "posture": "neutral",
+      "distance": "near",
+      "repeats": 1
+    },
+    {
+      "id": "evaluation_far",
+      "role": "evaluation",
+      "posture": "neutral",
+      "distance": "far",
+      "repeats": 1
+    },
+    {
+      "id": "neutral_end",
+      "role": "evaluation",
+      "posture": "neutral",
+      "distance": "nominal",
+      "repeats": 2
+    }
+  ],
+  "sample_contract": {
+    "required_fields": [
+      "capture_run_id",
+      "capture_source",
+      "block_id",
+      "block_role",
+      "target_id",
+      "target_x_norm",
+      "target_y_norm",
+      "target_x_px",
+      "target_y_px",
+      "repeat_index",
+      "sequence_index",
+      "frame_capture_monotonic_ms",
+      "inference_completed_monotonic_ms",
+      "inference_latency_ms",
+      "model_id",
+      "model_sha256",
+      "prediction_success",
+      "raw_gaze_pitch_yaw",
+      "predicted_x_px",
+      "predicted_y_px",
+      "head_pose_pitch_yaw",
+      "normalized_face_bbox",
+      "camera_width",
+      "camera_height",
+      "camera_frame_rate",
+      "viewport_width",
+      "viewport_height",
+      "device_pixel_ratio"
+    ],
+    "optional_sensor_uncertainty_fields": [
+      "prediction_covariance_px",
+      "sensor_uncertainty_score",
+      "blur_score",
+      "exposure_score",
+      "eye_scale",
+      "pose_ood_score"
+    ],
+    "forbidden_as_sensor_quality_inputs": [
+      "cursor position",
+      "word identity",
+      "text difficulty",
+      "cognitive profile",
+      "question or answer correctness",
+      "reading outcome"
+    ],
+    "raw_media_policy": "ephemeral processing only for a participant protocol; optional retained self-development video is a separate non-validation artifact"
+  },
+  "candidates": {
+    "B0": "viewport center or majority target-region baseline",
+    "M0": "current gaze-polynomial personal calibration",
+    "M1": "current motion-conditioned ridge personal calibration",
+    "future_candidate_policy": "Any additional calibrator, filter, camera, backbone, threshold, or feature set requires a v2 protocol and a new untouched capture."
+  },
+  "splits": {
+    "calibration_and_evaluation_target_overlap_allowed": false,
+    "evaluation_targets_may_select_model_or_hyperparameters": false,
+    "neutral_start_and_end_are_temporal_holdouts": true,
+    "motion_evaluation_blocks_may_be_used_for_model_fitting": false,
+    "all_frames_from_one_direct_or_video_capture_share_one_capture_group": true,
+    "future_confirmation_axes": [
+      "participant",
+      "passage_family",
+      "capture_session",
+      "device_class"
+    ]
+  },
+  "metrics": {
+    "primary": [
+      "target-macro mean 2D pixel error",
+      "median and p90 2D pixel error",
+      "signed and median-absolute X and Y error",
+      "4x4 target-region accuracy and confusion matrix",
+      "neutral start-to-end per-target drift vector"
+    ],
+    "layout_reference": {
+      "line_gap_px": 27.2,
+      "median_word_width_px": 40.9,
+      "status": "current fixed-layout reference; report ratios, not natural-reading correctness"
+    },
+    "secondary": [
+      "vertical error divided by line gap",
+      "horizontal error divided by median word width",
+      "prediction success fraction",
+      "effective sample rate",
+      "inference latency p50 and p95",
+      "capture and inference jitter",
+      "error by posture and distance block",
+      "target-cluster bootstrap interval"
+    ],
+    "uncertainty": [
+      "coverage-risk curve",
+      "error by uncertainty decile",
+      "abstention coverage at frozen risk thresholds"
+    ],
+    "not_evaluable_without_independent_reading_reference": [
+      "natural-reading correct-line accuracy",
+      "natural-reading Top-k word coverage",
+      "fixation duration",
+      "unknown-word detection"
+    ],
+    "bootstrap": {
+      "unit": "target_id within capture block",
+      "resamples": 20000,
+      "seed": 20260810
+    }
+  },
+  "quality_and_abstention": {
+    "sensor_gate_must_run_before_layout_or_text_decoder": true,
+    "text_or_cognitive_prior_may_rescue_sensor_abstention": false,
+    "raw_and_abstained_predictions_must_both_be_retained_as_derived_telemetry": true,
+    "bands_are_descriptive_not_promotion_thresholds": [
+      "coarse_region_candidate",
+      "line_resolution_candidate",
+      "word_candidate",
+      "behavioral_only"
+    ],
+    "threshold_selection_policy": "Choose any future numeric product threshold on development captures only and freeze it before validation or confirmation."
+  },
+  "negative_controls": [
+    "target-label permutation must collapse target-region accuracy",
+    "text-prior mutation must not change raw coordinates, sensor quality, or geometry candidate set",
+    "uniform text prior must equal the geometry-only decoder",
+    "mismatched cursor traces must not be treated as reference labels",
+    "evaluation-target fitting sentinel must be detected and rejected"
+  ],
+  "compute": {
+    "analysis_device": "cpu",
+    "gpu_allowed": false,
+    "torch_required_for_analysis": false,
+    "network_allowed": false,
+    "encoder_inference": "use the already selected production model; no encoder training in v1"
+  },
+  "decision_policy": {
+    "pass_action": "Retain the finest empirically supported resolution band and freeze a separate multi-participant or device confirmation protocol.",
+    "fail_action": "Record the failure and downgrade the gaze branch; do not use text or cognitive priors to relabel sensor accuracy.",
+    "single_camera_ceiling_action": "Only propose a second camera when error is demonstrably associated with pose, distance, or occlusion after the capture contract is matched.",
+    "post_result_tuning_allowed": false
+  },
+  "mutation_policy": {
+    "existing_2026_08_10_rehearsal_is_exploratory_only": true,
+    "production_default_may_change": false,
+    "result_directory": "docs/experiments/results",
+    "report_directory": "docs/experiments",
+    "after_result": "Preserve all positive and negative results. Any changed targets, blocks, candidates, metrics, thresholds, or uncertainty definition requires a v2 protocol and a new capture."
+  }
+}

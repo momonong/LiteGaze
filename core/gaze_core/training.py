@@ -7,6 +7,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from .capture_contract import (
+    build_fit_target_contract,
+    representative_capture_contract,
+)
 from .calibration_regression import (
     MOTION_FEATURE_NAMES,
     face_geometry_from_bbox,
@@ -25,6 +29,30 @@ from .motion_experiment import (
 from .motion_robustness import audit_payload, load_motion_samples
 from .sample_store import ensure_sessions_dir
 from .torch_runtime import cuda_runtime_available
+
+
+def _selected_motion_validation_metrics(
+    selected_model: str,
+    *,
+    baseline_error: float,
+    challenger_error: float,
+    baseline_hyperparameter_error: float,
+    challenger_hyperparameter_error: float,
+) -> dict[str, float]:
+    """Keep selected nested-outer and hyperparameter CV metrics distinct."""
+
+    if selected_model == BASELINE_MODEL:
+        validation_error = baseline_error
+        hyperparameter_error = baseline_hyperparameter_error
+    elif selected_model == CHALLENGER_MODEL:
+        validation_error = challenger_error
+        hyperparameter_error = challenger_hyperparameter_error
+    else:
+        raise ValueError(f"unknown motion calibration model: {selected_model}")
+    return {
+        "validation_px_error": float(validation_error),
+        "hyperparameter_cv_px_error": float(hyperparameter_error),
+    }
 
 
 def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
@@ -80,6 +108,7 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
         records = read_manifest(manifest_path)
         if not records:
             return {"ok": False, "error": "no valid calibration samples found"}, 400
+        capture_contract = representative_capture_contract(records)
 
         # Load baseline UniGaze-B model (CPU or GPU with safe fallback)
         device = "cpu"
@@ -154,6 +183,7 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
 
         # 3. Fit stages sequentially
         stages = []
+        inherited_fit_target_contract = None
         if base_model_name != "0":
             base_model_file = model_path(root, base_model_name)
             if not base_model_file.exists():
@@ -161,6 +191,9 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
             try:
                 with base_model_file.open("r", encoding="utf-8") as handle:
                     old_data = json.load(handle)
+                    inherited_fit_target_contract = old_data.get(
+                        "fit_target_contract"
+                    )
                     if "stages" in old_data:
                         stages = old_data["stages"]
                     elif "W" in old_data:
@@ -224,6 +257,10 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
             baseline_predictions = X @ W
             baseline_validation_error = baseline_hyperparameter_error
             best_validation_error = baseline_hyperparameter_error
+            selected_validation_metrics = {
+                "validation_px_error": float(baseline_hyperparameter_error),
+                "hyperparameter_cv_px_error": float(baseline_hyperparameter_error),
+            }
 
             if uses_motion_protocol:
                 motion_features = motion_conditioned_features(
@@ -258,7 +295,18 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                 conditioned_validation_error = nested_comparison["candidates"][
                     CHALLENGER_MODEL
                 ]["macro_mean_px"]
-                select_conditioned = bool(promotion_gate["passed"])
+                selected_model = promotion_gate["selected_model"]
+                select_conditioned = selected_model == CHALLENGER_MODEL
+                selected_validation_metrics = _selected_motion_validation_metrics(
+                    selected_model,
+                    baseline_error=baseline_validation_error,
+                    challenger_error=conditioned_validation_error,
+                    baseline_hyperparameter_error=baseline_hyperparameter_error,
+                    challenger_hyperparameter_error=conditioned_hyperparameter_error,
+                )
+                best_validation_error = selected_validation_metrics[
+                    "validation_px_error"
+                ]
                 candidate_comparison = {
                     "baseline_gaze_only_px": baseline_validation_error,
                     "motion_conditioned_px": conditioned_validation_error,
@@ -297,7 +345,6 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                     )
                     @ conditioned_weights
                 )
-                best_validation_error = conditioned_validation_error
                 stages = [{
                     "stage": 1,
                     "calibrator_type": "motion_conditioned_ridge_v1",
@@ -306,8 +353,12 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                     "feature_scale": feature_scale.tolist(),
                     "W": conditioned_weights.tolist(),
                     "alpha": conditioned_alpha,
-                    "validation_px_error": conditioned_validation_error,
-                    "hyperparameter_cv_px_error": conditioned_hyperparameter_error,
+                    "validation_px_error": selected_validation_metrics[
+                        "validation_px_error"
+                    ],
+                    "hyperparameter_cv_px_error": selected_validation_metrics[
+                        "hyperparameter_cv_px_error"
+                    ],
                     "validation_scheme": validation_scheme,
                     "mean_px_error": 0.0,
                 }]
@@ -319,8 +370,12 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                     "W": W.tolist(),
                     "poly_degree": poly_degree,
                     "alpha": best_alpha,
-                    "validation_px_error": baseline_validation_error,
-                    "hyperparameter_cv_px_error": baseline_hyperparameter_error,
+                    "validation_px_error": selected_validation_metrics[
+                        "validation_px_error"
+                    ],
+                    "hyperparameter_cv_px_error": selected_validation_metrics[
+                        "hyperparameter_cv_px_error"
+                    ],
                     "validation_scheme": validation_scheme,
                     "mean_px_error": 0.0,
                 }]
@@ -374,6 +429,7 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                 "poly_degree": poly_degree,
                 "alpha": best_alpha,
                 "validation_px_error": best_validation_error,
+                "hyperparameter_cv_px_error": best_validation_error,
                 "validation_scheme": validation_scheme,
                 "mean_px_error": 0.0
             }]
@@ -410,6 +466,11 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                 std_y = np.std(preds_arr[:, 1])
                 std_devs.append(float(np.sqrt(std_x ** 2 + std_y ** 2)))
         noise_level = float(np.mean(std_devs)) if len(std_devs) > 0 else 0.0
+        fit_target_contract = build_fit_target_contract(
+            target_list,
+            inherited_contract=inherited_fit_target_contract,
+            inherited_targets_required=base_model_name != "0",
+        )
 
         # Save model JSON artifact to the chenghao/gaze_data/runs/ directory
         output_model_path = model_path(root, output_name)
@@ -425,15 +486,22 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
             "candidate_comparison": candidate_comparison,
             "training_device": device,
             "noise_level": noise_level,
-            "train_samples": N
+            "train_samples": N,
+            "fit_target_contract": fit_target_contract,
         }
+        if "hyperparameter_cv_px_error" in stages[-1]:
+            calibration_data["hyperparameter_cv_px_error"] = stages[-1][
+                "hyperparameter_cv_px_error"
+            ]
+        if capture_contract is not None:
+            calibration_data["capture_contract"] = capture_contract
         
         output_model_path.write_text(
             json.dumps(calibration_data, ensure_ascii=False, indent=2),
             encoding="utf-8"
         )
 
-        return {
+        response = {
             "ok": True,
             "model_name": output_name,
             "train_samples": N,
@@ -441,8 +509,15 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
             "train_px_error": mean_px_error,
             "validation_scheme": validation_scheme,
             "training_device": device,
-            "noise_level": noise_level
-        }, 200
+            "noise_level": noise_level,
+            "capture_contract": capture_contract,
+            "fit_target_contract": fit_target_contract,
+        }
+        if "hyperparameter_cv_px_error" in stages[-1]:
+            response["hyperparameter_cv_px_error"] = stages[-1][
+                "hyperparameter_cv_px_error"
+            ]
+        return response, 200
 
     except Exception as exc:
         import traceback

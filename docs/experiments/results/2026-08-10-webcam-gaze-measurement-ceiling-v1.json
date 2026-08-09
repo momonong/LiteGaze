@@ -1,0 +1,662 @@
+{
+  "analysis_contract": {
+    "correction_evaluation_data": "end validation only",
+    "correction_fit_data": "start validation only",
+    "cpu_only": true,
+    "descriptive_percentile_method": "nearest rank at ceil(n * p)",
+    "images_or_videos_opened": false,
+    "model_or_threshold_selection_authorized": false,
+    "natural_reading_nearest_word_index_used_as_ground_truth": false,
+    "standard_library_only": true,
+    "torch_or_gpu_loaded": false
+  },
+  "analysis_id": "webcam-gaze-measurement-ceiling-v1",
+  "decision": {
+    "eligible_claim": "coarse fixed-target development evidence only",
+    "integrity_gate_passed": false,
+    "line_or_word_accuracy_claimed": false,
+    "production_model_changed": false,
+    "quality_band_changed": false
+  },
+  "drift": {
+    "status": "evaluable",
+    "target_count": 5,
+    "target_macro_mean_drift_magnitude_px": 71.47406929122928,
+    "target_macro_median_drift_magnitude_px": 78.89043715533944,
+    "targets": {
+      "bottom_left": {
+        "median_spatial_error_change_px": 21.850965763029997,
+        "predicted_centroid_delta_x_px": -20.32039112783133,
+        "predicted_centroid_delta_y_px": -0.05117717741359229,
+        "predicted_centroid_drift_magnitude_px": 20.32045557293276,
+        "signed_bias_delta_x_px": -20.320391127831286,
+        "signed_bias_delta_y_px": -0.05117717741355321
+      },
+      "bottom_right": {
+        "median_spatial_error_change_px": 22.563705628137512,
+        "predicted_centroid_delta_x_px": -22.183173785442477,
+        "predicted_centroid_delta_y_px": -25.941450587070563,
+        "predicted_centroid_drift_magnitude_px": 34.13285891566316,
+        "signed_bias_delta_x_px": -22.18317378544232,
+        "signed_bias_delta_y_px": -25.941450587070523
+      },
+      "center": {
+        "median_spatial_error_change_px": 58.67666004826563,
+        "predicted_centroid_delta_x_px": -70.00522514745853,
+        "predicted_centroid_delta_y_px": 36.37264805611767,
+        "predicted_centroid_drift_magnitude_px": 78.89043715533944,
+        "signed_bias_delta_x_px": -70.00522514745846,
+        "signed_bias_delta_y_px": 36.37264805611753
+      },
+      "top_left": {
+        "median_spatial_error_change_px": -47.3207129611861,
+        "predicted_centroid_delta_x_px": -30.77642896197509,
+        "predicted_centroid_delta_y_px": -120.4703020423222,
+        "predicted_centroid_drift_magnitude_px": 124.33938335788802,
+        "signed_bias_delta_x_px": -30.776428961975085,
+        "signed_bias_delta_y_px": -120.47030204232225
+      },
+      "top_right": {
+        "median_spatial_error_change_px": -106.35224398599999,
+        "predicted_centroid_delta_x_px": -31.379455112502,
+        "predicted_centroid_delta_y_px": -94.61960644803688,
+        "predicted_centroid_drift_magnitude_px": 99.68721145432302,
+        "signed_bias_delta_x_px": -31.37945511250208,
+        "signed_bias_delta_y_px": -94.61960644803683
+      }
+    }
+  },
+  "evidence_class": "exploratory_self_development_only",
+  "inputs": {
+    "calibration_manifest": {
+      "label": "linked calibration manifest",
+      "sha256": "af61c6d83708292d98a707f6a5fd083bd99db6beae13d369b09ad4d6130bc7d4"
+    },
+    "calibration_session_metadata": {
+      "label": "linked calibration session metadata",
+      "sha256": "5ae737030f096c18a16eb8e8e68d5a1772fb1a717183cb430c80e3fe56d78d64"
+    },
+    "model_artifact": {
+      "label": "linked calibration model artifact",
+      "sha256": "012dbd0c7c11c8b34536895964f82ed4b2352c0585f2154b6ba0aa548a5ba19c"
+    },
+    "participant_session": {
+      "label": "self-development participant session",
+      "sha256": "d420db6a05bfd7685d52da3e13a08a498430b4d8f2c3cba6fb0841e33b23e67e"
+    }
+  },
+  "layout_normalized_resolution": {
+    "end": {
+      "median_error_in_line_gaps": 4.731426743986499,
+      "median_error_in_median_word_widths": 3.1465723089592363,
+      "p90_error_in_line_gaps": 10.220762000520455,
+      "p90_error_in_median_word_widths": 6.797181574918249
+    },
+    "line_gap_px": 27.2,
+    "median_word_width_px": 40.9,
+    "start": {
+      "median_error_in_line_gaps": 7.841938485977081,
+      "median_error_in_median_word_widths": 5.215176694830723,
+      "p90_error_in_line_gaps": 9.78215784479829,
+      "p90_error_in_median_word_widths": 6.505493725636026
+    },
+    "status": "descriptive_resolution_only_not_reading_accuracy"
+  },
+  "not_evaluable": {
+    "natural_reading_line_accuracy": {
+      "reason": "no independent line-level gaze ground truth was recorded",
+      "status": "not_evaluable"
+    },
+    "natural_reading_word_accuracy": {
+      "reason": "no independent word-level gaze ground truth was recorded",
+      "status": "not_evaluable"
+    },
+    "per_sample_uncertainty_calibration": {
+      "reason": "fixed-target validation did not record predictive uncertainty",
+      "status": "not_evaluable"
+    }
+  },
+  "provenance": {
+    "bindings": {
+      "checks": {
+        "calibration_session_matches_participant_study_session": true,
+        "manifest_parent_matches_linked_gaze_session": true,
+        "model_data_session_matches_linked_gaze_session": true,
+        "model_name_matches_linked_model": true,
+        "session_metadata_is_sibling_of_manifest": true,
+        "session_metadata_matches_linked_gaze_session": true
+      },
+      "linked_gaze_session_id_sha256": "302f786ba291e4f14c8db11760fa017877139e62764e00c049ed78ede4e148ed",
+      "linked_model_name_sha256": "967aa8bf894c844f75e891fe7ded2810581fa1424c6f1bd2c4be4495cf88f51e",
+      "status": "passed"
+    },
+    "calibration_manifest": {
+      "capture_run_count": 1,
+      "capture_sources": [
+        "direct-frame"
+      ],
+      "collection_protocols": [
+        "motion-diverse-v1"
+      ],
+      "motion_blocks": [
+        "far",
+        "left",
+        "near",
+        "neutral",
+        "right"
+      ],
+      "row_count": 65,
+      "usable_row_count": 65
+    },
+    "calibration_viewport_contract": {
+      "distinct_calibration_viewport_count": 1,
+      "evaluation_viewport": {
+        "height_px": 888.0,
+        "width_px": 1697.0
+      },
+      "matches_evaluation_viewport": true,
+      "rows_with_viewport_count": 65,
+      "status": "passed",
+      "usable_row_count": 65
+    },
+    "capture_contract": {
+      "authority": "server-side calibration session metadata",
+      "checks": {
+        "manifest_capture_run_id_matches_session_metadata": true,
+        "manifest_capture_source_matches_session_metadata": false,
+        "manifest_source_session_id_matches_session_metadata": true
+      },
+      "manifest": {
+        "capture_run_id_count": 1,
+        "capture_run_ids_match_one_authoritative_value": true,
+        "capture_sources": [
+          "direct-frame"
+        ],
+        "row_count": 65,
+        "row_scope": "all manifest records, including non-usable rows",
+        "source_session_id_count": 0
+      },
+      "session_metadata": {
+        "capture_run_id_present": true,
+        "capture_run_id_sha256": "149b196091320e9bfda7f72832c4bdb2bbe6cc8822a51c4f5ee44292acf5abd3",
+        "capture_source": "study-direct-frame",
+        "source_session_id_present": false,
+        "source_session_id_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "status": "failed"
+    },
+    "cross_phase_camera_geometry": {
+      "absolute_resolution_policy": "diagnostic_warning_only",
+      "calibration_manifest": {
+        "distinct_frame_rates_fps": [
+          30.0
+        ],
+        "distinct_resolutions": [
+          {
+            "aspect_ratio": 1.7777777777777777,
+            "height_px": 720.0,
+            "width_px": 1280.0
+          }
+        ],
+        "rows_with_camera_geometry_count": 65,
+        "rows_with_frame_rate_count": 65,
+        "usable_row_count": 65
+      },
+      "checks": {
+        "aspect_ratio_matches_within_tolerance": false,
+        "calibration_camera_geometry_complete": true,
+        "exact_absolute_resolution_matches_diagnostic": false,
+        "frame_rate_matches_participant_estimated_band_diagnostic": false,
+        "participant_camera_geometry_present": true
+      },
+      "frame_rate_policy": "diagnostic_warning_only",
+      "hard_failures": [
+        "cross_phase_camera_aspect_ratio_mismatch"
+      ],
+      "hard_integrity_rule": "every usable calibration row and the participant system check must provide camera geometry, and maximum absolute aspect-ratio difference must be <= 0.02",
+      "maximum_allowed_absolute_aspect_ratio_difference": 0.02,
+      "maximum_observed_absolute_aspect_ratio_difference": 0.4444444444444444,
+      "participant_system_check": {
+        "aspect_ratio": 1.3333333333333333,
+        "camera_height_px": 480.0,
+        "camera_width_px": 640.0,
+        "estimated_frame_rate_band": "15_23",
+        "estimated_frame_rate_band_maximum_exclusive_fps": 24.0,
+        "estimated_frame_rate_band_minimum_inclusive_fps": 15.0
+      },
+      "status": "failed",
+      "warnings": [
+        "absolute_camera_resolution_changed_diagnostic_only",
+        "calibration_frame_rate_outside_participant_estimated_band_diagnostic_only"
+      ]
+    },
+    "model": {
+      "hyperparameter_cv_px_error": 199.18219539890904,
+      "selected_calibrator": "gaze_polynomial",
+      "selected_nested_outer_macro_px_error": 204.5778085071965,
+      "selected_stage_hyperparameter_cv_px_error": 199.18219539890904,
+      "selected_stage_validation_px_error": 204.5778085071965,
+      "top_level_hyperparameter_cv_px_error": null,
+      "top_level_validation_px_error": 199.18219539890904,
+      "validation_metric_consistency": {
+        "checks": {
+          "comparison_selected_model_is_known": true,
+          "comparison_selection_matches_stage": true,
+          "selected_outer_metric_is_present": true,
+          "selected_stage_matches_selected_outer": true,
+          "top_and_stage_hyperparameter_cv_match_when_both_present": null,
+          "top_level_matches_selected_outer_or_stage": false,
+          "validation_scheme_fields_are_consistent": true
+        },
+        "expected_top_level_px_error": 204.5778085071965,
+        "note": "top-level and selected-stage validation must identify the selected held-out score; hyperparameter CV remains a separate metric",
+        "status": "failed"
+      },
+      "validation_scheme": "nested_leave_one_motion_block_out"
+    },
+    "participant": {
+      "dataset_role": "workflow_quality_and_development_exploration_only",
+      "linked_gaze_present": true,
+      "linked_model_present": true,
+      "mode": "rehearsal",
+      "protocol_id": "lexigaze-reader-pilot",
+      "protocol_version": "2026-08-09.v5",
+      "schema_version": 1,
+      "state": "completed"
+    }
+  },
+  "raw_validation": {
+    "end": {
+      "attempted_sample_count": 15,
+      "coarse_region": {
+        "accuracy": 1.0,
+        "confusion": {
+          "bottom_left": {
+            "bottom_left": 3,
+            "bottom_right": 0,
+            "center": 0,
+            "top_left": 0,
+            "top_right": 0
+          },
+          "bottom_right": {
+            "bottom_left": 0,
+            "bottom_right": 3,
+            "center": 0,
+            "top_left": 0,
+            "top_right": 0
+          },
+          "center": {
+            "bottom_left": 0,
+            "bottom_right": 0,
+            "center": 3,
+            "top_left": 0,
+            "top_right": 0
+          },
+          "top_left": {
+            "bottom_left": 0,
+            "bottom_right": 0,
+            "center": 0,
+            "top_left": 3,
+            "top_right": 0
+          },
+          "top_right": {
+            "bottom_left": 0,
+            "bottom_right": 0,
+            "center": 0,
+            "top_left": 0,
+            "top_right": 3
+          }
+        },
+        "correct_count": 15,
+        "definition": "nearest explicit evaluation target in pixel space",
+        "sample_count": 15
+      },
+      "prediction_success_fraction": 1.0,
+      "spatial_error_px": {
+        "count": 15,
+        "mean": 154.13922507113506,
+        "median": 128.69480743643277,
+        "p90": 278.0047264141564,
+        "p95": 294.2793837887461
+      },
+      "successful_sample_count": 15,
+      "target_count": 5,
+      "target_macro": {
+        "mean_bias_magnitude_px": 152.98412043368378,
+        "mean_spatial_error_px": 154.13922507113506,
+        "median_bias_magnitude_px": 114.46455712024083,
+        "median_spatial_error_px": 128.69480743643277,
+        "signed_bias_x_px": -88.07355717815157,
+        "signed_bias_y_px": 77.38846777246722
+      },
+      "targets": {
+        "bottom_left": {
+          "bias_magnitude_px": 43.83030002922558,
+          "mean_spatial_error_px": 43.88636469849886,
+          "median_spatial_error_px": 50.68605938723789,
+          "p90_spatial_error_px": 51.31605266623095,
+          "predicted_centroid_x_px": 170.4155554304871,
+          "predicted_centroid_y_px": 717.8365434719166,
+          "sample_count": 3,
+          "signed_bias_x_px": -33.584444569512875,
+          "signed_bias_y_px": -28.163456528083504,
+          "target_x_px": 204.0,
+          "target_y_px": 746.0
+        },
+        "bottom_right": {
+          "bias_magnitude_px": 108.23386921088569,
+          "mean_spatial_error_px": 108.23450024806239,
+          "median_spatial_error_px": 108.6262926311189,
+          "p90_spatial_error_px": 111.08759352329064,
+          "predicted_centroid_x_px": 1388.2902142081487,
+          "predicted_centroid_y_px": 718.6060005880163,
+          "sample_count": 3,
+          "signed_bias_x_px": -104.70978579185112,
+          "signed_bias_y_px": -27.393999411983675,
+          "target_x_px": 1493.0,
+          "target_y_px": 746.0
+        },
+        "center": {
+          "bias_magnitude_px": 282.1668663789486,
+          "mean_spatial_error_px": 282.2200515360834,
+          "median_spatial_error_px": 278.0047264141564,
+          "p90_spatial_error_px": 294.2793837887461,
+          "predicted_centroid_x_px": 709.0521089334528,
+          "predicted_centroid_y_px": 689.0157714681676,
+          "sample_count": 3,
+          "signed_bias_x_px": -139.94789106654716,
+          "signed_bias_y_px": 245.0157714681675,
+          "target_x_px": 849.0,
+          "target_y_px": 444.0
+        },
+        "top_left": {
+          "bias_magnitude_px": 216.2250094291182,
+          "mean_spatial_error_px": 218.70822889337197,
+          "median_spatial_error_px": 218.75398041732737,
+          "p90_spatial_error_px": 228.80964990758903,
+          "predicted_centroid_x_px": 6.736607684140278,
+          "predicted_centroid_y_px": 230.54608266129821,
+          "sample_count": 3,
+          "signed_bias_x_px": -197.26339231585973,
+          "signed_bias_y_px": 88.54608266129823,
+          "target_x_px": 204.0,
+          "target_y_px": 142.0
+        },
+        "top_right": {
+          "bias_magnitude_px": 114.46455712024083,
+          "mean_spatial_error_px": 117.64697997965868,
+          "median_spatial_error_px": 128.69480743643277,
+          "p90_spatial_error_px": 139.12237329062881,
+          "predicted_centroid_x_px": 1528.1377278530128,
+          "predicted_centroid_y_px": 250.93794067293757,
+          "sample_count": 3,
+          "signed_bias_x_px": 35.137727853013,
+          "signed_bias_y_px": 108.93794067293759,
+          "target_x_px": 1493.0,
+          "target_y_px": 142.0
+        }
+      },
+      "x_error_px": {
+        "absolute_mean": 102.12864831935677,
+        "absolute_median": 105.21317061944751,
+        "absolute_p90": 204.0,
+        "absolute_p95": 204.0,
+        "count": 15,
+        "signed_mean": -88.07355717815157,
+        "signed_median": -105.21317061944751
+      },
+      "y_error_px": {
+        "absolute_mean": 99.61145014849409,
+        "absolute_median": 72.55262562157029,
+        "absolute_p90": 241.72704373545423,
+        "absolute_p95": 254.911453526576,
+        "count": 15,
+        "signed_mean": 77.38846777246722,
+        "signed_median": 72.55262562157029
+      }
+    },
+    "start": {
+      "attempted_sample_count": 15,
+      "coarse_region": {
+        "accuracy": 1.0,
+        "confusion": {
+          "bottom_left": {
+            "bottom_left": 3,
+            "bottom_right": 0,
+            "center": 0,
+            "top_left": 0,
+            "top_right": 0
+          },
+          "bottom_right": {
+            "bottom_left": 0,
+            "bottom_right": 3,
+            "center": 0,
+            "top_left": 0,
+            "top_right": 0
+          },
+          "center": {
+            "bottom_left": 0,
+            "bottom_right": 0,
+            "center": 3,
+            "top_left": 0,
+            "top_right": 0
+          },
+          "top_left": {
+            "bottom_left": 0,
+            "bottom_right": 0,
+            "center": 0,
+            "top_left": 3,
+            "top_right": 0
+          },
+          "top_right": {
+            "bottom_left": 0,
+            "bottom_right": 0,
+            "center": 0,
+            "top_left": 0,
+            "top_right": 3
+          }
+        },
+        "correct_count": 15,
+        "definition": "nearest explicit evaluation target in pixel space",
+        "sample_count": 15
+      },
+      "prediction_success_fraction": 1.0,
+      "spatial_error_px": {
+        "count": 15,
+        "mean": 164.56366773733728,
+        "median": 213.30072681857658,
+        "p90": 266.0746933785135,
+        "p95": 288.9656894489521
+      },
+      "successful_sample_count": 15,
+      "target_count": 5,
+      "target_macro": {
+        "mean_bias_magnitude_px": 163.00932601288744,
+        "mean_spatial_error_px": 164.5636677373373,
+        "median_bias_magnitude_px": 214.14997226144,
+        "median_spatial_error_px": 219.32806636589075,
+        "signed_bias_x_px": -53.140622351109734,
+        "signed_bias_y_px": 118.33044541221234
+      },
+      "targets": {
+        "bottom_left": {
+          "bias_magnitude_px": 31.08432666142037,
+          "mean_spatial_error_px": 33.04977526755892,
+          "median_spatial_error_px": 28.835093624207893,
+          "p90_spatial_error_px": 47.12038422727578,
+          "predicted_centroid_x_px": 190.73594655831843,
+          "predicted_centroid_y_px": 717.8877206493302,
+          "sample_count": 3,
+          "signed_bias_x_px": -13.264053441681588,
+          "signed_bias_y_px": -28.11227935066995,
+          "target_x_px": 204.0,
+          "target_y_px": 746.0
+        },
+        "bottom_right": {
+          "bias_magnitude_px": 82.53939415421641,
+          "mean_spatial_error_px": 83.47970766292461,
+          "median_spatial_error_px": 86.06258700298139,
+          "p90_spatial_error_px": 94.75806914180349,
+          "predicted_centroid_x_px": 1410.4733879935911,
+          "predicted_centroid_y_px": 744.5474511750868,
+          "sample_count": 3,
+          "signed_bias_x_px": -82.5266120064088,
+          "signed_bias_y_px": -1.4525488249131513,
+          "target_x_px": 1493.0,
+          "target_y_px": 746.0
+        },
+        "center": {
+          "bias_magnitude_px": 220.0543784227098,
+          "mean_spatial_error_px": 220.23737332528717,
+          "median_spatial_error_px": 219.32806636589075,
+          "p90_spatial_error_px": 228.0833267913941,
+          "predicted_centroid_x_px": 779.0573340809113,
+          "predicted_centroid_y_px": 652.6431234120499,
+          "sample_count": 3,
+          "signed_bias_x_px": -69.9426659190887,
+          "signed_bias_y_px": 208.64312341204996,
+          "target_x_px": 849.0,
+          "target_y_px": 444.0
+        },
+        "top_left": {
+          "bias_magnitude_px": 267.2185585646506,
+          "mean_spatial_error_px": 269.2787170009786,
+          "median_spatial_error_px": 266.0746933785135,
+          "p90_spatial_error_px": 288.9656894489521,
+          "predicted_centroid_x_px": 37.51303664611537,
+          "predicted_centroid_y_px": 351.0163847036204,
+          "sample_count": 3,
+          "signed_bias_x_px": -166.48696335388465,
+          "signed_bias_y_px": 209.01638470362047,
+          "target_x_px": 204.0,
+          "target_y_px": 142.0
+        },
+        "top_right": {
+          "bias_magnitude_px": 214.14997226144,
+          "mean_spatial_error_px": 216.77276542993718,
+          "median_spatial_error_px": 235.04705142243276,
+          "p90_spatial_error_px": 235.04775405877893,
+          "predicted_centroid_x_px": 1559.5171829655148,
+          "predicted_centroid_y_px": 345.55754712097445,
+          "sample_count": 3,
+          "signed_bias_x_px": 66.51718296551508,
+          "signed_bias_y_px": 203.55754712097442,
+          "target_x_px": 1493.0,
+          "target_y_px": 142.0
+        }
+      },
+      "x_error_px": {
+        "absolute_mean": 79.97409241513664,
+        "absolute_median": 76.75546078417301,
+        "absolute_p90": 161.39115090376038,
+        "absolute_p95": 190.96993400070855,
+        "count": 15,
+        "signed_mean": -53.14062235110973,
+        "signed_median": -69.14169177493636
+      },
+      "y_error_px": {
+        "absolute_mean": 132.35192569266846,
+        "absolute_median": 165.63871744006906,
+        "absolute_p90": 229.8066705120105,
+        "absolute_p95": 239.69577820368022,
+        "count": 15,
+        "signed_mean": 118.33044541221236,
+        "signed_median": 165.63871744006906
+      }
+    }
+  },
+  "schema_version": 1,
+  "status": "failed_integrity_gate",
+  "target_independence": {
+    "calibration_target_count": 13,
+    "coordinate_range": "signed normalized screen coordinates [-1, 1]",
+    "coordinate_transform": "signed = 2 * viewport_fraction - 1",
+    "definition": "evaluation targets must be at least the configured Euclidean separation from every calibration target",
+    "distance_metric": "two-dimensional Euclidean distance",
+    "evaluation_target_count": 5,
+    "evaluation_target_minimum_distances": {
+      "bottom_left": {
+        "signed_normalized_euclidean": 0.14429067522353112,
+        "viewport_fraction_euclidean": 0.07214533761176556
+      },
+      "bottom_right": {
+        "signed_normalized_euclidean": 0.14450995023097182,
+        "viewport_fraction_euclidean": 0.07225497511548591
+      },
+      "center": {
+        "signed_normalized_euclidean": 0.00039282615000724164,
+        "viewport_fraction_euclidean": 0.00019641307500362082
+      },
+      "top_left": {
+        "signed_normalized_euclidean": 0.144290675223531,
+        "viewport_fraction_euclidean": 0.0721453376117655
+      },
+      "top_right": {
+        "signed_normalized_euclidean": 0.1445099502309717,
+        "viewport_fraction_euclidean": 0.07225497511548586
+      }
+    },
+    "frozen_protocol_threshold_match": true,
+    "frozen_protocol_viewport_fraction_separation": 0.1,
+    "independence_rule": "distance >= tolerance",
+    "minimum_normalized_target_distance": 0.00039282615000724164,
+    "minimum_signed_normalized_euclidean_distance": 0.00039282615000724164,
+    "minimum_viewport_fraction_euclidean_distance": 0.00019641307500362082,
+    "normalized_coordinate_tolerance": 0.2,
+    "overlap_count": 5,
+    "overlap_rule": "distance < tolerance",
+    "overlapping_evaluation_target_ids": [
+      "bottom_left",
+      "bottom_right",
+      "center",
+      "top_left",
+      "top_right"
+    ],
+    "signed_normalized_tolerance": 0.2,
+    "status": "failed",
+    "threshold_source": "frozen_protocol_default",
+    "viewport_fraction_tolerance_equivalent": 0.1
+  },
+  "temporal_correction": {
+    "bootstrap": {
+      "ci95_lower_px": -155.8955281520636,
+      "ci95_upper_px": 144.68640309431285,
+      "cluster_draws_per_resample": 5,
+      "cluster_unit": "evaluation_target_id",
+      "delta_definition": "corrected minus raw end-validation median error",
+      "deterministic_sampler": "sha256(seed:resample_index:draw_index) modulo target_count",
+      "fraction_improved": 0.3921,
+      "fraction_unchanged": 0.0,
+      "inferential_claim_authorized": false,
+      "interval_quantile_method": "linear interpolation at (n - 1) * p",
+      "limitation": "resamples only the observed target clusters; the interval is descriptive and does not establish population-level correction benefit",
+      "paired_raw_and_corrected": true,
+      "resamples": 10000,
+      "seed": 20260810,
+      "target_cluster_count": 5
+    },
+    "corrected_end": {
+      "median_spatial_error_px": 148.4339410256903,
+      "p90_spatial_error_px": 199.41244661880313
+    },
+    "corrected_minus_raw": {
+      "median_spatial_error_px": 19.739133589257534,
+      "p90_spatial_error_px": -78.59227979535325
+    },
+    "correction_id": "start_trained_median_translation",
+    "decision": "development_only_no_model_or_quality_band_promotion",
+    "evaluation_scope": "temporally later end validation only",
+    "fit_scope": "start validation successful samples only",
+    "raw_end": {
+      "median_spatial_error_px": 128.69480743643277,
+      "p90_spatial_error_px": 278.0047264141564
+    },
+    "selected_using_end_validation": false,
+    "translation_x_px": 69.14169177493636,
+    "translation_y_px": -165.63871744006906
+  },
+  "viewport": {
+    "height_px": 888.0,
+    "width_px": 1697.0
+  }
+}

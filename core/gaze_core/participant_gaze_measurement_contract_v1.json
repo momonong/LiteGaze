@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "contract_id": "lexigaze-participant-gaze-measurement-v1",
+  "contract_version": "2026-08-10.v1",
+  "status": "rehearsal_fail_closed",
+  "participant_protocol_compatibility": {
+    "general_collection_protocol_id": "lexigaze-generalizable-participant-collection-v1",
+    "general_collection_protocol_version": "2026-08-08.v2",
+    "changes_general_collection_protocol_digest": false
+  },
+  "participant_calibration": {
+    "schema_version": 1,
+    "label_authority": "server_frozen_participant_motion_calibration_v1",
+    "phase": "calibration",
+    "collection_protocol": "motion-diverse-v1",
+    "collect_mode": "motion_robust",
+    "lighting_condition": "ambient",
+    "repeats_per_target_per_block": 1,
+    "target_coordinate_system": "signed_normalized_screen_coordinates_[-1,1]",
+    "target_pixel_role": "client_reported_diagnostic_only",
+    "capture_burst_id_policy": "{session_id}:{motion_block_id}:r{repeat_index}",
+    "server_overwritten_fields": [
+      "phase", "point_index", "repeat_index", "target_x_norm", "target_y_norm",
+      "collect_mode", "collection_protocol", "motion_block_id", "posture_condition",
+      "distance_condition", "lighting_condition", "capture_burst_id",
+      "calibration_label_authority", "target_pixel_role"
+    ],
+    "frozen_targets": [
+      {"point_index": 0, "target_x_viewport_fraction": 0.08, "target_y_viewport_fraction": 0.10},
+      {"point_index": 1, "target_x_viewport_fraction": 0.50, "target_y_viewport_fraction": 0.10},
+      {"point_index": 2, "target_x_viewport_fraction": 0.92, "target_y_viewport_fraction": 0.10},
+      {"point_index": 3, "target_x_viewport_fraction": 0.08, "target_y_viewport_fraction": 0.50},
+      {"point_index": 4, "target_x_viewport_fraction": 0.50, "target_y_viewport_fraction": 0.50},
+      {"point_index": 5, "target_x_viewport_fraction": 0.92, "target_y_viewport_fraction": 0.50},
+      {"point_index": 6, "target_x_viewport_fraction": 0.08, "target_y_viewport_fraction": 0.90},
+      {"point_index": 7, "target_x_viewport_fraction": 0.50, "target_y_viewport_fraction": 0.90},
+      {"point_index": 8, "target_x_viewport_fraction": 0.92, "target_y_viewport_fraction": 0.90},
+      {"point_index": 9, "target_x_viewport_fraction": 0.29, "target_y_viewport_fraction": 0.30},
+      {"point_index": 10, "target_x_viewport_fraction": 0.71, "target_y_viewport_fraction": 0.30},
+      {"point_index": 11, "target_x_viewport_fraction": 0.29, "target_y_viewport_fraction": 0.70},
+      {"point_index": 12, "target_x_viewport_fraction": 0.71, "target_y_viewport_fraction": 0.70}
+    ],
+    "motion_blocks": [
+      {"motion_block_id": "neutral", "posture_condition": "neutral", "distance_condition": "nominal"},
+      {"motion_block_id": "left", "posture_condition": "left", "distance_condition": "nominal"},
+      {"motion_block_id": "right", "posture_condition": "right", "distance_condition": "nominal"},
+      {"motion_block_id": "near", "posture_condition": "neutral", "distance_condition": "near"},
+      {"motion_block_id": "far", "posture_condition": "neutral", "distance_condition": "far"}
+    ]
+  },
+  "capture_contract": {
+    "schema_version": 1,
+    "intent": {"width_px": 1280, "height_px": 720, "frame_rate_hz": 30},
+    "transport_policy": "fit_width_preserve_aspect",
+    "must_match_between_calibration_validation_and_reading": [
+      "source_aspect_ratio_within_0.02",
+      "transport_aspect_ratio_within_0.02",
+      "resize_policy",
+      "mirror_policy",
+      "facing_mode"
+    ],
+    "exact_source_resolution_must_match": false,
+    "resolution_and_frame_rate_changes_are_recorded_as_warnings": true,
+    "missing_or_mismatched_action": "gaze_abstention_behavioral_collection_may_continue"
+  },
+  "target_independence": {
+    "schema_version": 1,
+    "fit_coordinate_system": "signed_normalized_screen_coordinates_[-1,1]",
+    "source_grid_coordinate_system": "viewport_fraction_[0,1]",
+    "overlap_threshold_signed": 0.2,
+    "overlap_threshold_viewport_fraction": 0.1,
+    "overlap_boundary_is_failure": false,
+    "unavailable_or_failed_action": "gaze_abstention_behavioral_collection_may_continue",
+    "validation_sample_target_authority": "server_frozen_target_id_mapping",
+    "validation_sample_required_target_fields": [
+      "target_id",
+      "target_x_norm",
+      "target_y_norm",
+      "target_x_px",
+      "target_y_px"
+    ],
+    "fit_target_contract_source": "successful_samples_used_by_personalized_calibration_stages",
+    "selection_reference_calibration_targets": [
+      [0.08, 0.10], [0.50, 0.10], [0.92, 0.10],
+      [0.08, 0.50], [0.50, 0.50], [0.92, 0.50],
+      [0.08, 0.90], [0.50, 0.90], [0.92, 0.90],
+      [0.29, 0.30], [0.71, 0.30], [0.29, 0.70], [0.71, 0.70]
+    ],
+    "frozen_heldout_grid_4x4": [
+      [0.18, 0.20], [0.39, 0.20], [0.61, 0.20], [0.82, 0.20],
+      [0.18, 0.40], [0.39, 0.40], [0.61, 0.40], [0.82, 0.40],
+      [0.18, 0.60], [0.39, 0.60], [0.61, 0.60], [0.82, 0.60],
+      [0.18, 0.80], [0.39, 0.80], [0.61, 0.80], [0.82, 0.80]
+    ],
+    "selected_validation_targets": [
+      {"target_id": "heldout_top_left", "target_x_viewport_fraction": 0.18, "target_y_viewport_fraction": 0.20, "target_x_norm": -0.64, "target_y_norm": -0.60},
+      {"target_id": "heldout_top_right", "target_x_viewport_fraction": 0.82, "target_y_viewport_fraction": 0.20, "target_x_norm": 0.64, "target_y_norm": -0.60},
+      {"target_id": "heldout_center_upper_left", "target_x_viewport_fraction": 0.39, "target_y_viewport_fraction": 0.40, "target_x_norm": -0.22, "target_y_norm": -0.20},
+      {"target_id": "heldout_bottom_left", "target_x_viewport_fraction": 0.18, "target_y_viewport_fraction": 0.80, "target_x_norm": -0.64, "target_y_norm": 0.60},
+      {"target_id": "heldout_bottom_right", "target_x_viewport_fraction": 0.82, "target_y_viewport_fraction": 0.80, "target_x_norm": 0.64, "target_y_norm": 0.60}
+    ]
+  }
+}

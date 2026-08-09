@@ -7,6 +7,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from core.participant_study import (
     ParticipantStudyStore,
@@ -16,6 +17,7 @@ from core.participant_study import (
 from core.participant_study.general_collection import (
     WORD_PATTERN,
     assignment_for_cell,
+    canonical_sha256,
     classify_gaze_quality,
     load_general_protocol,
     normalize_telemetry_batch,
@@ -25,6 +27,7 @@ from core.participant_study.general_collection import (
     validate_profile,
     validate_round_payload,
     validate_system_profile,
+    validation_target_definitions,
     williams_order,
 )
 from core.participant_study.protocol import (
@@ -110,24 +113,34 @@ def _system_profile() -> dict[str, object]:
     }
 
 
+def _assessment_viewport() -> dict[str, int]:
+    return {"width_px": 1280, "height_px": 800}
+
+
 def _validation_samples(offset: float = 10.0) -> list[dict[str, object]]:
-    targets = [
-        ("tl", 160.0, 120.0),
-        ("tr", 1120.0, 120.0),
-        ("c", 640.0, 400.0),
-        ("bl", 160.0, 680.0),
-        ("br", 1120.0, 680.0),
-    ]
+    targets = validation_target_definitions()
     return [
         {
-            "target_id": target_id,
+            "target_id": target["target_id"],
             "target_x_px": x,
             "target_y_px": y,
+            "target_x_norm": target["target_x_norm"],
+            "target_y_norm": target["target_y_norm"],
             "prediction_success": True,
             "predicted_x_px": x + offset + repeat,
             "predicted_y_px": y + offset - repeat,
         }
-        for target_id, x, y in targets
+        for target in targets
+        for x, y in [
+            (
+                float(
+                    int(target["target_x_viewport_fraction"] * 1280 + 0.5)
+                ),
+                float(
+                    int(target["target_y_viewport_fraction"] * 800 + 0.5)
+                ),
+            )
+        ]
         for repeat in range(3)
     ]
 
@@ -138,8 +151,16 @@ class GeneralCollectionDesignTests(unittest.TestCase):
         self.assertEqual(audit["passage_count"], 12)
         self.assertEqual(audit["passage_family_count"], 12)
         self.assertEqual(audit["probe_count"], 96)
-        self.assertRegex(audit["protocol_sha256"], r"^[0-9a-f]{64}$")
+        self.assertEqual(
+            audit["protocol_sha256"],
+            "7c4b25bb306b68bb2a2ee5f34217a67aace0de6778fb3f1ed9b462741a0a26b9",
+        )
         self.assertRegex(audit["bank_sha256"], r"^[0-9a-f]{64}$")
+        self.assertEqual(audit["validation_target_count"], 5)
+        self.assertRegex(
+            audit["gaze_measurement_contract_sha256"],
+            r"^[0-9a-f]{64}$",
+        )
 
     def test_williams_rows_balance_first_order_carryover(self) -> None:
         rows = [williams_order(6, row) for row in range(6)]
@@ -415,7 +436,7 @@ class GeneralCollectionStoreTests(unittest.TestCase):
         self.session_id = self.enrolled["study_session_id"]
         self.token = self.enrolled["access_token"]
 
-    def _prepare_collection(self) -> None:
+    def _prepare_collection(self, *, record_start_validation: bool = True) -> None:
         self.store.record_general_profile(
             self.session_id,
             self.token,
@@ -433,13 +454,18 @@ class GeneralCollectionStoreTests(unittest.TestCase):
             {"passed": True, "test_fixture": True},
             model_name="general-test-model",
         )
-        self.store.start_general_collection(self.session_id, self.token)
-        self.store.record_general_validation(
+        self.store.start_general_collection(
             self.session_id,
             self.token,
-            phase="start",
-            samples=_validation_samples(),
+            assessment_viewport=_assessment_viewport(),
         )
+        if record_start_validation:
+            self.store.record_general_validation(
+                self.session_id,
+                self.token,
+                phase="start",
+                samples=_validation_samples(),
+            )
 
     def _round_payload(self, passage_id: str) -> dict[str, object]:
         passage = passage_by_id(passage_id)
@@ -487,6 +513,135 @@ class GeneralCollectionStoreTests(unittest.TestCase):
         with self.assertRaisesRegex(Exception, "visit 1 must be completed"):
             self.store.enroll(
                 _consent_payload(self.pair["visits"][1]["invite_code"])
+            )
+
+    def test_legacy_invite_assignment_needs_no_additive_gaze_contract_field(self) -> None:
+        status = self.store.get_session(self.session_id, self.token)
+        self.assertNotIn(
+            "gaze_measurement_contract",
+            status["collection_assignment"],
+        )
+        self._prepare_collection()
+        started = self.store.get_session(self.session_id, self.token)
+        self.assertEqual(
+            started["general_collection"]["phase"],
+            "reading_ready",
+        )
+        self.assertRegex(
+            started["general_collection"]["gaze_measurement_contract"]["sha256"],
+            r"^[0-9a-f]{64}$",
+        )
+        frozen = started["general_collection"]["gaze_measurement_contract"]
+        self.assertEqual(
+            frozen["sha256"],
+            canonical_sha256(frozen["contract"]),
+        )
+        self.assertEqual(
+            started["general_collection"]["assessment_viewport"],
+            _assessment_viewport(),
+        )
+
+    def test_validation_uses_session_contract_when_current_file_drifts(self) -> None:
+        self._prepare_collection(record_start_validation=False)
+        before = self.store.get_session(self.session_id, self.token)
+        frozen = before["general_collection"]["gaze_measurement_contract"]
+        frozen_contract_samples = _validation_samples()
+        with (
+            patch(
+                "core.participant_study.store.load_participant_gaze_measurement_contract",
+                side_effect=AssertionError("current contract must not be reloaded"),
+            ),
+            patch(
+                "core.participant_study.general_collection."
+                "load_participant_gaze_measurement_contract",
+                side_effect=AssertionError("current contract must not be reloaded"),
+            ),
+        ):
+            resumed = self.store.start_general_collection(
+                self.session_id,
+                self.token,
+                assessment_viewport=_assessment_viewport(),
+            )
+            validated = self.store.record_general_validation(
+                self.session_id,
+                self.token,
+                phase="start",
+                samples=frozen_contract_samples,
+            )
+        self.assertEqual(
+            resumed["general_collection"]["gaze_measurement_contract"],
+            frozen,
+        )
+        self.assertEqual(
+            validated["general_collection"]["phase"],
+            "reading_ready",
+        )
+        self.assertEqual(
+            validated["general_collection"]["gaze_measurement_contract"],
+            frozen,
+        )
+        self.assertEqual(
+            validated["general_collection"]["validations"]["start"][
+                "gaze_measurement_contract_sha256"
+            ],
+            frozen["sha256"],
+        )
+
+    def test_start_rejects_viewport_drift_from_system_check(self) -> None:
+        self.store.record_general_profile(self.session_id, self.token, _profile())
+        self.store.record_general_system_check(
+            self.session_id,
+            self.token,
+            _system_profile(),
+        )
+        self.store.start_calibration(self.session_id, self.token, "GAZE-DRIFT")
+        self.store.complete_calibration(
+            self.session_id,
+            self.token,
+            {"passed": True, "test_fixture": True},
+            model_name="viewport-test-model",
+        )
+        with self.assertRaisesRegex(Exception, "viewport changed since system check"):
+            self.store.start_general_collection(
+                self.session_id,
+                self.token,
+                assessment_viewport={"width_px": 1279, "height_px": 800},
+            )
+
+    def test_validation_rejects_tampered_session_contract_hash(self) -> None:
+        self._prepare_collection(record_start_validation=False)
+        session_path = next(self.root.rglob("session.json"))
+        stored = json.loads(session_path.read_text(encoding="utf-8"))
+        stored["general_collection"]["gaze_measurement_contract"]["contract"][
+            "status"
+        ] = "tampered-after-start"
+        session_path.write_text(
+            json.dumps(stored, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(Exception, "contract hash mismatch"):
+            self.store.record_general_validation(
+                self.session_id,
+                self.token,
+                phase="start",
+                samples=_validation_samples(),
+            )
+
+    def test_in_progress_legacy_contract_summary_fails_closed(self) -> None:
+        self._prepare_collection(record_start_validation=False)
+        session_path = next(self.root.rglob("session.json"))
+        stored = json.loads(session_path.read_text(encoding="utf-8"))
+        stored["general_collection"]["gaze_measurement_contract"].pop("contract")
+        session_path.write_text(
+            json.dumps(stored, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(Exception, "contract is incomplete"):
+            self.store.record_general_validation(
+                self.session_id,
+                self.token,
+                phase="start",
+                samples=_validation_samples(),
             )
 
     def test_full_six_round_rehearsal_keeps_behavior_and_classifies_gaze(self) -> None:
@@ -621,6 +776,121 @@ class GeneralCollectionStoreTests(unittest.TestCase):
                 },
             )
 
+    def test_telemetry_rejects_non_frozen_viewport(self) -> None:
+        self._prepare_collection()
+        current = self.store.begin_general_round(self.session_id, self.token)
+        with self.assertRaisesRegex(Exception, "frozen assessment viewport"):
+            self.store.record_general_telemetry_batch(
+                self.session_id,
+                self.token,
+                {
+                    "batch_id": "B-VIEWPORT1",
+                    "passage_id": current["passage"]["passage_id"],
+                    "viewport": {"width_px": 800, "height_px": 1280},
+                    "samples": [
+                        {
+                            "monotonic_elapsed_ms": 0,
+                            "prediction_success": False,
+                            "coarse_failure_code": "prediction_failed",
+                        }
+                    ],
+                },
+            )
+
+    def test_viewport_failure_sample_persists_gaze_integrity_failure(self) -> None:
+        self._prepare_collection()
+        current = self.store.begin_general_round(self.session_id, self.token)
+        self.store.record_general_telemetry_batch(
+            self.session_id,
+            self.token,
+            {
+                "batch_id": "B-VIEWPORT2",
+                "passage_id": current["passage"]["passage_id"],
+                "viewport": _assessment_viewport(),
+                "samples": [
+                    {
+                        "monotonic_elapsed_ms": 0,
+                        "prediction_success": False,
+                        "coarse_failure_code": "viewport_contract_mismatch",
+                    }
+                ],
+            },
+        )
+        status = self.store.get_session(self.session_id, self.token)
+        integrity = status["general_collection"]["gaze_integrity"]
+        self.assertFalse(integrity["eligible"])
+        self.assertIn(
+            "assessment_viewport_changed_during_reading",
+            integrity["reasons"],
+        )
+        for round_index in range(6):
+            passage_id = current["passage"]["passage_id"]
+            self.store.open_general_word_reviews(
+                self.session_id,
+                self.token,
+                passage_id=passage_id,
+            )
+            self.store.record_general_round(
+                self.session_id,
+                self.token,
+                passage_id=passage_id,
+                payload=self._round_payload(passage_id),
+            )
+            if round_index < 5:
+                current = self.store.begin_general_round(
+                    self.session_id,
+                    self.token,
+                )
+        completed = self.store.record_general_validation(
+            self.session_id,
+            self.token,
+            phase="end",
+            samples=_validation_samples(offset=14.0),
+        )
+        quality = completed["quality"]["general_collection"]
+        self.assertEqual(quality["gaze_quality_band"], "behavioral_only")
+        self.assertFalse(quality["gaze_integrity_eligible"])
+
+    def test_reading_active_refresh_invalidates_contiguous_sampling(self) -> None:
+        self._prepare_collection()
+        current = self.store.begin_general_round(self.session_id, self.token)
+        resumed = self.store.begin_general_round(self.session_id, self.token)
+        self.assertEqual(resumed["round_number"], current["round_number"])
+        for round_index in range(6):
+            passage_id = current["passage"]["passage_id"]
+            self.store.open_general_word_reviews(
+                self.session_id,
+                self.token,
+                passage_id=passage_id,
+            )
+            status = self.store.record_general_round(
+                self.session_id,
+                self.token,
+                passage_id=passage_id,
+                payload=self._round_payload(passage_id),
+            )
+            if round_index < 5:
+                current = self.store.begin_general_round(
+                    self.session_id,
+                    self.token,
+                )
+        self.assertEqual(
+            status["general_collection"]["phase"],
+            "end_validation_required",
+        )
+        completed = self.store.record_general_validation(
+            self.session_id,
+            self.token,
+            phase="end",
+            samples=_validation_samples(offset=14.0),
+        )
+        quality = completed["quality"]["general_collection"]
+        self.assertEqual(quality["gaze_quality_band"], "behavioral_only")
+        self.assertFalse(quality["gaze_integrity_eligible"])
+        self.assertFalse(quality["telemetry_segments_contiguous"])
+        self.assertIsNone(quality["effective_sampling_hz"])
+        self.assertEqual(quality["raw_effective_sampling_hz"], 0.0)
+
 
 class UnencryptedGeneralCollectionStoreTests(GeneralCollectionStoreTests):
     def rehearsal_settings(self) -> dict[str, object]:
@@ -658,7 +928,11 @@ class UnencryptedReadingVideoStoreTests(unittest.TestCase):
             {"passed": True, "test_fixture": True},
             model_name="reading-video-test-model",
         )
-        self.store.start_general_collection(self.session_id, self.token)
+        self.store.start_general_collection(
+            self.session_id,
+            self.token,
+            assessment_viewport=_assessment_viewport(),
+        )
         self.store.record_general_validation(
             self.session_id,
             self.token,

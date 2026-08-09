@@ -1,0 +1,210 @@
+"""Regression tests for server-authoritative gaze capture provenance."""
+
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from core.gaze_core.sample_store import create_session
+from web import create_app
+
+
+class GazeProvenanceContractTests(unittest.TestCase):
+    def test_linked_study_sample_uses_session_capture_provenance(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="lexigaze-gaze-provenance-") as name:
+            root = Path(name)
+            created = create_session(
+                root,
+                "participant-test",
+                capture_run_id="capture-authoritative",
+                capture_source="study-direct-frame",
+                study_metadata={"study_session_id": "study-test"},
+            )
+            app = create_app(
+                {
+                    "TESTING": True,
+                    "LEXIGAZE_BLUEPRINTS": ("gaze",),
+                    "LEXIGAZE_GAZE_ROOT": root,
+                    "LEXIGAZE_STUDY_ROOT": root,
+                }
+            )
+            captured: dict = {}
+
+            def fake_save_sample(_root: Path, payload: dict) -> tuple[dict, int]:
+                captured.update(payload)
+                return {"ok": True}, 200
+
+            participant = {
+                "state": "calibration_in_progress",
+                "linked_data": {"gaze_session_id": created["session_id"]},
+            }
+            with (
+                patch(
+                    "web.routes.gaze._participant_session",
+                    return_value=(object(), participant),
+                ),
+                patch(
+                    "web.routes.gaze.save_sample",
+                    side_effect=fake_save_sample,
+                ),
+            ):
+                response = app.test_client().post(
+                    "/api/gaze/sample",
+                    json={
+                        "session_id": created["session_id"],
+                        "study_session_id": "study-test",
+                        "phase": "forged-phase",
+                        "point_index": 3,
+                        "repeat_index": 0,
+                        "target_x": 321.0,
+                        "target_y": 456.0,
+                        "target_x_norm": 0.99,
+                        "target_y_norm": -0.99,
+                        "collect_mode": "standard",
+                        "collection_protocol": "forged-protocol",
+                        "motion_block_id": "left",
+                        "posture_condition": "right",
+                        "distance_condition": "far",
+                        "lighting_condition": "forged-lighting",
+                        "capture_burst_id": "forged-burst",
+                        "capture_run_id": "capture-forged",
+                        "capture_source": "direct-frame",
+                        "source_session_id": "forged-parent",
+                    },
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(captured["capture_run_id"], "capture-authoritative")
+        self.assertEqual(captured["capture_source"], "study-direct-frame")
+        self.assertNotIn("source_session_id", captured)
+        self.assertEqual(captured["phase"], "calibration")
+        self.assertEqual(captured["point_index"], 3)
+        self.assertEqual(captured["repeat_index"], 0)
+        self.assertAlmostEqual(captured["target_x_norm"], -0.84)
+        self.assertAlmostEqual(captured["target_y_norm"], 0.0)
+        self.assertEqual(captured["target_x"], 321.0)
+        self.assertEqual(captured["target_y"], 456.0)
+        self.assertEqual(captured["collect_mode"], "motion_robust")
+        self.assertEqual(captured["collection_protocol"], "motion-diverse-v1")
+        self.assertEqual(captured["motion_block_id"], "left")
+        self.assertEqual(captured["posture_condition"], "left")
+        self.assertEqual(captured["distance_condition"], "nominal")
+        self.assertEqual(captured["lighting_condition"], "ambient")
+        self.assertEqual(
+            captured["capture_burst_id"],
+            f"{created['session_id']}:left:r0",
+        )
+        self.assertEqual(
+            captured["calibration_label_authority"],
+            "server_frozen_participant_motion_calibration_v1",
+        )
+        self.assertEqual(
+            captured["target_pixel_role"],
+            "client_reported_diagnostic_only",
+        )
+
+    def test_linked_study_rejects_targets_outside_frozen_design(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="lexigaze-gaze-labels-") as name:
+            root = Path(name)
+            created = create_session(
+                root,
+                "participant-test",
+                study_metadata={"study_session_id": "study-test"},
+            )
+            app = create_app(
+                {
+                    "TESTING": True,
+                    "LEXIGAZE_BLUEPRINTS": ("gaze",),
+                    "LEXIGAZE_GAZE_ROOT": root,
+                    "LEXIGAZE_STUDY_ROOT": root,
+                }
+            )
+            participant = {
+                "state": "calibration_in_progress",
+                "linked_data": {"gaze_session_id": created["session_id"]},
+            }
+            with (
+                patch(
+                    "web.routes.gaze._participant_session",
+                    return_value=(object(), participant),
+                ),
+                patch("web.routes.gaze.save_sample") as save,
+            ):
+                for payload, error_fragment in (
+                    (
+                        {"point_index": 13, "repeat_index": 0, "motion_block_id": "left"},
+                        "point_index",
+                    ),
+                    (
+                        {"point_index": 0, "repeat_index": 0, "motion_block_id": "diagonal"},
+                        "motion_block_id",
+                    ),
+                    (
+                        {"point_index": 0, "repeat_index": 1, "motion_block_id": "neutral"},
+                        "repeat_index",
+                    ),
+                ):
+                    with self.subTest(error=error_fragment):
+                        response = app.test_client().post(
+                            "/api/gaze/sample",
+                            json={
+                                "session_id": created["session_id"],
+                                "study_session_id": "study-test",
+                                **payload,
+                            },
+                        )
+                        self.assertEqual(response.status_code, 400)
+                        self.assertIn(
+                            error_fragment,
+                            response.get_json()["error"],
+                        )
+            self.assertFalse(save.called)
+
+    def test_non_study_labels_remain_legacy_compatible(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="lexigaze-gaze-legacy-") as name:
+            root = Path(name)
+            created = create_session(root, "legacy-researcher")
+            app = create_app(
+                {
+                    "TESTING": True,
+                    "LEXIGAZE_BLUEPRINTS": ("gaze",),
+                    "LEXIGAZE_GAZE_ROOT": root,
+                    "LEXIGAZE_STUDY_ROOT": root,
+                }
+            )
+            captured: dict = {}
+
+            def fake_save_sample(_root: Path, payload: dict) -> tuple[dict, int]:
+                captured.update(payload)
+                return {"ok": True}, 200
+
+            with patch(
+                "web.routes.gaze.save_sample",
+                side_effect=fake_save_sample,
+            ):
+                response = app.test_client().post(
+                    "/api/gaze/sample",
+                    json={
+                        "session_id": created["session_id"],
+                        "point_index": 99,
+                        "repeat_index": 7,
+                        "target_x_norm": 0.123,
+                        "target_y_norm": -0.456,
+                        "motion_block_id": "researcher-defined",
+                        "collection_protocol": "legacy-custom-v7",
+                    },
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(captured["point_index"], 99)
+        self.assertEqual(captured["repeat_index"], 7)
+        self.assertEqual(captured["target_x_norm"], 0.123)
+        self.assertEqual(captured["target_y_norm"], -0.456)
+        self.assertEqual(captured["motion_block_id"], "researcher-defined")
+        self.assertEqual(captured["collection_protocol"], "legacy-custom-v7")
+
+
+if __name__ == "__main__":
+    unittest.main()

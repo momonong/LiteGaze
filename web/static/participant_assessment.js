@@ -1,4 +1,5 @@
 const STUDY_KEY = "lexigaze.participantStudy.v1";
+const gazeCapture = window.LexiGazeCapture;
 
 const ui = Object.fromEntries([
   "alert", "participantId", "modelStatus", "cameraBtn", "beginBtn", "leaveBtn",
@@ -79,14 +80,14 @@ async function initializeCameraAndModel() {
   ui.cameraBtn.disabled = true;
   ui.modelStatus.textContent = "檢查中…";
   try {
+    if (!gazeCapture) throw new Error("相機 capture contract 元件未載入");
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
       throw new Error("此頁需要 HTTPS 或 localhost 才能使用相機");
     }
     if (!state.stream) {
-      state.stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
-        audio: false,
-      });
+      state.stream = await navigator.mediaDevices.getUserMedia(
+        gazeCapture.mediaConstraints(),
+      );
       ui.cameraPreview.srcObject = state.stream;
       await ui.cameraPreview.play();
     }
@@ -192,15 +193,16 @@ function nearestWord(x, y) {
 async function sampleGaze() {
   if (!state.sampling || !state.stream) return;
   state.gaze.attempts += 1;
-  const canvas = ui.captureCanvas;
-  const context = canvas.getContext("2d", { alpha: false });
-  context.drawImage(ui.cameraPreview, 0, 0, canvas.width, canvas.height);
-  const imageData = canvas.toDataURL("image/jpeg", 0.72);
+  const snapshot = gazeCapture.captureSnapshot(
+    ui.cameraPreview,
+    ui.captureCanvas,
+  );
   try {
     const result = await api("/api/gaze/predict", {
       method: "POST",
       body: JSON.stringify(studyBody({
-        image_data: imageData,
+        image_data: snapshot.image_data,
+        capture_contract: snapshot.capture_contract,
         model_name: state.modelName,
         viewport_width: innerWidth,
         viewport_height: innerHeight,

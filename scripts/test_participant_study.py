@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from core.cognitive_inspector.adaptive import PASSAGE_BY_ID
+from core.gaze_core.capture_contract import build_fit_target_contract
 from core.gaze_core.sample_store import create_session, safe_session_dir
 from core.participant_study import ParticipantStudyStore
 from core.participant_study.protocol import activation_status, load_protocol
@@ -186,6 +187,22 @@ class ParticipantWebSurfaceTests(unittest.TestCase):
             collection_protocol.get_json()["design_audit"]["probe_count"],
             96,
         )
+        gaze_contract = collection_protocol.get_json()[
+            "gaze_measurement_contract"
+        ]
+        self.assertFalse(
+            gaze_contract["capture_contract"][
+                "exact_source_resolution_must_match"
+            ]
+        )
+        self.assertEqual(
+            len(
+                gaze_contract["target_independence"][
+                    "selected_validation_targets"
+                ]
+            ),
+            5,
+        )
         root = self.client.get("/")
         self.assertEqual(root.status_code, 302)
         self.assertTrue(root.headers["Location"].endswith("/study"))
@@ -291,12 +308,14 @@ class ParticipantCalibrationRouteTests(unittest.TestCase):
 
     def test_successful_personalization_is_cpu_only_and_purges_images(self) -> None:
         quality = {"passed": True, "reasons": [], "sample_count": 65}
+        fit_target_contract = build_fit_target_contract([(-0.8, -0.8), (0.0, 0.0)])
         training_result = {
             "ok": True,
             "model_name": "participant-pilot-model",
             "training_device": "cpu",
             "best_val_px_error": 30.0,
             "validation_scheme": "participant_holdout",
+            "fit_target_contract": fit_target_contract,
         }
         with (
             patch("web.routes.study.ParticipantStudyStore", return_value=self.store),
@@ -319,6 +338,14 @@ class ParticipantCalibrationRouteTests(unittest.TestCase):
         self.assertFalse((session_dir / "raw").exists())
         self.assertFalse((session_dir / "crop").exists())
         self.assertFalse((session_dir / "normalized_face").exists())
+        status = self.store.get_session(
+            self.enrolled["study_session_id"],
+            self.enrolled["access_token"],
+        )
+        self.assertEqual(
+            status["quality"]["calibration"]["fit_target_contract"],
+            fit_target_contract,
+        )
 
 
 class ParticipantAdaptiveIntegrationTests(unittest.TestCase):

@@ -34,6 +34,8 @@ MOTION_METADATA_FIELDS = (
 CAPTURE_METADATA_TEXT_FIELDS = (
     *MOTION_METADATA_FIELDS,
     "source_session_id",
+    "calibration_label_authority",
+    "target_pixel_role",
 )
 CAPTURE_METADATA_NUMBER_FIELDS = (
     "camera_frame_rate",

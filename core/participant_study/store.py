@@ -14,10 +14,19 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from core.gaze_core.capture_contract import (
+    compare_capture_contracts,
+    load_participant_gaze_measurement_contract,
+    normalize_capture_contract,
+)
+
 from .general_collection import (
     assignment_for_cell,
+    canonical_json_bytes,
     canonical_sha256,
     classify_gaze_quality,
+    classify_provisional_geometry_quality,
+    evaluate_validation_target_independence,
     load_general_bank,
     load_general_protocol,
     normalize_telemetry_batch,
@@ -50,6 +59,96 @@ class StudyStateError(StudyError):
 
 class StudyNotReadyError(StudyError):
     """Raised when real collection is attempted before activation gates pass."""
+
+
+def _canonical_measurement_contract_snapshot(
+    measurement_contract: Mapping[str, object],
+) -> dict[str, Any]:
+    canonical_contract = json.loads(
+        canonical_json_bytes(measurement_contract).decode("utf-8")
+    )
+    return {
+        "contract_id": canonical_contract["contract_id"],
+        "contract_version": canonical_contract["contract_version"],
+        "sha256": canonical_sha256(canonical_contract),
+        "contract": canonical_contract,
+    }
+
+
+def _verified_session_measurement_contract(
+    collection: Mapping[str, object],
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Verify the immutable full contract captured when assessment began.
+
+    Pre-release in-progress sessions that contain only id/version/hash cannot
+    reconstruct the exact target contract and therefore fail closed here.
+    Unused legacy invite assignments remain compatible because a full current
+    snapshot is attached only when their collection actually starts.
+    """
+
+    snapshot = collection.get("gaze_measurement_contract")
+    if not isinstance(snapshot, Mapping):
+        raise StudyValidationError(
+            "session frozen gaze measurement contract is unavailable"
+        )
+    raw_contract = snapshot.get("contract")
+    if not isinstance(raw_contract, Mapping):
+        raise StudyValidationError(
+            "session frozen gaze measurement contract is incomplete"
+        )
+    contract = json.loads(canonical_json_bytes(raw_contract).decode("utf-8"))
+    calculated_sha256 = canonical_sha256(contract)
+    expected_sha256 = str(snapshot.get("sha256") or "")
+    if not expected_sha256 or expected_sha256 != calculated_sha256:
+        raise StudyValidationError(
+            "session frozen gaze measurement contract hash mismatch"
+        )
+    contract_id = str(snapshot.get("contract_id") or "")
+    contract_version = str(snapshot.get("contract_version") or "")
+    if (
+        contract_id != contract.get("contract_id")
+        or contract_version != contract.get("contract_version")
+    ):
+        raise StudyValidationError(
+            "session frozen gaze measurement contract identity mismatch"
+        )
+    provenance = {
+        "contract_id": contract_id,
+        "contract_version": contract_version,
+        "sha256": expected_sha256,
+    }
+    return contract, provenance
+
+
+def _normalized_assessment_viewport(payload: object) -> dict[str, int]:
+    if not isinstance(payload, Mapping):
+        raise StudyValidationError("assessment viewport challenge is required")
+    normalized: dict[str, int] = {}
+    for field in ("width_px", "height_px"):
+        value = payload.get(field)
+        if isinstance(value, bool):
+            raise StudyValidationError("assessment viewport dimensions are invalid")
+        try:
+            number = float(value)
+        except (TypeError, ValueError) as exc:
+            raise StudyValidationError(
+                "assessment viewport dimensions are invalid"
+            ) from exc
+        if not number.is_integer() or not 1 <= number <= 16384:
+            raise StudyValidationError("assessment viewport dimensions are invalid")
+        normalized[field] = int(number)
+    return normalized
+
+
+def _verified_assessment_viewport(
+    collection: Mapping[str, object],
+) -> dict[str, int]:
+    try:
+        return _normalized_assessment_viewport(collection.get("assessment_viewport"))
+    except StudyValidationError as exc:
+        raise StudyValidationError(
+            "session frozen assessment viewport is unavailable"
+        ) from exc
 
 
 ACTIVE_STATES = {
@@ -649,6 +748,10 @@ class ParticipantStudyStore:
                     )
                 ),
                 "current_round": collection.get("current_round"),
+                "gaze_measurement_contract": collection.get(
+                    "gaze_measurement_contract"
+                ),
+                "assessment_viewport": collection.get("assessment_viewport"),
                 "validations": {
                     key: {
                         metric: value
@@ -658,6 +761,10 @@ class ParticipantStudyStore:
                     for key, summary in dict(collection.get("validations") or {}).items()
                 },
                 "gaze_quality_band": collection.get("gaze_quality_band"),
+                "provisional_geometry_quality": collection.get(
+                    "provisional_geometry_quality"
+                ),
+                "gaze_integrity": collection.get("gaze_integrity"),
                 "reading_videos": list(collection.get("reading_videos") or []),
             }
         return public
@@ -734,10 +841,10 @@ class ParticipantStudyStore:
         self,
         session_id: str,
         access_token: str,
+        *,
+        assessment_viewport: Mapping[str, object] | None,
     ) -> dict[str, Any]:
-        general_protocol = load_general_protocol()
-        bank = load_general_bank()
-        design = validate_general_design(general_protocol, bank)
+        requested_viewport = _normalized_assessment_viewport(assessment_viewport)
         with self._lock:
             path, session = self._read(session_id)
             self._authorize(session, access_token)
@@ -748,16 +855,60 @@ class ParticipantStudyStore:
                 "assessment_in_progress",
             }:
                 raise StudyStateError("general collection requires completed calibration")
-            assignment = dict(session.get("collection_assignment") or {})
-            if assignment.get("protocol_sha256") != design["protocol_sha256"]:
-                raise StudyStateError("assigned protocol no longer matches the frozen design")
-            if assignment.get("bank_sha256") != design["bank_sha256"]:
-                raise StudyStateError("assigned bank no longer matches the frozen design")
             collection = session.setdefault("general_collection", {})
             if not collection.get("profile"):
                 raise StudyStateError("participant profile is missing")
+            device = dict(
+                dict(
+                    dict(session.get("quality") or {}).get(
+                        "general_system_check"
+                    )
+                    or {}
+                ).get("device")
+                or {}
+            )
+            system_check_viewport = _normalized_assessment_viewport(
+                {
+                    "width_px": device.get("viewport_width"),
+                    "height_px": device.get("viewport_height"),
+                }
+            )
+            if requested_viewport != system_check_viewport:
+                raise StudyValidationError(
+                    "assessment viewport changed since system check; "
+                    "restart the system check before collection"
+                )
             assessment_id = collection.get("assessment_id")
             if not assessment_id:
+                general_protocol = load_general_protocol()
+                bank = load_general_bank()
+                gaze_measurement_contract = (
+                    load_participant_gaze_measurement_contract()
+                )
+                design = validate_general_design(
+                    general_protocol,
+                    bank,
+                    gaze_measurement_contract,
+                )
+                assignment = dict(session.get("collection_assignment") or {})
+                if assignment.get("protocol_sha256") != design["protocol_sha256"]:
+                    raise StudyStateError(
+                        "assigned protocol no longer matches the frozen design"
+                    )
+                if assignment.get("bank_sha256") != design["bank_sha256"]:
+                    raise StudyStateError(
+                        "assigned bank no longer matches the frozen design"
+                    )
+                measurement_snapshot = _canonical_measurement_contract_snapshot(
+                    gaze_measurement_contract
+                )
+                if (
+                    measurement_snapshot["sha256"]
+                    != design["gaze_measurement_contract_sha256"]
+                ):
+                    raise StudyStateError(
+                        "gaze measurement contract changed during collection start"
+                    )
                 assessment_id = "GC-" + secrets.token_hex(10).upper()
                 collection.update(
                     {
@@ -768,6 +919,8 @@ class ParticipantStudyStore:
                         "bank_id": bank["bank_id"],
                         "bank_version": bank["bank_version"],
                         "bank_sha256": design["bank_sha256"],
+                        "gaze_measurement_contract": measurement_snapshot,
+                        "assessment_viewport": system_check_viewport,
                         "dataset_role": general_protocol["dataset_role"],
                         "phase": "start_validation_required",
                         "validations": {},
@@ -782,9 +935,21 @@ class ParticipantStudyStore:
                             "face_scale_min": None,
                             "face_scale_max": None,
                         },
+                        "gaze_integrity": {
+                            "eligible": True,
+                            "reasons": [],
+                            "interrupted_rounds": [],
+                        },
                     }
                 )
                 self._event(session, "general_collection_started")
+            else:
+                _verified_session_measurement_contract(collection)
+                frozen_viewport = _verified_assessment_viewport(collection)
+                if frozen_viewport != requested_viewport:
+                    raise StudyValidationError(
+                        "assessment viewport differs from the frozen collection viewport"
+                    )
             session["state"] = "assessment_in_progress"
             session["linked_data"]["assessment_id"] = str(assessment_id)
             self._write(path, session)
@@ -797,31 +962,94 @@ class ParticipantStudyStore:
         *,
         phase: str,
         samples: list[Mapping[str, object]],
+        capture_contract: Mapping[str, object] | None = None,
     ) -> dict[str, Any]:
         if phase not in {"start", "end"}:
             raise StudyValidationError("validation phase must be start or end")
-        try:
-            summary = summarize_validation_samples(samples)
-        except ValueError as exc:
-            raise StudyValidationError(str(exc)) from exc
-        summary["samples_sha256"] = canonical_sha256(summary["samples"])
+        normalized_contract = None
+        if capture_contract is not None:
+            try:
+                normalized_contract = normalize_capture_contract(capture_contract)
+            except ValueError as exc:
+                raise StudyValidationError(str(exc)) from exc
         with self._lock:
             path, session = self._read(session_id)
             self._authorize(session, access_token)
             if session.get("state") != "assessment_in_progress":
                 raise StudyStateError("general collection is not in progress")
             collection = dict(session.get("general_collection") or {})
+            measurement_contract, measurement_provenance = (
+                _verified_session_measurement_contract(collection)
+            )
+            assessment_viewport = _verified_assessment_viewport(collection)
+            try:
+                summary = summarize_validation_samples(
+                    samples,
+                    viewport_width_px=assessment_viewport["width_px"],
+                    viewport_height_px=assessment_viewport["height_px"],
+                    measurement_contract=measurement_contract,
+                )
+            except (TypeError, ValueError) as exc:
+                raise StudyValidationError(str(exc)) from exc
+            if normalized_contract is not None:
+                summary["capture_contract"] = normalized_contract
+            summary["assessment_viewport"] = assessment_viewport
+            summary["gaze_measurement_contract"] = measurement_provenance
+            summary["gaze_measurement_contract_sha256"] = measurement_provenance[
+                "sha256"
+            ]
+            summary["samples_sha256"] = canonical_sha256(summary["samples"])
+            summary["validation_payload_sha256"] = canonical_sha256(
+                {
+                    "samples": summary["samples"],
+                    "capture_contract": normalized_contract,
+                    "gaze_measurement_contract_sha256": summary[
+                        "gaze_measurement_contract_sha256"
+                    ],
+                    "assessment_viewport": assessment_viewport,
+                }
+            )
             expected_phase = (
-                "start_validation_required" if phase == "start" else "end_validation_required"
+                "start_validation_required"
+                if phase == "start"
+                else "end_validation_required"
             )
             if collection.get("phase") != expected_phase:
                 existing = dict(collection.get("validations") or {}).get(phase)
-                if existing and existing.get("samples_sha256") == summary["samples_sha256"]:
+                if existing and (
+                    existing.get("validation_payload_sha256")
+                    == summary["validation_payload_sha256"]
+                    or (
+                        existing.get("validation_payload_sha256") is None
+                        and existing.get("samples_sha256") == summary["samples_sha256"]
+                    )
+                ):
                     return self._public_session(session)
                 raise StudyStateError(f"{phase} validation is not expected now")
+            calibration_quality = dict(
+                dict(session.get("quality") or {}).get("calibration") or {}
+            )
+            contract_check = compare_capture_contracts(
+                calibration_quality.get("capture_contract"),
+                normalized_contract,
+            )
+            summary["capture_contract_check"] = contract_check
+            target_independence = evaluate_validation_target_independence(
+                summary,
+                calibration_quality.get("fit_target_contract"),
+                measurement_contract=measurement_contract,
+            )
+            summary["target_independence_check"] = target_independence
             validations = collection.setdefault("validations", {})
             validations[phase] = summary
             if phase == "start":
+                provisional = classify_provisional_geometry_quality(
+                    summary,
+                    capture_contract_check=contract_check,
+                    target_independence_check=target_independence,
+                )
+                summary["provisional_geometry_quality"] = provisional
+                collection["provisional_geometry_quality"] = provisional
                 collection["phase"] = "reading_ready"
                 self._event(session, "general_start_validation_recorded")
             else:
@@ -885,9 +1113,52 @@ class ParticipantStudyStore:
                         else None
                     ),
                 }
-                if metrics["median_spatial_error_px"] is None or metrics[
-                    "p90_spatial_error_px"
-                ] is None:
+                capture_contract_eligible = all(
+                    dict(item.get("capture_contract_check") or {}).get("compatible")
+                    is True
+                    for item in validation_summaries
+                )
+                target_independence_eligible = all(
+                    dict(item.get("target_independence_check") or {}).get("status")
+                    == "passed"
+                    and dict(item.get("target_independence_check") or {}).get(
+                        "independent"
+                    )
+                    is True
+                    for item in validation_summaries
+                )
+                gaze_integrity = dict(collection.get("gaze_integrity") or {})
+                gaze_integrity_eligible = (
+                    gaze_integrity.get("eligible") is True
+                    and not list(gaze_integrity.get("reasons") or [])
+                )
+                telemetry_segments_contiguous = (
+                    "reading_active_reentered_without_segment_contract"
+                    not in set(gaze_integrity.get("reasons") or [])
+                )
+                if not telemetry_segments_contiguous:
+                    metrics["raw_effective_sampling_hz"] = metrics[
+                        "effective_sampling_hz"
+                    ]
+                    metrics["effective_sampling_hz"] = None
+                geometry_contract_eligible = (
+                    capture_contract_eligible
+                    and target_independence_eligible
+                    and gaze_integrity_eligible
+                )
+                metrics["capture_contract_eligible"] = capture_contract_eligible
+                metrics[
+                    "target_independence_eligible"
+                ] = target_independence_eligible
+                metrics["gaze_integrity_eligible"] = gaze_integrity_eligible
+                metrics[
+                    "telemetry_segments_contiguous"
+                ] = telemetry_segments_contiguous
+                if (
+                    not geometry_contract_eligible
+                    or metrics["median_spatial_error_px"] is None
+                    or metrics["p90_spatial_error_px"] is None
+                ):
                     quality_band = "behavioral_only"
                 else:
                     quality_band = classify_gaze_quality(metrics)
@@ -897,6 +1168,7 @@ class ParticipantStudyStore:
                     **metrics,
                     "gaze_quality_band": quality_band,
                     "behavioral_labels_retained": True,
+                    "geometry_contract_eligible": geometry_contract_eligible,
                     "threshold_status": "rehearsal_descriptive_not_promotion_thresholds",
                 }
                 session["state"] = "completed"
@@ -921,7 +1193,34 @@ class ParticipantStudyStore:
                 raise StudyStateError("general collection is not in progress")
             collection = dict(session.get("general_collection") or {})
             assignment = dict(session.get("collection_assignment") or {})
-            if collection.get("phase") in {"reading_active", "probes_open"}:
+            if collection.get("phase") == "reading_active":
+                current = dict(collection.get("current_round") or {})
+                integrity = collection.setdefault("gaze_integrity", {})
+                reasons = list(integrity.get("reasons") or [])
+                reason = "reading_active_reentered_without_segment_contract"
+                if reason not in reasons:
+                    reasons.append(reason)
+                interrupted_rounds = list(
+                    integrity.get("interrupted_rounds") or []
+                )
+                round_number = int(current.get("round_number", 0))
+                if round_number not in interrupted_rounds:
+                    interrupted_rounds.append(round_number)
+                integrity.update(
+                    {
+                        "eligible": False,
+                        "reasons": reasons,
+                        "interrupted_rounds": interrupted_rounds,
+                    }
+                )
+                session["general_collection"] = collection
+                self._event(
+                    session,
+                    "general_reading_segment_interrupted",
+                    round_number=round_number,
+                )
+                self._write(path, session)
+            elif collection.get("phase") == "probes_open":
                 current = dict(collection.get("current_round") or {})
             elif collection.get("phase") == "reading_ready":
                 completed = len(collection.get("rounds", []))
@@ -1089,6 +1388,11 @@ class ParticipantStudyStore:
                 raise StudyValidationError(str(exc)) from exc
             if normalized["passage_id"] != passage_id:
                 raise StudyStateError("telemetry does not match the current passage")
+            assessment_viewport = _verified_assessment_viewport(collection)
+            if normalized["viewport"] != assessment_viewport:
+                raise StudyValidationError(
+                    "telemetry viewport does not match the frozen assessment viewport"
+                )
             batch_path = (
                 path.parent
                 / "collection"
@@ -1124,6 +1428,29 @@ class ParticipantStudyStore:
             successful = [
                 item for item in normalized["samples"] if item["prediction_success"]
             ]
+            if any(
+                item.get("coarse_failure_code") == "viewport_contract_mismatch"
+                for item in normalized["samples"]
+            ):
+                integrity = collection.setdefault("gaze_integrity", {})
+                reasons = list(integrity.get("reasons") or [])
+                reason = "assessment_viewport_changed_during_reading"
+                if reason not in reasons:
+                    reasons.append(reason)
+                integrity.update(
+                    {
+                        "eligible": False,
+                        "reasons": reasons,
+                        "interrupted_rounds": list(
+                            integrity.get("interrupted_rounds") or []
+                        ),
+                    }
+                )
+                self._event(
+                    session,
+                    "general_assessment_viewport_changed",
+                    round_number=int(current.get("round_number", 0)),
+                )
             stats["successful_count"] = int(stats.get("successful_count", 0)) + len(
                 successful
             )
