@@ -36,17 +36,45 @@ def main() -> int:
     parser.add_argument("--raw-frame-retention-hours", type=int, default=1)
     parser.add_argument("--create-invite-pairs", type=int, default=0)
     parser.add_argument("--acknowledge-development-only", action="store_true")
-    parser.add_argument("--confirm-encrypted-storage", action="store_true")
+    storage = parser.add_mutually_exclusive_group(required=True)
+    storage.add_argument("--confirm-encrypted-storage", action="store_true")
+    storage.add_argument(
+        "--allow-unencrypted-self-development-data",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--retain-until-manual-deletion",
+        action="store_true",
+    )
     args = parser.parse_args()
     if not args.acknowledge_development_only:
         parser.error("--acknowledge-development-only is required")
-    if not args.confirm_encrypted_storage:
-        parser.error(
-            "--confirm-encrypted-storage is required and must only be used after "
-            "the selected data location has been verified as encrypted"
-        )
-    if not 1 <= args.retention_days <= 30:
-        parser.error("--retention-days must be between 1 and 30")
+    if args.confirm_encrypted_storage:
+        if args.retain_until_manual_deletion:
+            parser.error(
+                "--retain-until-manual-deletion is only for the explicit "
+                "unencrypted self-development mode"
+            )
+        if not 1 <= args.retention_days <= 30:
+            parser.error("--retention-days must be between 1 and 30")
+        retention_days = args.retention_days
+        retention_policy = "fixed_days"
+        storage_encrypted = "1"
+        unencrypted_self_development = "0"
+    else:
+        if not args.retain_until_manual_deletion:
+            parser.error(
+                "--retain-until-manual-deletion is required for unencrypted "
+                "self-development data"
+            )
+        if args.create_invite_pairs > 1:
+            parser.error(
+                "unencrypted self-development mode permits only one invite pair"
+            )
+        retention_days = 0
+        retention_policy = "manual_until_researcher_deletes"
+        storage_encrypted = "0"
+        unencrypted_self_development = "1"
     if not 1 <= args.raw_frame_retention_hours <= 24:
         parser.error("--raw-frame-retention-hours must be between 1 and 24")
     if not 0 <= args.create_invite_pairs <= 100:
@@ -66,10 +94,12 @@ def main() -> int:
         "LEXIGAZE_REHEARSAL_ACKNOWLEDGED_DEVELOPMENT_ONLY": "1",
         "LEXIGAZE_REHEARSAL_INVITES_ONLY": "1",
         "LEXIGAZE_REQUEST_BODY_LOGGING_DISABLED": "1",
-        "LEXIGAZE_STORAGE_ENCRYPTED": "1",
+        "LEXIGAZE_STORAGE_ENCRYPTED": storage_encrypted,
+        "LEXIGAZE_UNENCRYPTED_SELF_DEVELOPMENT": unencrypted_self_development,
         "LEXIGAZE_DATA_LOCATION": str(data_location),
         "LEXIGAZE_PUBLIC_BASE_URL": base_url,
-        "LEXIGAZE_DATA_RETENTION_DAYS": str(args.retention_days),
+        "LEXIGAZE_DATA_RETENTION_DAYS": str(retention_days),
+        "LEXIGAZE_DATA_RETENTION_POLICY": retention_policy,
         "LEXIGAZE_RAW_FRAME_RETENTION_HOURS": str(args.raw_frame_retention_hours),
         "LEXIGAZE_PUBLIC_STUDY_MODE": "1",
     }
@@ -104,7 +134,8 @@ def main() -> int:
         )
     print(
         f"General collection rehearsal: {base_url}/study\n"
-        "Scope: local invited development-only; no formal participant collection.",
+        f"Scope: {store.activation['rehearsal_scope']}; "
+        "no formal participant collection or confirmation promotion.",
         flush=True,
     )
     create_app(config).run(

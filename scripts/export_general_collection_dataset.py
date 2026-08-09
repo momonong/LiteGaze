@@ -70,7 +70,10 @@ def export_bundle(
     layout_rows: list[dict[str, Any]] = []
     telemetry_rows: list[dict[str, Any]] = []
     validation_rows: list[dict[str, Any]] = []
+    reading_video_rows: list[dict[str, Any]] = []
     excluded: list[dict[str, str]] = []
+    storage_security_modes: set[str] = set()
+    retention_policies: set[str] = set()
 
     for session_path in sorted(rehearsal_root.glob("ST-*/session.json")):
         session = json.loads(session_path.read_text(encoding="utf-8"))
@@ -91,6 +94,13 @@ def export_bundle(
         if assignment.get("bank_sha256") != design["bank_sha256"]:
             raise ValueError(f"session {session_id} has a different bank digest")
         participant_id = str(session["participant_id"])
+        governance = dict(session.get("data_governance") or {})
+        storage_security_modes.add(
+            str(governance.get("storage_security") or "legacy_unspecified")
+        )
+        retention_policies.add(
+            str(governance.get("retention_policy") or "legacy_unspecified")
+        )
         profile = dict(collection.get("profile") or {})
         participant_row = {
             "participant_id": participant_id,
@@ -117,6 +127,10 @@ def export_bundle(
                 "form_id": assignment.get("form_id"),
                 "order_cell": assignment.get("order_cell"),
                 "state": session.get("state"),
+                "storage_security": governance.get("storage_security"),
+                "retention_policy": governance.get("retention_policy"),
+                "self_only": governance.get("self_only"),
+                "formal_promotion_allowed": False,
                 "created_at_utc": session.get("created_at_utc"),
                 "completed_at_utc": next(
                     (
@@ -224,6 +238,44 @@ def export_bundle(
                     }
                 )
 
+        reading_video_root = session_path.parent / "collection" / "reading_video"
+        for metadata_path in sorted(reading_video_root.glob("R*.json")):
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            media_paths = [
+                candidate
+                for candidate in metadata_path.parent.glob(f"{metadata_path.stem}.*")
+                if candidate.suffix.lower() != ".json"
+            ]
+            if len(media_paths) != 1:
+                raise ValueError(
+                    f"session {session_id} reading video {metadata_path.stem} "
+                    "does not have exactly one media file"
+                )
+            media_path = media_paths[0]
+            if media_path.stat().st_size != int(metadata.get("bytes", -1)):
+                raise ValueError(f"reading video size mismatch: {media_path}")
+            if _sha256(media_path) != metadata.get("sha256"):
+                raise ValueError(f"reading video digest mismatch: {media_path}")
+            reading_video_rows.append(
+                {
+                    "participant_id": participant_id,
+                    "study_session_id": session_id,
+                    "visit_index": assignment.get("visit_index"),
+                    "round_number": metadata.get("round_number"),
+                    "passage_id": metadata.get("passage_id"),
+                    "recording_id": metadata.get("recording_id"),
+                    "duration_ms": metadata.get("duration_ms"),
+                    "mime_type": metadata.get("mime_type"),
+                    "bytes": metadata.get("bytes"),
+                    "sha256": metadata.get("sha256"),
+                    "video_track_count": metadata.get("video_track_count"),
+                    "audio_track_count": metadata.get("audio_track_count"),
+                    "storage_security": metadata.get("storage_security"),
+                    "dataset_role": metadata.get("dataset_role"),
+                    "source_relative_path": media_path.relative_to(root).as_posix(),
+                }
+            )
+
     tables: dict[str, tuple[list[str], list[dict[str, Any]]]] = {
         "participants.csv": (
             [
@@ -236,7 +288,9 @@ def export_bundle(
         "sessions.csv": (
             [
                 "participant_id", "study_session_id", "visit_index", "capture_session_id",
-                "form_id", "order_cell", "state", "created_at_utc", "completed_at_utc",
+                "form_id", "order_cell", "state", "storage_security",
+                "retention_policy", "self_only", "formal_promotion_allowed",
+                "created_at_utc", "completed_at_utc",
                 "device_class", "browser_family", "viewport_width", "viewport_height",
                 "camera_width", "camera_height", "estimated_camera_fps_band",
                 "gaze_quality_band", "median_spatial_error_px", "p90_spatial_error_px",
@@ -288,6 +342,15 @@ def export_bundle(
             ],
             validation_rows,
         ),
+        "reading_video_index.csv": (
+            [
+                "participant_id", "study_session_id", "visit_index", "round_number",
+                "passage_id", "recording_id", "duration_ms", "mime_type", "bytes",
+                "sha256", "video_track_count", "audio_track_count", "storage_security",
+                "dataset_role", "source_relative_path",
+            ],
+            reading_video_rows,
+        ),
         "excluded_sessions.csv": (
             ["study_session_id", "reason"],
             excluded,
@@ -330,6 +393,21 @@ def export_bundle(
             "direct_identifiers_exported": False,
             "raw_images_or_video_exported": False,
             "bundle_classification": "private_pseudonymous_research_data",
+        },
+        "source_reading_videos": {
+            "present": bool(reading_video_rows),
+            "count": len(reading_video_rows),
+            "raw_media_files_exported": False,
+            "index_exported": True,
+            "dataset_role": "self_development_only_not_confirmation",
+        },
+        "storage_governance": {
+            "security_modes": sorted(storage_security_modes),
+            "retention_policies": sorted(retention_policies),
+            "unencrypted_self_development_present": (
+                "unencrypted_self_development" in storage_security_modes
+            ),
+            "formal_promotion_allowed": False,
         },
     }
     manifest_path = output / "dataset_manifest.json"

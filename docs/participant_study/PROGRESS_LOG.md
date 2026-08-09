@@ -127,3 +127,49 @@ rights contact、authorized external anchor、48-family bank + 2 independent rev
 frozen dev/validation/confirmation manifest、rehearsal-rate sample-size update、
 practical-utility threshold 與 moderated camera dress rehearsal。本里程碑沒有解除
 正式 `pilot_ready=false`。
+
+## 2026-08-09 — self-only reading-video development capture
+
+### 使用者決策與資料角色
+
+研究者本人明確選擇把資料保存在 repo 的 `data/`（實體位於未加密 D 槽），不設
+自動刪除期限，並希望保留閱讀影片來改善系統。這項同意只涵蓋研究者自己的
+development data；不是正式受試者收案，也不能升格為 validation／confirmation
+結果。未來要比較模型時，同一批影片不能同時參與調參與成效回報，至少要使用另一次
+未參與調參的 capture session；正式 claim 仍需獨立 frozen confirmation cohort。
+
+### 工程決策與完成項目
+
+- 新增明確的 `unencrypted_self_development` 啟動模式，只允許一組 Visit 1/2 invite
+  pair、localhost、手動保留，並固定 `formal_promotion_allowed=false`；原本的正式
+  pilot 仍強制加密，沒有被此例外解鎖。
+- Consent 升至 `2026-08-09.v5`。閱讀影片是預設未勾選的獨立 scope，文字明列未
+  加密 D 槽、無自動期限、self-development-only 與不得當 confirmation 證據。
+- 瀏覽器使用 video-only `MediaStream` 與 `MediaRecorder`：640×480、目標 15 fps、
+  750 kbps，只在每篇文章按下開始至完成閱讀期間錄製；不錄同意、背景、校正、
+  validation、practice、單字回顧或音訊。
+- 每篇影片以不可變 `Rxx.webm`／`Rxx.mp4` 保存，綁定 participant、session、visit、
+  passage、round、duration、MIME、bytes 與 SHA-256；限制 64 MiB，MIME 不一致、
+  重複 round 或同 ID 不同內容均 fail closed。若 media/metadata 已完成但 session
+  summary 寫入中斷，開啟 word review 前會驗證 hash 並恢復索引。
+- 分析 export 不複製 raw video，只輸出 `reading_video_index.csv` 與 manifest 的來源
+  計數／development role。原始影片留在 ignored `data/`，不得進 Git/GitHub。
+- 一般加密 rehearsal、正式 pilot 與未另行勾選者看不到或不能使用 self-only video
+  scope；逐次 gaze inference snapshot 仍不寫入磁碟。
+
+### 驗證與 GPU 紀錄
+
+- Focused participant/general/app integration：36 tests passed；包含 multipart route、
+  MIME mismatch、immutable round、opt-in boundary、crash recovery 與 index-only export。
+- Full offline quality gate 重跑皆為 180 tests passed，0 failure、0 error、0 skip；
+  network/subprocess blocked、credentials cleared、artifact changes `[]`、Torch not
+  imported、worker `CUDA_VISIBLE_DEVICES=-1`。
+- GPU supervisor snapshot 受桌面同時活動污染，故不宣稱整機 GPU 全程 0%。第一次為
+  before `0%, 531 MiB`、after `25%, 541 MiB`；中間一次 console run 為 before
+  `63%, 541 MiB`、after `0%, 166 MiB`。確認整機回到 idle 後的 final rerun 為
+  before/after 均 `0%, 166 MiB`。所有 worker 均沒有 Torch/CUDA 路徑；前兩次整機
+  瞬時值不能歸因於測試 worker。第一次與 final rerun 的 machine-readable 結果保存在
+  `2026-08-09-unencrypted-self-development-offline-gate.json` 與
+  `2026-08-09-unencrypted-self-development-offline-gate-rerun.json`。
+- 本里程碑完成時尚未建立真人 session 或影片；下一步是由研究者本人在瀏覽器親自
+  輸入一次性 Visit 1 code、閱讀同意內容、勾選 optional video scope 並授權相機。

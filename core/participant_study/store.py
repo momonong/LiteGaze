@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import threading
@@ -59,6 +60,13 @@ ACTIVE_STATES = {
     "assessment_in_progress",
     "completed",
 }
+READING_VIDEO_SCOPE = "retain_reading_video_self_development"
+READING_VIDEO_MAX_BYTES = 64 * 1024 * 1024
+READING_VIDEO_MIME_EXTENSIONS = {
+    "video/webm": ".webm",
+    "video/mp4": ".mp4",
+}
+READING_VIDEO_ID_PATTERN = re.compile(r"VID-[A-F0-9]{20,32}")
 
 
 def _utc_now() -> str:
@@ -73,6 +81,21 @@ def _atomic_json(path: Path, payload: Mapping[str, object]) -> None:
         encoding="utf-8",
     )
     os.replace(temporary, path)
+
+
+def _atomic_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_bytes(payload)
+    os.replace(temporary, path)
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 class ParticipantStudyStore:
@@ -195,6 +218,19 @@ class ParticipantStudyStore:
             scope_id: optional_payload.get(scope_id) is True
             for scope_id in sorted(optional_ids)
         }
+        self_development_scope_ids = {
+            item["id"]
+            for item in self.protocol["optional_scopes"]
+            if item.get("self_development_only") is True
+        }
+        if any(
+            optional_scopes.get(scope_id) is True
+            for scope_id in self_development_scope_ids
+        ) and not self.activation.get("rehearsal_self_only"):
+            raise StudyValidationError(
+                "self-development optional scopes require the self-only "
+                "rehearsal mode"
+            )
         return {
             "required_statement_ids": sorted(required_ids),
             "comprehension_answers": {
@@ -328,6 +364,14 @@ class ParticipantStudyStore:
                 str(item.get("pair_id")) for item in registry.get("invites", [])
             }
             base_pair_count = len(existing_pair_ids)
+            if (
+                self.activation.get("rehearsal_self_only")
+                and base_pair_count + count > 1
+            ):
+                raise StudyValidationError(
+                    "unencrypted self-development mode permits exactly one "
+                    "participant invite pair"
+                )
             for offset in range(count):
                 schedule_cell = (base_pair_count + offset) % 12
                 assignment = assignment_for_cell(schedule_cell, bank=bank)
@@ -500,6 +544,22 @@ class ParticipantStudyStore:
             "events": [{"at_utc": timestamp, "event": "consent_recorded"}],
         }
         if mode == "rehearsal":
+            session["data_governance"] = {
+                "storage_security": self.activation["storage_security"],
+                "storage_encrypted": self.activation["storage_encrypted"],
+                "retention_policy": self.activation["retention_policy"],
+                "retention_days": self.activation["retention_days"],
+                "raw_frame_retention_hours": self.activation[
+                    "raw_frame_retention_hours"
+                ],
+                "self_only": self.activation["rehearsal_self_only"],
+                "formal_promotion_allowed": False,
+                "reading_video_opt_in": enrollment["optional_scopes"].get(
+                    READING_VIDEO_SCOPE
+                )
+                is True,
+                "reading_video_audio_collected": False,
+            }
             session["collection_assignment"] = {
                 key: invite_metadata[key]
                 for key in (
@@ -554,6 +614,7 @@ class ParticipantStudyStore:
             "optional_scopes": consent.get("optional_scopes", {}),
             "comprehension_passed": consent.get("comprehension_passed") is True,
             "mode": session["mode"],
+            "data_governance": session.get("data_governance"),
         }
 
     def _public_session(self, session: Mapping[str, object]) -> dict[str, Any]:
@@ -574,6 +635,8 @@ class ParticipantStudyStore:
         }
         if session.get("collection_assignment"):
             public["collection_assignment"] = session["collection_assignment"]
+        if session.get("data_governance"):
+            public["data_governance"] = session["data_governance"]
         collection = dict(session.get("general_collection") or {})
         if collection:
             public["general_collection"] = {
@@ -595,6 +658,7 @@ class ParticipantStudyStore:
                     for key, summary in dict(collection.get("validations") or {}).items()
                 },
                 "gaze_quality_band": collection.get("gaze_quality_band"),
+                "reading_videos": list(collection.get("reading_videos") or []),
             }
         return public
 
@@ -910,6 +974,74 @@ class ParticipantStudyStore:
             if passage_id != current.get("passage_id"):
                 raise StudyStateError("word reviews do not match the current passage")
             if collection.get("phase") == "reading_active":
+                scopes = dict(
+                    dict(session.get("consent") or {}).get("optional_scopes") or {}
+                )
+                if scopes.get(READING_VIDEO_SCOPE) is True:
+                    round_number = int(current.get("round_number", 0))
+                    has_video = any(
+                        int(item.get("round_number", 0)) == round_number
+                        and item.get("passage_id") == passage_id
+                        for item in collection.get("reading_videos", [])
+                    )
+                    if not has_video:
+                        metadata_path = (
+                            path.parent
+                            / "collection"
+                            / "reading_video"
+                            / f"R{round_number:02d}.json"
+                        )
+                        if metadata_path.exists():
+                            try:
+                                metadata = json.loads(
+                                    metadata_path.read_text(encoding="utf-8")
+                                )
+                                extension = READING_VIDEO_MIME_EXTENSIONS[
+                                    str(metadata["mime_type"])
+                                    .split(";", 1)[0]
+                                    .strip()
+                                    .lower()
+                                ]
+                                media_path = metadata_path.with_suffix(extension)
+                                if (
+                                    metadata.get("passage_id") != passage_id
+                                    or int(metadata.get("round_number", 0))
+                                    != round_number
+                                    or not media_path.exists()
+                                    or media_path.stat().st_size
+                                    != int(metadata.get("bytes", -1))
+                                    or _file_sha256(media_path)
+                                    != metadata.get("sha256")
+                                ):
+                                    raise ValueError("metadata or media mismatch")
+                                summary = {
+                                    key: metadata[key]
+                                    for key in (
+                                        "recording_id",
+                                        "round_number",
+                                        "passage_id",
+                                        "duration_ms",
+                                        "mime_type",
+                                        "bytes",
+                                        "sha256",
+                                        "video_track_count",
+                                        "audio_track_count",
+                                        "dataset_role",
+                                    )
+                                }
+                                collection.setdefault("reading_videos", []).append(
+                                    summary
+                                )
+                                has_video = True
+                            except (KeyError, OSError, TypeError, ValueError) as exc:
+                                raise StudyStateError(
+                                    "reading video storage is incomplete"
+                                ) from exc
+                    if not has_video:
+                        raise StudyStateError(
+                            "the separately authorized reading video must be "
+                            "stored before word review"
+                        )
                 collection["phase"] = "probes_open"
                 session["general_collection"] = collection
                 self._event(
@@ -1027,6 +1159,157 @@ class ParticipantStudyStore:
             session["general_collection"] = collection
             self._write(path, session)
             return {"ok": True, "idempotent": False, "batch_id": normalized["batch_id"]}
+
+    def record_general_reading_video(
+        self,
+        session_id: str,
+        access_token: str,
+        *,
+        recording_id: str,
+        passage_id: str,
+        round_number: int,
+        duration_ms: int,
+        mime_type: str,
+        payload: bytes,
+    ) -> dict[str, Any]:
+        """Persist one immutable, no-audio reading video for self development."""
+
+        if not READING_VIDEO_ID_PATTERN.fullmatch(recording_id):
+            raise StudyValidationError("invalid reading video recording ID")
+        base_mime = mime_type.split(";", 1)[0].strip().lower()
+        extension = READING_VIDEO_MIME_EXTENSIONS.get(base_mime)
+        if extension is None or len(mime_type) > 120:
+            raise StudyValidationError("unsupported reading video MIME type")
+        if not 20_000 <= int(duration_ms) <= 500_000:
+            raise StudyValidationError("reading video duration is outside protocol bounds")
+        if not payload or len(payload) > READING_VIDEO_MAX_BYTES:
+            raise StudyValidationError("reading video size is outside protocol bounds")
+
+        with self._lock:
+            path, session = self._read(session_id)
+            self._authorize(session, access_token)
+            consent = dict(session.get("consent") or {})
+            scopes = dict(consent.get("optional_scopes") or {})
+            governance = dict(session.get("data_governance") or {})
+            if session.get("mode") != "rehearsal" or not governance.get("self_only"):
+                raise StudyNotReadyError(
+                    "reading video storage is limited to self-only rehearsal"
+                )
+            if scopes.get(READING_VIDEO_SCOPE) is not True:
+                raise StudyAuthorizationError(
+                    "reading video storage was not separately authorized"
+                )
+            collection = dict(session.get("general_collection") or {})
+            current = dict(collection.get("current_round") or {})
+            if collection.get("phase") != "reading_active":
+                raise StudyStateError("reading video is not expected now")
+            if (
+                passage_id != current.get("passage_id")
+                or int(round_number) != int(current.get("round_number", 0))
+            ):
+                raise StudyStateError("reading video does not match the current round")
+            existing_videos = list(collection.get("reading_videos") or [])
+            same_round = [
+                item
+                for item in existing_videos
+                if int(item.get("round_number", 0)) == int(round_number)
+            ]
+            if same_round and any(
+                item.get("recording_id") != recording_id for item in same_round
+            ):
+                raise StudyStateError("the current round already has a reading video")
+
+            video_root = path.parent / "collection" / "reading_video"
+            video_path = video_root / f"R{int(round_number):02d}{extension}"
+            metadata_path = video_root / f"R{int(round_number):02d}.json"
+            payload_sha256 = hashlib.sha256(payload).hexdigest()
+            metadata = {
+                "schema_version": 1,
+                "participant_id": session["participant_id"],
+                "study_session_id": session["study_session_id"],
+                "visit_index": session["collection_assignment"]["visit_index"],
+                "recording_id": recording_id,
+                "round_number": int(round_number),
+                "passage_id": passage_id,
+                "duration_ms": int(duration_ms),
+                "mime_type": mime_type,
+                "bytes": len(payload),
+                "sha256": payload_sha256,
+                "video_track_count": 1,
+                "audio_track_count": 0,
+                "storage_security": governance.get("storage_security"),
+                "dataset_role": "self_development_only_not_confirmation",
+                "recorded_at_utc": _utc_now(),
+            }
+            if video_path.exists() or metadata_path.exists():
+                if not video_path.exists() or not metadata_path.exists():
+                    raise StudyStateError("reading video storage is incomplete")
+                existing = json.loads(metadata_path.read_text(encoding="utf-8"))
+                if (
+                    existing.get("sha256") != payload_sha256
+                    or int(existing.get("bytes", -1)) != len(payload)
+                    or existing.get("recording_id") != recording_id
+                ):
+                    raise StudyStateError(
+                        "reading video recording ID was reused with new content"
+                    )
+                summary = {
+                    key: existing[key]
+                    for key in (
+                        "recording_id",
+                        "round_number",
+                        "passage_id",
+                        "duration_ms",
+                        "mime_type",
+                        "bytes",
+                        "sha256",
+                        "video_track_count",
+                        "audio_track_count",
+                        "dataset_role",
+                    )
+                }
+                if not any(
+                    item.get("recording_id") == recording_id
+                    for item in collection.get("reading_videos", [])
+                ):
+                    collection.setdefault("reading_videos", []).append(summary)
+                    session["general_collection"] = collection
+                    self._write(path, session)
+                return {
+                    "ok": True,
+                    "idempotent": True,
+                    "reading_video": summary,
+                }
+
+            _atomic_bytes(video_path, payload)
+            _atomic_json(metadata_path, metadata)
+            summary = {
+                key: metadata[key]
+                for key in (
+                    "recording_id",
+                    "round_number",
+                    "passage_id",
+                    "duration_ms",
+                    "mime_type",
+                    "bytes",
+                    "sha256",
+                    "video_track_count",
+                    "audio_track_count",
+                    "dataset_role",
+                )
+            }
+            collection.setdefault("reading_videos", []).append(summary)
+            session["general_collection"] = collection
+            self._event(
+                session,
+                "general_reading_video_recorded",
+                round_number=int(round_number),
+                passage_id=passage_id,
+                bytes=len(payload),
+                audio_track_count=0,
+            )
+            self._write(path, session)
+            return {"ok": True, "idempotent": False, "reading_video": summary}
 
     def record_general_round(
         self,

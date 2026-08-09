@@ -103,9 +103,15 @@ def create_app(config: Mapping[str, object] | None = None):
         }
 
     if public_study_mode():
+        self_development_video = configured(
+            "LEXIGAZE_UNENCRYPTED_SELF_DEVELOPMENT"
+        ).lower() in {"1", "true", "yes", "on"}
+        upload_limit = (
+            80 * 1024 * 1024 if self_development_video else 16 * 1024 * 1024
+        )
         app.config["MAX_CONTENT_LENGTH"] = min(
             int(app.config["MAX_CONTENT_LENGTH"]),
-            16 * 1024 * 1024,
+            upload_limit,
         )
 
     @app.before_request

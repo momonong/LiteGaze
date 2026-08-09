@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, render_template, request
@@ -9,6 +10,7 @@ from core.gaze_core.sample_store import delete_dataset, purge_session_images
 from core.gaze_core.training import train_placeholder
 from core.participant_study import (
     ParticipantStudyStore,
+    READING_VIDEO_MAX_BYTES,
     StudyAuthorizationError,
     StudyNotReadyError,
     StudyStateError,
@@ -310,6 +312,48 @@ def record_participant_general_telemetry(session_id: str):
             body,
         )
         return jsonify(result)
+    except (
+        StudyAuthorizationError,
+        StudyNotReadyError,
+        StudyStateError,
+        StudyValidationError,
+    ) as exc:
+        return _error_response(exc)
+
+
+@study_bp.post("/api/study/sessions/<session_id>/general/reading-video")
+def record_participant_general_reading_video(session_id: str):
+    upload = request.files.get("reading_video")
+    metadata_text = request.form.get("metadata", "")
+    if upload is None or not metadata_text:
+        return jsonify(
+            {"ok": False, "error": "reading video and metadata are required"}
+        ), 400
+    try:
+        metadata = json.loads(metadata_text)
+        if not isinstance(metadata, dict):
+            raise ValueError("metadata must be an object")
+        declared_mime = str(metadata.get("mime_type") or "")
+        uploaded_mime = str(upload.mimetype or "")
+        if (
+            declared_mime.split(";", 1)[0].strip().lower()
+            != uploaded_mime.split(";", 1)[0].strip().lower()
+        ):
+            raise ValueError("reading video MIME metadata does not match upload")
+        payload = upload.stream.read(READING_VIDEO_MAX_BYTES + 1)
+        result = _store().record_general_reading_video(
+            session_id,
+            _access_token(),
+            recording_id=str(metadata.get("recording_id") or ""),
+            passage_id=str(metadata.get("passage_id") or ""),
+            round_number=int(metadata.get("round_number", 0)),
+            duration_ms=int(metadata.get("duration_ms", 0)),
+            mime_type=declared_mime,
+            payload=payload,
+        )
+        return jsonify(result)
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     except (
         StudyAuthorizationError,
         StudyNotReadyError,

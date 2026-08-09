@@ -74,6 +74,15 @@ def activation_status(
     base_url = _setting(settings, "LEXIGAZE_PUBLIC_BASE_URL")
     retention_text = _setting(settings, "LEXIGAZE_DATA_RETENTION_DAYS")
     raw_retention_text = _setting(settings, "LEXIGAZE_RAW_FRAME_RETENTION_HOURS")
+    storage_encrypted = _truthy(_setting(settings, "LEXIGAZE_STORAGE_ENCRYPTED"))
+    unencrypted_self_development = _truthy(
+        _setting(settings, "LEXIGAZE_UNENCRYPTED_SELF_DEVELOPMENT")
+    )
+    retention_policy = _setting(
+        settings,
+        "LEXIGAZE_DATA_RETENTION_POLICY",
+        "fixed_days",
+    ).lower()
 
     missing: list[str] = []
 
@@ -124,10 +133,7 @@ def activation_status(
         _truthy(_setting(settings, "LEXIGAZE_REQUEST_BODY_LOGGING_DISABLED")),
         "request_body_logging_not_disabled",
     )
-    require(
-        _truthy(_setting(settings, "LEXIGAZE_STORAGE_ENCRYPTED")),
-        "encrypted_storage_not_confirmed",
-    )
+    require(storage_encrypted, "encrypted_storage_not_confirmed")
     require(base_url.lower().startswith("https://"), "public_https_url_missing")
 
     try:
@@ -175,18 +181,31 @@ def activation_status(
         _truthy(_setting(settings, "LEXIGAZE_REQUEST_BODY_LOGGING_DISABLED")),
         "request_body_logging_not_disabled",
     )
+    self_development_exception = (
+        unencrypted_self_development and not storage_encrypted
+    )
     require_rehearsal(
-        _truthy(_setting(settings, "LEXIGAZE_STORAGE_ENCRYPTED")),
-        "encrypted_storage_not_confirmed",
+        storage_encrypted or self_development_exception,
+        "rehearsal_storage_policy_not_acknowledged",
     )
     require_rehearsal(
         bool(_setting(settings, "LEXIGAZE_DATA_LOCATION")),
         "data_location_missing",
     )
-    require_rehearsal(
-        1 <= retention_days <= 30,
-        "rehearsal_data_retention_days_invalid",
-    )
+    if self_development_exception:
+        require_rehearsal(
+            retention_policy == "manual_until_researcher_deletes",
+            "self_development_retention_policy_not_acknowledged",
+        )
+        require_rehearsal(
+            retention_days == 0,
+            "self_development_retention_days_must_be_zero",
+        )
+    else:
+        require_rehearsal(
+            retention_policy == "fixed_days" and 1 <= retention_days <= 30,
+            "rehearsal_data_retention_days_invalid",
+        )
     require_rehearsal(
         1 <= raw_retention_hours <= 24,
         "raw_frame_retention_hours_invalid",
@@ -202,7 +221,26 @@ def activation_status(
         "missing_requirements": missing,
         "rehearsal_ready": not rehearsal_missing,
         "rehearsal_missing_requirements": rehearsal_missing,
-        "rehearsal_scope": "local_invited_development_only",
+        "rehearsal_scope": (
+            "local_invited_self_development_unencrypted"
+            if self_development_exception
+            else "local_invited_development_only"
+        ),
+        "rehearsal_self_only": self_development_exception,
+        "storage_encrypted": storage_encrypted,
+        "storage_security": (
+            "unencrypted_self_development"
+            if self_development_exception
+            else "encrypted"
+            if storage_encrypted
+            else "unconfirmed"
+        ),
+        "retention_policy": (
+            "manual_until_researcher_deletes"
+            if self_development_exception
+            else retention_policy
+        ),
+        "formal_promotion_allowed": False,
         "ethics_status": ethics_status or "not_provided",
         "ethics_reference": _setting(settings, "LEXIGAZE_ETHICS_REFERENCE") or None,
         "external_anchor_id": _setting(settings, "LEXIGAZE_EXTERNAL_ANCHOR_ID") or None,
@@ -218,6 +256,12 @@ def public_protocol(
 ) -> dict[str, Any]:
     active_protocol = deepcopy(dict(protocol or load_protocol()))
     activation = activation_status(settings, protocol=active_protocol)
+    if not activation["rehearsal_self_only"]:
+        active_protocol["optional_scopes"] = [
+            scope
+            for scope in active_protocol.get("optional_scopes", [])
+            if not scope.get("self_development_only")
+        ]
     active_protocol.pop("activation_requirements", None)
     active_protocol["protocol_digest_sha256"] = activation["protocol_digest_sha256"]
     active_protocol["activation"] = activation
@@ -231,9 +275,11 @@ def public_protocol(
         "location": _setting(settings, "LEXIGAZE_DATA_LOCATION") or None,
         "retention_days": activation["retention_days"],
         "raw_frame_retention_hours": activation["raw_frame_retention_hours"],
-        "encrypted_storage_confirmed": _truthy(
-            _setting(settings, "LEXIGAZE_STORAGE_ENCRYPTED")
-        ),
+        "encrypted_storage_confirmed": activation["storage_encrypted"],
+        "storage_security": activation["storage_security"],
+        "retention_policy": activation["retention_policy"],
+        "self_only": activation["rehearsal_self_only"],
+        "formal_promotion_allowed": activation["formal_promotion_allowed"],
         "public_base_url": _setting(settings, "LEXIGAZE_PUBLIC_BASE_URL") or None,
         "network_processor": _setting(settings, "LEXIGAZE_NETWORK_PROCESSOR") or None,
         "network_processor_approved": _truthy(

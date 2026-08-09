@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "protocol_id": "lexigaze-reader-pilot",
-  "protocol_version": "2026-08-08.v3",
-  "consent_version": "2026-08-08.v3",
+  "protocol_version": "2026-08-09.v5",
+  "consent_version": "2026-08-09.v5",
   "collection_status": "dry_run_only",
   "title_zh": "LexiGaze 英文閱讀、單字回顧與眼動技術試行研究",
   "title_en": "LexiGaze English Reading, Word Review, and Gaze Technical Pilot",
@@ -18,7 +18,7 @@
     "閱讀研究說明、完成理解確認並自主決定是否參與。",
     "以固定分類選項填寫英文接觸、每週英文閱讀、視力矯正與教育程度背景；不收姓名、電子郵件、確切年齡或自由文字。",
     "允許瀏覽器使用網路攝影機，依畫面指示完成眼動校正。",
-    "以固定排版閱讀 6 篇英文短文；每篇讀完後標示 8 個單字是否需要回顧，並填寫簡短的理解與心力自評。",
+    "以固定排版閱讀 6 篇英文短文；每篇讀完後標示 8 個單字是否需要回顧，並填寫簡短的理解與心力自評。研究者本人若另行勾選，可保存每篇閱讀期間的無音訊 webcam 影片作為 development data。",
     "在開始與結束時完成 5 點視線品質檢查；若參加重測，第二次使用另一份固定文章表單。",
     "查看完成與撤回資訊；每次流程約 50 分鐘，可隨時休息或停止。"
   ],
@@ -30,9 +30,11 @@
   "risk_controls_zh": [
     "可隨時暫停或退出，不影響任何權益，也不需說明原因。",
     "使用系統產生的受試者代碼，不在 LexiGaze 研究資料中保存姓名、電子郵件、IP 位址或瀏覽器永久裝置 ID；網路服務商的必要中繼資料另行揭露。",
-    "v1 不錄製或保存完整校正影片；若未來需要影片資料集，必須另訂目的、同意版本與倫理審查。",
-    "閱讀推論影格不寫入磁碟；校準成功或失敗立即清除影像，中斷時最遲依核定時限自動清除。",
-    "正式收案必須使用 HTTPS、加密儲存與版本化同意紀錄。"
+    "v1 不錄製或保存完整校正影片；若未來需要外部受試者的影片資料集，必須另訂目的、同意版本與倫理審查。",
+    "逐次視線推論請求中的閱讀影格不寫入磁碟；另行同意的 self-only 無聲閱讀影片是分開的資料類別。校準成功或失敗立即清除影像，中斷時最遲依核定時限自動清除。",
+    "正式收案必須使用 HTTPS、加密儲存與版本化同意紀錄。",
+    "研究者本人可明確接受未加密本機儲存作為 self-only development data；頁面與匯出必須標記此例外，且資料不得升格為外部受試者或 confirmation 證據。",
+    "Self-only development 模式的閱讀影片必須另行勾選、不得含音訊、只在每篇文章計時期間錄製，並與衍生 telemetry 分開標記。"
   ],
   "benefits_zh": "沒有保證的直接利益。參與可能協助改進研究流程與未來的閱讀輔助技術。",
   "data_categories": [
@@ -64,7 +66,12 @@
     {
       "id": "transient_reading_frames",
       "required": true,
-      "description_zh": "閱讀時逐幀傳送的相機影像只在記憶體中做視線推論，不寫入研究儲存空間；系統只保留衍生摘要。"
+      "description_zh": "閱讀時逐次送出的視線推論影格只在記憶體中處理，不把這些請求影格逐張寫入研究儲存空間；系統保留衍生摘要。另行同意的 self-only 無聲閱讀影片屬於下一個獨立資料類別。"
+    },
+    {
+      "id": "optional_self_development_reading_video",
+      "required": false,
+      "description_zh": "只有研究者本人在未加密 self-only development 模式另行勾選時，才保存每篇文章閱讀期間的無音訊 webcam 影片；不錄製同意、背景表單或單字回顧畫面。"
     },
     {
       "id": "network_service_metadata",
@@ -98,7 +105,13 @@
       "text_zh": "我知道正式收案前會提供研究者與受試者權益聯絡方式，並有機會先提問。"
     }
   ],
-  "optional_scopes": [],
+  "optional_scopes": [
+    {
+      "id": "retain_reading_video_self_development",
+      "self_development_only": true,
+      "text_zh": "我另行同意保存每篇文章閱讀期間的無音訊 webcam 影片，作為我本人的 development data；我了解它存於未加密 D 槽、不設自動刪除期限、不得作為正式或 confirmation 證據。"
+    }
+  ],
   "comprehension_checks": [
     {
       "id": "voluntary",
@@ -117,6 +130,15 @@
         "collected": "會，而且會無限期保存"
       },
       "correct": "not_collected"
+    },
+    {
+      "id": "reading_video_optional_self_only",
+      "question_zh": "什麼情況下系統才會保存閱讀期間的 webcam 影片？",
+      "options": {
+        "explicit_self_development_scope": "只有研究者本人使用 self-only development 模式並另行勾選時",
+        "always_for_every_participant": "所有受試者都會自動保存"
+      },
+      "correct": "explicit_self_development_scope"
     },
     {
       "id": "no_diagnosis",

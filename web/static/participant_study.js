@@ -100,8 +100,14 @@ function renderProtocol(protocol) {
     </div>`).join("");
 
   const governance = protocol.data_governance;
+  const retentionSummary = governance.retention_policy === "manual_until_researcher_deletes"
+    ? "development data 不設自動到期，由研究者手動保留或刪除"
+    : `研究資料保存 ${governance.retention_days} 天`;
+  const storageSummary = governance.storage_security === "unencrypted_self_development"
+    ? "儲存空間未加密；僅限研究者本人 development data，禁止外部受試者與正式升格"
+    : "儲存空間已確認加密";
   $("governanceSummary").textContent = pilotReady || rehearsalReady
-    ? `資料地點：${governance.location}；研究資料保存 ${governance.retention_days} 天；校正影格最長 ${governance.raw_frame_retention_hours} 小時。`
+    ? `資料地點：${governance.location}；${storageSummary}；${retentionSummary}；校正影格最長 ${governance.raw_frame_retention_hours} 小時。`
     : "正式資料地點、保存期限與加密確認尚未填妥，因此系統不允許真人收案。";
   const contacts = protocol.research_contacts;
   $("contactsSummary").textContent = pilotReady

@@ -16,6 +16,8 @@ from .general_collection import (
 from .protocol import activation_status, load_protocol, public_protocol
 from .store import (
     ParticipantStudyStore,
+    READING_VIDEO_MAX_BYTES,
+    READING_VIDEO_SCOPE,
     StudyAuthorizationError,
     StudyError,
     StudyNotReadyError,
@@ -25,6 +27,8 @@ from .store import (
 
 __all__ = [
     "ParticipantStudyStore",
+    "READING_VIDEO_MAX_BYTES",
+    "READING_VIDEO_SCOPE",
     "StudyAuthorizationError",
     "StudyError",
     "StudyNotReadyError",

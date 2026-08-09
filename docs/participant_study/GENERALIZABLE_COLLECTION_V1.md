@@ -53,10 +53,18 @@ secondary context and quality information.
 
 ## Gaze is optional evidence, not an exclusion rule
 
-The browser sends transient frames to the same-origin inference endpoint but
-does not persist reading images. The stored observation is derived telemetry:
-gaze coordinates, head pose, normalized face geometry, viewport, monotonic
-timing, prediction success, and the word-layout snapshot.
+The browser sends transient frames to the same-origin inference endpoint. By
+default it does not persist reading images; the stored observation is derived
+telemetry: gaze coordinates, head pose, normalized face geometry, viewport,
+monotonic timing, prediction success, and the word-layout snapshot.
+
+In the explicit unencrypted self-only mode, the researcher may separately opt
+in to a no-audio webcam recording for each timed passage. Recording starts only
+with the reading timer and stops before word review. It never covers consent,
+setup, calibration, validation, practice, or review. These files are marked
+`self_development_only_not_confirmation` and are intended for gaze robustness,
+quality-control, and synchronization development. The same recording must not
+be used both to tune a model and to claim evaluation performance.
 
 Independent five-point validation is required before and after the reading
 block. Accuracy, precision, data loss, effective sampling rate, and drift are
@@ -77,7 +85,9 @@ Allowed:
 - measure calibration and reading-capture quality;
 - estimate how often the gaze branch would abstain;
 - verify that alternate forms and word labels are understandable;
-- run development-only schema and feature smoke experiments.
+- run development-only schema and feature smoke experiments;
+- in the separately authorized self-only mode, develop gaze robustness from
+  raw passage recordings, using later capture sessions as held-out checks.
 
 Not allowed:
 
@@ -86,8 +96,30 @@ Not allowed:
 - claim cognitive ability, attention, fatigue, English proficiency, or CEFR;
 - treat the 12 rehearsal passages as validation or confirmation evidence.
 
+## Self-only development storage exception
+
+The researcher may explicitly keep their own development data on an
+unencrypted local volume without an automatic expiry. It must be disclosed on
+the consent page and persisted in the session and export manifests as
+`unencrypted_self_development` with
+`retention_policy=manual_until_researcher_deletes`.
+
+The exception is limited to one invite pair owned by the researcher. It never
+unlocks external participants, public networking, formal collection, or
+confirmation promotion. Inference snapshots remain memory-only. An additional
+unchecked-by-default consent scope may save one no-audio media file per timed
+passage. Raw media stays beside the source session and is not copied into the
+analysis export; `reading_video_index.csv` contains integrity hashes, timing,
+passage/round linkage, and the development-only role. Completed or failed
+calibration images are removed, and an interrupted calibration retains images
+for at most one hour.
+
 ## Evidence informing the design
 
+- The W3C MediaStream Recording specification defines `MediaRecorder`, MIME
+  selection, bitrate hints, and segmented `dataavailable` blobs. The self-only
+  implementation records a video-only `MediaStream`, requests no audio track,
+  and joins periodic chunks into one passage-level blob before upload.
 - WebGazer's remote study began with consent and compatibility testing, and its
   authors reported greater error in a scrolling quiz task. It also motivates
   avoiding persistent webcam video when derived observations suffice.
@@ -104,6 +136,9 @@ The machine contracts are
 [`general_collection_v1.json`](../../core/participant_study/general_collection_v1.json)
 and
 [`general_collection_bank_v1.json`](../../core/participant_study/general_collection_bank_v1.json).
+
+Media recording reference:
+[W3C MediaStream Recording](https://www.w3.org/TR/mediastream-recording/).
 
 ## Remaining external blockers
 

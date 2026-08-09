@@ -7,7 +7,7 @@ const ui = Object.fromEntries([
   "deviceSummary", "checkCameraBtn", "saveSetupBtn", "calibrationPanel", "practicePanel",
   "practicePassage", "practiceForm", "practiceBtn", "validationPanel", "validationTitle",
   "validationProgress", "validationBtn", "readingPanel", "roundLabel", "difficulty", "timer",
-  "passage", "readingHint", "startReadingBtn", "finishReadingBtn", "reviewPanel", "reviewForm",
+  "passage", "readingHint", "videoStatus", "startReadingBtn", "finishReadingBtn", "reviewPanel", "reviewForm",
   "understanding", "mentalEffort", "readComplete", "interrupted", "submitRoundBtn",
   "completePanel", "qualitySummary", "captureCanvas", "liveStatus", "targetOverlay",
   "validationTarget",
@@ -31,7 +31,19 @@ const state = {
   scrollOrigin: 0,
   scrollOccurred: false,
   resumedRound: false,
+  mediaRecorder: null,
+  videoChunks: [],
+  videoStopPromise: null,
+  videoRecordingId: "",
+  videoMimeType: "",
+  pendingReadingVideo: null,
+  readingVideoUploaded: false,
+  readingFinishedElapsed: null,
 };
+
+const READING_VIDEO_SCOPE = "retain_reading_video_self_development";
+const READING_VIDEO_MAX_BYTES = 64 * 1024 * 1024;
+const READING_VIDEO_BITS_PER_SECOND = 750_000;
 
 function showAlert(message) {
   ui.alert.textContent = message;
@@ -123,6 +135,7 @@ async function ensureCamera() {
     video: {
       width: { ideal: 640, min: 640 },
       height: { ideal: 480, min: 480 },
+      frameRate: { ideal: 15, max: 20 },
       facingMode: "user",
     },
     audio: false,
@@ -159,6 +172,9 @@ async function ensureCameraAndModel() {
 
 function stopCamera() {
   state.sampling = false;
+  if (state.mediaRecorder && state.mediaRecorder.state !== "inactive") {
+    try { state.mediaRecorder.stop(); } catch (_) { /* Page teardown is best-effort. */ }
+  }
   if (state.stream) state.stream.getTracks().forEach((track) => track.stop());
   state.stream = null;
   ui.cameraPreview.srcObject = null;
@@ -397,11 +413,26 @@ function formatElapsed(milliseconds) {
 function renderRound(result) {
   state.current = result;
   state.resumedRound = result.phase === "reading_active" && Boolean(sessionStorage.getItem(draftKey()));
+  state.mediaRecorder = null;
+  state.videoChunks = [];
+  state.videoStopPromise = null;
+  state.videoRecordingId = "";
+  state.videoMimeType = "";
+  state.pendingReadingVideo = null;
+  state.readingVideoUploaded = false;
+  state.readingFinishedElapsed = null;
   showOnly(ui.readingPanel);
   ui.roundLabel.textContent = `文章 ${result.round_number} / ${result.round_count}`;
   ui.difficulty.textContent = result.passage.difficulty_band;
   ui.timer.textContent = "00:00";
   ui.readingHint.textContent = "按下開始後才計時；至少閱讀 20 秒。";
+  if (readingVideoEnabled()) {
+    ui.videoStatus.textContent = "本篇開始閱讀後會同步錄製無聲 webcam 影片；只用於你的系統開發資料。";
+    ui.videoStatus.classList.remove("hidden");
+  } else {
+    ui.videoStatus.textContent = "";
+    ui.videoStatus.classList.add("hidden");
+  }
   ui.startReadingBtn.classList.remove("hidden");
   ui.startReadingBtn.disabled = false;
   ui.finishReadingBtn.classList.add("hidden");
@@ -517,8 +548,115 @@ function scrollWatcher() {
   if (state.sampling && Math.abs(window.scrollY - state.scrollOrigin) > 2) state.scrollOccurred = true;
 }
 
-function startReading() {
+function readingVideoEnabled() {
+  const sessionScopes = state.session?.optional_scopes || {};
+  const contextScopes = state.context?.optional_scopes || {};
+  return sessionScopes[READING_VIDEO_SCOPE] === true || contextScopes[READING_VIDEO_SCOPE] === true;
+}
+
+function readingVideoMimeType() {
+  if (typeof MediaRecorder === "undefined") return "";
+  const candidates = [
+    "video/webm;codecs=vp9",
+    "video/webm;codecs=vp8",
+    "video/webm",
+    "video/mp4",
+  ];
+  return candidates.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) || "";
+}
+
+function recordingId() {
+  const random = globalThis.crypto?.randomUUID?.().replaceAll("-", "")
+    || `${Date.now()}${Math.random()}`.replaceAll(".", "");
+  return `VID-${random.toUpperCase().slice(0, 24).padEnd(20, "0")}`;
+}
+
+function startReadingVideo() {
+  if (!readingVideoEnabled()) return;
+  if (typeof MediaRecorder === "undefined" || typeof MediaStream === "undefined") {
+    throw new Error("這個瀏覽器不支援閱讀影片錄製；本次尚未開始，請改用最新版 Chromium 或 Edge。");
+  }
+  const videoTracks = state.stream?.getVideoTracks().filter((track) => track.readyState === "live") || [];
+  if (videoTracks.length !== 1) throw new Error("找不到唯一且有效的 webcam 影像軌；本次尚未開始。");
+  const mimeType = readingVideoMimeType();
+  if (!mimeType) throw new Error("這個瀏覽器沒有可用的閱讀影片格式；本次尚未開始。");
+
+  const videoOnlyStream = new MediaStream([videoTracks[0]]);
+  const recorder = new MediaRecorder(videoOnlyStream, {
+    mimeType,
+    videoBitsPerSecond: READING_VIDEO_BITS_PER_SECOND,
+  });
+  state.videoChunks = [];
+  state.videoRecordingId = recordingId();
+  state.videoMimeType = recorder.mimeType || mimeType;
+  state.videoStopPromise = new Promise((resolve, reject) => {
+    recorder.addEventListener("dataavailable", (event) => {
+      if (event.data?.size) state.videoChunks.push(event.data);
+    });
+    recorder.addEventListener("stop", () => {
+      resolve(new Blob(state.videoChunks, { type: state.videoMimeType }));
+    }, { once: true });
+    recorder.addEventListener("error", (event) => {
+      reject(new Error(event.error?.message || "閱讀影片錄製失敗"));
+    }, { once: true });
+  });
+  state.mediaRecorder = recorder;
+  recorder.start(5_000);
+  ui.videoStatus.textContent = "正在同步錄製本篇無聲閱讀影片（僅 self-development）。";
+  announce("無聲閱讀影片與衍生眼動取樣已開始");
+}
+
+async function stopReadingVideo(durationMs) {
+  if (!readingVideoEnabled()) return null;
+  if (state.pendingReadingVideo) return state.pendingReadingVideo;
+  const recorder = state.mediaRecorder;
+  if (!recorder || !state.videoStopPromise) throw new Error("找不到本篇閱讀影片錄製狀態。");
+  if (recorder.state !== "inactive") recorder.stop();
+  const blob = await state.videoStopPromise;
+  if (!blob.size || blob.size > READING_VIDEO_MAX_BYTES) {
+    throw new Error(`閱讀影片大小 ${blob.size} bytes 不在允許範圍內。`);
+  }
+  state.pendingReadingVideo = {
+    blob,
+    metadata: {
+      recording_id: state.videoRecordingId,
+      passage_id: state.current.passage.passage_id,
+      round_number: state.current.round_number,
+      duration_ms: Math.min(480_000, Math.round(durationMs)),
+      mime_type: state.videoMimeType,
+    },
+  };
+  return state.pendingReadingVideo;
+}
+
+async function uploadReadingVideo(durationMs) {
+  if (!readingVideoEnabled() || state.readingVideoUploaded) return;
+  ui.videoStatus.textContent = "正在保存本篇無聲閱讀影片，請勿關閉頁面……";
+  const pending = await stopReadingVideo(durationMs);
+  const extension = pending.metadata.mime_type.startsWith("video/mp4") ? "mp4" : "webm";
+  const form = new FormData();
+  form.append("metadata", JSON.stringify(pending.metadata));
+  form.append("reading_video", pending.blob, `${pending.metadata.recording_id}.${extension}`);
+  await api(`/api/study/sessions/${state.context.study_session_id}/general/reading-video`, {
+    method: "POST",
+    body: form,
+  });
+  state.readingVideoUploaded = true;
+  state.pendingReadingVideo = null;
+  ui.videoStatus.textContent = "本篇無聲閱讀影片已保存為 self-development data。";
+}
+
+async function startReading() {
   clearAlert();
+  ui.startReadingBtn.disabled = true;
+  try {
+    await ensureCameraAndModel();
+    startReadingVideo();
+  } catch (error) {
+    ui.startReadingBtn.disabled = false;
+    showAlert(error.message);
+    return;
+  }
   state.telemetryQueue = [];
   state.wordLayout = captureWordLayout();
   state.scrollOrigin = window.scrollY;
@@ -536,23 +674,23 @@ function startReading() {
     if (elapsed >= 20_000) ui.readingHint.textContent = "讀完後可按下完成；請不要返回修改文章。";
   }, 250);
   state.samplingPromise = samplingLoop();
-  announce("閱讀計時與衍生眼動取樣已開始");
+  if (!readingVideoEnabled()) announce("閱讀計時與衍生眼動取樣已開始");
 }
 
 async function finishReading() {
-  const elapsed = performance.now() - state.readingStartedAt;
+  const elapsed = state.readingFinishedElapsed ?? (performance.now() - state.readingStartedAt);
   if (elapsed < 20_000) {
     showAlert("固定流程至少需要 20 秒閱讀時間。");
     return;
   }
   clearAlert();
   ui.finishReadingBtn.disabled = true;
-  state.sampling = false;
-  window.clearInterval(state.readingTimer);
-  window.removeEventListener("scroll", scrollWatcher);
-  await state.samplingPromise;
-  try {
-    while (state.telemetryQueue.length) await flushTelemetry();
+  if (state.readingFinishedElapsed === null) {
+    state.readingFinishedElapsed = elapsed;
+    state.sampling = false;
+    window.clearInterval(state.readingTimer);
+    window.removeEventListener("scroll", scrollWatcher);
+    await state.samplingPromise;
     const draft = {
       passage_id: state.current.passage.passage_id,
       reading_elapsed_ms: Math.min(480_000, Math.round(elapsed)),
@@ -562,6 +700,12 @@ async function finishReading() {
       resumed: state.resumedRound,
     };
     sessionStorage.setItem(draftKey(), JSON.stringify(draft));
+  }
+  try {
+    await uploadReadingVideo(elapsed);
+    while (state.telemetryQueue.length) await flushTelemetry();
+    const draft = JSON.parse(sessionStorage.getItem(draftKey()) || "null");
+    if (!draft) throw new Error("本篇閱讀完成快照遺失。");
     const result = await api(`/api/study/sessions/${state.context.study_session_id}/general/round/probes`, {
       method: "POST",
       body: JSON.stringify({ passage_id: draft.passage_id }),
@@ -647,6 +791,9 @@ async function beginRound() {
   }
   renderRound(result);
   if (result.phase === "probes_open") await restoreOpenReviews();
+  if (result.phase === "reading_active" && sessionStorage.getItem(draftKey())) {
+    await restoreOpenReviews();
+  }
 }
 
 function showCompletion() {
@@ -693,6 +840,7 @@ async function restore() {
     state.protocol = design.protocol;
     state.practice = design.practice;
     state.session = status.session;
+    state.context.optional_scopes = state.session.optional_scopes || state.context.optional_scopes || {};
     ui.participantId.textContent = state.session.participant_id;
     const assignment = state.session.collection_assignment || {};
     ui.visitMeta.textContent = `Visit ${assignment.visit_index || "—"} · Form ${assignment.form_id || "—"}`;
@@ -721,7 +869,7 @@ ui.checkCameraBtn.addEventListener("click", checkCamera);
 ui.saveSetupBtn.addEventListener("click", saveSetup);
 ui.practiceBtn.addEventListener("click", () => finishPractice().catch((error) => showAlert(error.message)));
 ui.validationBtn.addEventListener("click", runValidation);
-ui.startReadingBtn.addEventListener("click", startReading);
+ui.startReadingBtn.addEventListener("click", () => startReading().catch((error) => showAlert(error.message)));
 ui.finishReadingBtn.addEventListener("click", () => finishReading().catch((error) => showAlert(error.message)));
 ui.submitRoundBtn.addEventListener("click", () => submitRound().catch((error) => showAlert(error.message)));
 window.addEventListener("pagehide", stopCamera);

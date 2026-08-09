@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
-from core.participant_study import ParticipantStudyStore
+from core.participant_study import (
+    ParticipantStudyStore,
+    READING_VIDEO_SCOPE,
+    StudyValidationError,
+)
 from core.participant_study.general_collection import (
     WORD_PATTERN,
     assignment_for_cell,
@@ -21,9 +27,14 @@ from core.participant_study.general_collection import (
     validate_system_profile,
     williams_order,
 )
-from core.participant_study.protocol import load_protocol
+from core.participant_study.protocol import (
+    activation_status,
+    load_protocol,
+    public_protocol,
+)
 from scripts.export_general_collection_dataset import export_bundle
 from scripts.run_general_collection_rehearsal import resolve_data_location
+from web import create_app
 
 
 def _rehearsal_settings() -> dict[str, object]:
@@ -41,7 +52,21 @@ def _rehearsal_settings() -> dict[str, object]:
     }
 
 
-def _consent_payload(invite_code: str) -> dict[str, object]:
+def _unencrypted_self_settings() -> dict[str, object]:
+    return {
+        **_rehearsal_settings(),
+        "LEXIGAZE_STORAGE_ENCRYPTED": "0",
+        "LEXIGAZE_UNENCRYPTED_SELF_DEVELOPMENT": "1",
+        "LEXIGAZE_DATA_RETENTION_DAYS": "0",
+        "LEXIGAZE_DATA_RETENTION_POLICY": "manual_until_researcher_deletes",
+    }
+
+
+def _consent_payload(
+    invite_code: str,
+    *,
+    retain_reading_video: bool = False,
+) -> dict[str, object]:
     protocol = load_protocol()
     return {
         "mode": "rehearsal",
@@ -54,7 +79,9 @@ def _consent_payload(invite_code: str) -> dict[str, object]:
         "comprehension_answers": {
             item["id"]: item["correct"] for item in protocol["comprehension_checks"]
         },
-        "optional_scopes": {},
+        "optional_scopes": {
+            READING_VIDEO_SCOPE: retain_reading_video,
+        },
     }
 
 
@@ -152,6 +179,68 @@ class GeneralCollectionRunnerTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, "must exactly match"):
                 resolve_data_location(root, root / "claimed-encrypted-location")
+
+    def test_unencrypted_self_development_is_explicit_and_never_promotable(self) -> None:
+        settings = _unencrypted_self_settings()
+        status = activation_status(settings)
+        self.assertTrue(status["rehearsal_ready"])
+        self.assertTrue(status["rehearsal_self_only"])
+        self.assertEqual(
+            status["storage_security"],
+            "unencrypted_self_development",
+        )
+        self.assertEqual(
+            status["retention_policy"],
+            "manual_until_researcher_deletes",
+        )
+        self.assertIsNone(status["retention_days"])
+        self.assertFalse(status["formal_promotion_allowed"])
+        self.assertIn(
+            READING_VIDEO_SCOPE,
+            {item["id"] for item in public_protocol(settings)["optional_scopes"]},
+        )
+        self.assertNotIn(
+            READING_VIDEO_SCOPE,
+            {
+                item["id"]
+                for item in public_protocol(_rehearsal_settings())["optional_scopes"]
+            },
+        )
+        self.assertFalse(status["pilot_ready"])
+
+        unacknowledged = dict(settings)
+        unacknowledged["LEXIGAZE_UNENCRYPTED_SELF_DEVELOPMENT"] = "0"
+        rejected = activation_status(unacknowledged)
+        self.assertFalse(rejected["rehearsal_ready"])
+        self.assertIn(
+            "rehearsal_storage_policy_not_acknowledged",
+            rejected["rehearsal_missing_requirements"],
+        )
+
+    def test_unencrypted_self_development_allows_only_one_pair(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="lexigaze-self-dev-") as name:
+            store = ParticipantStudyStore(
+                Path(name),
+                settings=_unencrypted_self_settings(),
+            )
+            pair = store.create_collection_invite_pairs(1)[0]
+            with self.assertRaisesRegex(Exception, "exactly one"):
+                store.create_collection_invite_pairs(1)
+            enrolled = store.enroll(
+                _consent_payload(pair["visits"][0]["invite_code"])
+            )
+            session = store.get_session(
+                enrolled["study_session_id"],
+                enrolled["access_token"],
+            )
+            self.assertEqual(
+                session["data_governance"]["storage_security"],
+                "unencrypted_self_development",
+            )
+            self.assertTrue(session["data_governance"]["self_only"])
+            self.assertFalse(
+                session["data_governance"]["formal_promotion_allowed"]
+            )
 
 
 class GeneralCollectionInputTests(unittest.TestCase):
@@ -307,13 +396,16 @@ class GeneralCollectionInputTests(unittest.TestCase):
 
 
 class GeneralCollectionStoreTests(unittest.TestCase):
+    def rehearsal_settings(self) -> dict[str, object]:
+        return _rehearsal_settings()
+
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory(prefix="lexigaze-general-store-")
         self.addCleanup(self.temp_dir.cleanup)
         self.root = Path(self.temp_dir.name)
         self.store = ParticipantStudyStore(
             self.root,
-            settings=_rehearsal_settings(),
+            settings=self.rehearsal_settings(),
         )
         self.assertTrue(self.store.activation["rehearsal_ready"])
         self.pair = self.store.create_collection_invite_pairs(1)[0]
@@ -482,6 +574,10 @@ class GeneralCollectionStoreTests(unittest.TestCase):
         self.assertEqual(manifest["session_count"], 1)
         self.assertEqual(manifest["files"]["word_reviews.csv"]["row_count"], 48)
         self.assertFalse(manifest["formal_promotion_allowed"])
+        self.assertEqual(
+            manifest["storage_governance"]["security_modes"],
+            [self.store.activation["storage_security"]],
+        )
         exported_text = "\n".join(
             path.read_text(encoding="utf-8")
             for path in export_path.glob("*.csv")
@@ -524,6 +620,229 @@ class GeneralCollectionStoreTests(unittest.TestCase):
                     ],
                 },
             )
+
+
+class UnencryptedGeneralCollectionStoreTests(GeneralCollectionStoreTests):
+    def rehearsal_settings(self) -> dict[str, object]:
+        return _unencrypted_self_settings()
+
+
+class UnencryptedReadingVideoStoreTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory(prefix="lexigaze-reading-video-")
+        self.addCleanup(self.temp_dir.cleanup)
+        self.root = Path(self.temp_dir.name)
+        self.store = ParticipantStudyStore(
+            self.root,
+            settings=_unencrypted_self_settings(),
+        )
+        self.pair = self.store.create_collection_invite_pairs(1)[0]
+        self.enrolled = self.store.enroll(
+            _consent_payload(
+                self.pair["visits"][0]["invite_code"],
+                retain_reading_video=True,
+            )
+        )
+        self.session_id = self.enrolled["study_session_id"]
+        self.token = self.enrolled["access_token"]
+        self.store.record_general_profile(self.session_id, self.token, _profile())
+        self.store.record_general_system_check(
+            self.session_id,
+            self.token,
+            _system_profile(),
+        )
+        self.store.start_calibration(self.session_id, self.token, "GAZE-VIDEO")
+        self.store.complete_calibration(
+            self.session_id,
+            self.token,
+            {"passed": True, "test_fixture": True},
+            model_name="reading-video-test-model",
+        )
+        self.store.start_general_collection(self.session_id, self.token)
+        self.store.record_general_validation(
+            self.session_id,
+            self.token,
+            phase="start",
+            samples=_validation_samples(),
+        )
+
+    def test_video_is_immutable_required_before_probes_and_index_only_exported(self) -> None:
+        current = self.store.begin_general_round(self.session_id, self.token)
+        passage_id = current["passage"]["passage_id"]
+        with self.assertRaisesRegex(Exception, "must be stored"):
+            self.store.open_general_word_reviews(
+                self.session_id,
+                self.token,
+                passage_id=passage_id,
+            )
+
+        video = b"\x1aE\xdf\xa3lexigaze-self-development-video"
+        kwargs = {
+            "recording_id": "VID-0123456789ABCDEF01234567",
+            "passage_id": passage_id,
+            "round_number": current["round_number"],
+            "duration_ms": 30_000,
+            "mime_type": "video/webm;codecs=vp8",
+            "payload": video,
+        }
+        stored = self.store.record_general_reading_video(
+            self.session_id,
+            self.token,
+            **kwargs,
+        )
+        self.assertFalse(stored["idempotent"])
+        self.assertEqual(stored["reading_video"]["audio_track_count"], 0)
+        self.assertEqual(
+            stored["reading_video"]["dataset_role"],
+            "self_development_only_not_confirmation",
+        )
+        duplicate = self.store.record_general_reading_video(
+            self.session_id,
+            self.token,
+            **kwargs,
+        )
+        self.assertTrue(duplicate["idempotent"])
+        with self.assertRaisesRegex(Exception, "reused with new content"):
+            self.store.record_general_reading_video(
+                self.session_id,
+                self.token,
+                **{**kwargs, "payload": video + b"changed"},
+            )
+        with self.assertRaisesRegex(Exception, "already has a reading video"):
+            self.store.record_general_reading_video(
+                self.session_id,
+                self.token,
+                **{**kwargs, "recording_id": "VID-AAAAAAAAAAAAAAAAAAAAAAAA"},
+            )
+
+        session_path = next(self.root.rglob("session.json"))
+        interrupted_session = json.loads(session_path.read_text(encoding="utf-8"))
+        interrupted_session["general_collection"]["reading_videos"] = []
+        session_path.write_text(
+            json.dumps(interrupted_session, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        probes = self.store.open_general_word_reviews(
+            self.session_id,
+            self.token,
+            passage_id=passage_id,
+        )
+        self.assertEqual(len(probes["probes"]), 8)
+        recovered = self.store.get_session(self.session_id, self.token)
+        self.assertEqual(len(recovered["general_collection"]["reading_videos"]), 1)
+        media_paths = list(
+            self.root.rglob("collection/reading_video/R01.webm")
+        )
+        self.assertEqual(len(media_paths), 1)
+        metadata = list(self.root.rglob("collection/reading_video/R01.json"))
+        self.assertEqual(len(metadata), 1)
+
+        export_path = self.root / "private-export"
+        manifest = export_bundle(
+            self.root,
+            export_path,
+            include_incomplete=True,
+        )
+        self.assertEqual(
+            manifest["files"]["reading_video_index.csv"]["row_count"],
+            1,
+        )
+        self.assertEqual(manifest["source_reading_videos"]["count"], 1)
+        self.assertFalse(
+            manifest["source_reading_videos"]["raw_media_files_exported"]
+        )
+        self.assertEqual(list(export_path.glob("*.webm")), [])
+
+    def test_video_bounds_and_mime_are_enforced(self) -> None:
+        current = self.store.begin_general_round(self.session_id, self.token)
+        passage_id = current["passage"]["passage_id"]
+        base = {
+            "recording_id": "VID-0123456789ABCDEF01234567",
+            "passage_id": passage_id,
+            "round_number": current["round_number"],
+            "duration_ms": 30_000,
+            "mime_type": "video/webm",
+            "payload": b"video",
+        }
+        with self.assertRaisesRegex(Exception, "duration"):
+            self.store.record_general_reading_video(
+                self.session_id,
+                self.token,
+                **{**base, "duration_ms": 19_999},
+            )
+        with self.assertRaisesRegex(Exception, "MIME"):
+            self.store.record_general_reading_video(
+                self.session_id,
+                self.token,
+                **{**base, "mime_type": "video/quicktime"},
+            )
+
+    def test_multipart_route_preserves_video_and_rejects_mime_mismatch(self) -> None:
+        current = self.store.begin_general_round(self.session_id, self.token)
+        metadata = {
+            "recording_id": "VID-ABCDEF0123456789ABCDEF01",
+            "passage_id": current["passage"]["passage_id"],
+            "round_number": current["round_number"],
+            "duration_ms": 30_000,
+            "mime_type": "video/webm;codecs=vp8",
+        }
+        app = create_app(
+            {
+                "TESTING": True,
+                "LEXIGAZE_BLUEPRINTS": ("study",),
+                "LEXIGAZE_STUDY_ROOT": str(self.root),
+                "LEXIGAZE_PUBLIC_STUDY_MODE": "1",
+                **_unencrypted_self_settings(),
+            }
+        )
+        client = app.test_client()
+        url = (
+            f"/api/study/sessions/{self.session_id}/general/reading-video"
+        )
+        headers = {"Authorization": f"Bearer {self.token}"}
+        mismatch = client.post(
+            url,
+            headers=headers,
+            data={
+                "metadata": json.dumps(metadata),
+                "reading_video": (
+                    io.BytesIO(b"video"),
+                    "R01.mp4",
+                    "video/mp4",
+                ),
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(mismatch.status_code, 400)
+        stored = client.post(
+            url,
+            headers=headers,
+            data={
+                "metadata": json.dumps(metadata),
+                "reading_video": (
+                    io.BytesIO(b"\x1aE\xdf\xa3route-video"),
+                    "R01.webm",
+                    "video/webm",
+                ),
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(stored.status_code, 200, stored.get_data(as_text=True))
+        self.assertFalse(stored.get_json()["idempotent"])
+
+
+class ReadingVideoScopeBoundaryTests(unittest.TestCase):
+    def test_encrypted_general_rehearsal_cannot_accept_self_video_scope(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="lexigaze-video-scope-") as name:
+            store = ParticipantStudyStore(Path(name), settings=_rehearsal_settings())
+            pair = store.create_collection_invite_pairs(1)[0]
+            with self.assertRaises(StudyValidationError):
+                store.enroll(
+                    _consent_payload(
+                        pair["visits"][0]["invite_code"],
+                        retain_reading_video=True,
+                    )
+                )
 
 
 if __name__ == "__main__":

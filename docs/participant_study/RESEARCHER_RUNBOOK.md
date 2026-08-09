@@ -6,10 +6,11 @@
 不同。只允許研究團隊本人做 moderated software rehearsal；在倫理／豁免判定、
 正式聯絡資訊與兩位獨立文章 reviewer 完成前，不得把邀請碼交給朋友或外部受試者。
 
-1. 以系統管理員 PowerShell 確認實際資料位置已加密，例如檢查 D 槽的
-   `ProtectionStatus=On` 與完整加密狀態。若無法確認，不要使用
-   `--confirm-encrypted-storage`。
-2. 在不影響既有 8080 server 的情況下，可使用 8098：
+### A. 已加密儲存
+
+以系統管理員 PowerShell 確認實際資料位置已加密，例如檢查磁碟的
+`ProtectionStatus=On` 與完整加密狀態。若無法確認，不要使用
+`--confirm-encrypted-storage`。在不影響既有 8080 server 的情況下，可使用 8098：
 
    ```powershell
    $studyRoot = (Resolve-Path ".").Path
@@ -25,11 +26,35 @@
      --confirm-encrypted-storage
    ```
 
-3. Plaintext invite 只會在 console 顯示一次；不要 commit、貼到 issue 或傳給
+### B. 研究者本人、未加密、手動保存的 development data
+
+這是明確接受的較低資料治理等級，不是假裝已加密。只允許資料擁有者本人，
+不設自動刪除期限，由研究者手動保留或刪除；仍禁止外部受試者、Git/GitHub、
+公開 tunnel 與任何 confirmation／正式結果升格。推論用的逐次閱讀影格不另外
+落盤；若本人在同意頁另行勾選，可逐篇保存「按下開始」至「完成閱讀」之間的
+無音訊 webcam 影片。成功或失敗的校正影像仍須立即清除，中斷校正最長保留一小時。
+
+```powershell
+$studyRoot = (Resolve-Path ".").Path
+$dataLocation = Join-Path $studyRoot "data"
+.\.venv\Scripts\python.exe -X utf8 -m scripts.run_general_collection_rehearsal `
+  --root $studyRoot `
+  --port 8098 `
+  --data-location $dataLocation `
+  --raw-frame-retention-hours 1 `
+  --create-invite-pairs 1 `
+  --acknowledge-development-only `
+  --allow-unencrypted-self-development-data `
+  --retain-until-manual-deletion
+```
+
+1. Plaintext invite 只會在 console 顯示一次；不要 commit、貼到 issue 或傳給
    非研究團隊人員。開啟 `http://127.0.0.1:8098/study`，本次只使用 visit 1 code。
-4. Visit 2 必須在 visit 1 完成後 18–72 小時，以同一裝置類別與瀏覽器 family
+   若要保存本人的閱讀影片，必須親自在 consent 頁勾選獨立 optional scope；它預設
+   不勾選。瀏覽器只建立 video track，不請求或保存 audio。
+2. Visit 2 必須在 visit 1 完成後 18–72 小時，以同一裝置類別與瀏覽器 family
    使用配對 code；server 會拒絕過早、過晚或 visit 1 未完成的 code。
-5. 每次完成後執行：
+3. 每次完成後執行：
 
    ```powershell
    .\.venv\Scripts\python.exe -X utf8 -m scripts.audit_general_collection_readiness --root $studyRoot
@@ -37,10 +62,14 @@
    ```
 
    Export 是 private pseudonymous bundle，預設排除未完成／已撤回 session，且
-   manifest 永遠標示 `formal_promotion_allowed=false`。不要 commit export。
+   manifest 永遠標示 `formal_promotion_allowed=false`。Raw 影片不會複製進 bundle；
+   `reading_video_index.csv` 只保存來源相對路徑、hash、文章／round 與同步資訊。
+   不要 commit export 或 `data/` 下的影片。
 
-6. Rehearsal 只回答 completion、missingness、quality、abstention、resume、export
-   與 withdrawal 是否正常。不得用同一人／同一 12 篇文章反覆調參後回報模型成效。
+4. Rehearsal 只回答 completion、missingness、quality、abstention、resume、export
+   與 withdrawal 是否正常。影片可供眼動模組開發、動作魯棒性與同步除錯；不得用
+   同一人／同一 12 篇文章反覆調參後，再把相同影片回報為模型成效。模型比較至少
+   需要另一次未參與調參的 capture session，正式 claim 仍須獨立 confirmation cohort。
 
 ## 目前允許做的事：dry run
 
