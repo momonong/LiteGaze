@@ -1,6 +1,8 @@
 # Webcam Gaze Measurement Ceiling v1 - Existing-Data Audit
 
-Status: `failed_integrity_gate`; exploratory self-development evidence only. This audit does not promote a model, threshold, gaze quality band, or participant claim.
+Overall status: `failed_integrity_gate`; geometry: `failed_integrity_gate`; uncertainty: `not_evaluable_receipts_unavailable`. Exploratory self-development evidence only. This audit does not promote a model, threshold, gaze quality band, or participant claim.
+
+Analysis protocol: `participant-gaze-integrity-preflight-v1` (`798b68b8a44b7b77719af0345044921c75d2e0cb1053971def01d5d387e51af1`). This is the participant five-point receipt-integrity preflight (65 calibration-context rows plus 15 start and 15 end receipts, 95 participant-flow observations total); it does **not** claim that the separate 193-sample measurement-ceiling protocol was executed.
 
 Machine-readable result: [`results/2026-08-10-webcam-gaze-measurement-ceiling-v1.json`](results/2026-08-10-webcam-gaze-measurement-ceiling-v1.json)
 
@@ -9,6 +11,7 @@ Machine-readable result: [`results/2026-08-10-webcam-gaze-measurement-ceiling-v1
 | Check | Result |
 | --- | --- |
 | Artifact bindings | passed |
+| Fixed-target server receipt registry | diagnostic_only_unverified |
 | Server session/manifest capture contract | failed |
 | Calibration/evaluation viewport contract | passed |
 | Cross-phase camera aspect-ratio integrity | failed |
@@ -29,6 +32,7 @@ Input SHA-256 values:
 - `calibration_session_metadata`: `5ae737030f096c18a16eb8e8e68d5a1772fb1a717183cb430c80e3fe56d78d64`
 - `calibration_manifest`: `af61c6d83708292d98a707f6a5fd083bd99db6beae13d369b09ad4d6130bc7d4`
 - `model_artifact`: `012dbd0c7c11c8b34536895964f82ed4b2352c0585f2154b6ba0aa548a5ba19c`
+- `analysis_protocol`: `5bc18bdf3a0ec4e984eb38fdd94ff4ccaeb1030b042d5e40a9791d0a3655fc52`
 
 Target-distance coordinates use `signed = 2 * viewport_fraction - 1`; the frozen `0.20` signed Euclidean threshold therefore equals `0.10` in `[0, 1]` viewport-fraction coordinates. Distances equal to the threshold are independent; only smaller distances overlap.
 
@@ -47,11 +51,15 @@ Cross-phase camera geometry uses the calibration manifest and the participant sy
 
 **Hard provenance failure:** at least one manifest capture field does not match the server-created calibration session. The numeric audit is retained for diagnosis but is ineligible for promotion.
 
+**Legacy receipt boundary:** the numeric fixed-target values are retained only as diagnostics because the complete private server receipt registry is absent. Eligible claim: `none`.
+
 **Hard cross-phase camera-geometry failure:** `cross_phase_camera_aspect_ratio_mismatch`. The numeric audit is retained for diagnosis but cannot support a matched-capture measurement claim.
 
 **Target-independence failure:** calibration and evaluation share the following below-tolerance target region(s): `bottom_left, bottom_right, center, top_left, top_right`. The frozen threshold is `0.20` in signed `[-1, 1]` Euclidean coordinates, equal to `0.10` in `[0, 1]` viewport-fraction coordinates. Metrics remain descriptive and cannot establish target-held-out accuracy.
 
 ## Raw fixed-target result
+
+Evidence status: `diagnostic_only_unverified`. Receipt-unverified legacy values remain diagnostic and cannot support an eligible claim.
 
 | Phase | Median px | P90 px | Target-macro mean px | Target-macro bias px | Median absolute X px | Median absolute Y px | Coarse nearest-target accuracy |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -225,7 +233,7 @@ This is a preserved negative descriptive result, not predictive uncertainty cali
 
 ## Receipt-verified held-out uncertainty coverage-risk
 
-Status: `not_evaluable`; model artifact has no uncertainty_v2 bundle.
+Status: `not_evaluable_receipts_unavailable`; legacy session has no server prediction receipt registry.
 
 No fixed coverage-risk curve, threshold, abstention policy, or quality-band change is authorized. The start-only repeatability proxy remains explicitly `proxy_not_predictive_uncertainty`.
 
@@ -238,7 +246,7 @@ Current evidence inventory:
 - Model OOF/uncertainty fields: `none`
 - Validation uncertainty fields: `none`
 - Reconstructable calibration sensor fields: `none`
-- Reason: model artifact has no uncertainty_v2 bundle.
+- Reason: legacy session has no server prediction receipt registry.
 
 A frozen v2 must record one row per outer-fold held-out sample with: `sample_id`, `outer_fold_id`, `outer_holdout_group_id`, `target_id`, `oof_predicted_x_px`, `oof_predicted_y_px`, `oof_residual_x_px`, `oof_residual_y_px`, `oof_spatial_error_px`, `training_only_ood_score`, `training_only_leverage_score`, `training_only_prediction_covariance_px`.
 
@@ -263,10 +271,10 @@ A failed consistency check records the historical M0 artifact bug; it does not r
 
 ## Not evaluable
 
-- Predictive uncertainty calibration: **not evaluable**; model artifact has no uncertainty_v2 bundle.
+- Predictive uncertainty calibration: **not evaluable**; legacy session has no server prediction receipt registry.
 - Natural-reading line accuracy: **not evaluable**; no independent line-level ground truth exists.
 - Natural-reading word accuracy: **not evaluable**; no independent word-level ground truth exists.
 
 ## Decision
 
-Preserve the negative and mixed findings. The current data support at most coarse fixed-target development evidence. Any failed integrity check is a hard stop. No quality band, production model, or line/word claim is promoted.
+Preserve the negative and mixed findings. Eligible claim: `none`. Receipt-unverified legacy data and every failed integrity check are hard stops. No quality band, production model, or line/word claim is promoted.

@@ -8,6 +8,11 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from core.gaze_core.measurement_ceiling import (
+    DEFAULT_BOOTSTRAP_RESAMPLES,
+    DEFAULT_BOOTSTRAP_SEED,
+    DEFAULT_LINE_GAP_PX,
+    DEFAULT_MEDIAN_WORD_WIDTH_PX,
+    DEFAULT_PREFLIGHT_PROTOCOL_PATH,
     DEFAULT_TARGET_OVERLAP_TOLERANCE_SIGNED,
     build_measurement_ceiling_result,
     deterministic_json,
@@ -25,8 +30,21 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--calibration-manifest", type=Path, required=True)
     parser.add_argument("--model-artifact", type=Path, required=True)
-    parser.add_argument("--line-gap-px", type=float, required=True)
-    parser.add_argument("--median-word-width-px", type=float, required=True)
+    parser.add_argument("--line-gap-px", type=float, default=DEFAULT_LINE_GAP_PX)
+    parser.add_argument(
+        "--median-word-width-px",
+        type=float,
+        default=DEFAULT_MEDIAN_WORD_WIDTH_PX,
+    )
+    parser.add_argument(
+        "--analysis-protocol",
+        type=Path,
+        default=DEFAULT_PREFLIGHT_PROTOCOL_PATH,
+        help=(
+            "Frozen participant five-point receipt-integrity preflight. This is "
+            "not the separate 193-sample measurement-ceiling capture protocol."
+        ),
+    )
     parser.add_argument("--json-output", type=Path, required=True)
     parser.add_argument("--markdown-output", type=Path, required=True)
     parser.add_argument(
@@ -41,8 +59,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--model-artifact-label",
         default="linked calibration model artifact",
     )
-    parser.add_argument("--bootstrap-resamples", type=int, default=10_000)
-    parser.add_argument("--bootstrap-seed", type=int, default=20260810)
+    parser.add_argument(
+        "--bootstrap-resamples",
+        type=int,
+        default=DEFAULT_BOOTSTRAP_RESAMPLES,
+    )
+    parser.add_argument(
+        "--bootstrap-seed",
+        type=int,
+        default=DEFAULT_BOOTSTRAP_SEED,
+    )
     parser.add_argument(
         "--target-overlap-tolerance",
         type=float,
@@ -79,6 +105,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         bootstrap_resamples=args.bootstrap_resamples,
         bootstrap_seed=args.bootstrap_seed,
         target_overlap_tolerance=args.target_overlap_tolerance,
+        analysis_protocol_path=args.analysis_protocol,
     )
     result_reference = f"results/{args.json_output.name}"
     _atomic_write(args.json_output, deterministic_json(result))
@@ -91,7 +118,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     print(
         "WEBCAM_GAZE_MEASUREMENT_CEILING="
-        f"status={result['status']} evidence={result['evidence_class']} "
+        f"status={result['status']} "
+        f"geometry={result['measurement_status']['geometry']} "
+        f"uncertainty={result['measurement_status']['uncertainty']} "
+        f"eligible_claim={result['decision']['eligible_claim']} "
+        f"evidence={result['evidence_class']} "
         f"json={args.json_output} markdown={args.markdown_output}"
     )
     return 0

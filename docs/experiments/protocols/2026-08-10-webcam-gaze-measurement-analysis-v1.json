@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "definition_id": "webcam-gaze-measurement-ceiling-analysis-v1",
+  "definition_version": "2026-08-10.v1",
+  "status": "frozen_before_new_capture",
+  "source_protocol": {
+    "protocol_id": "webcam-gaze-measurement-ceiling-v1",
+    "canonical_sha256": "be4dfb0956ce3594546336fe7a54da6ba878f2d6fcd457d36cbaf0159132fced"
+  },
+  "input_contract": {
+    "exact_schedule_sample_count": 193,
+    "calibration_attempt_count": 65,
+    "evaluation_attempt_count": 128,
+    "capture_artifact_verification_required_before_metrics": true,
+    "runner_capture_and_training_provenance_required_for_any_evidence_promotion": true,
+    "text_cursor_cognitive_and_reading_inputs_allowed": false,
+    "failed_sensor_attempts_retained_in_coverage": true,
+    "error_metrics_condition_on_prediction_success": true
+  },
+  "geometry_metrics": {
+    "signed_error": "prediction_px_minus_target_px",
+    "spatial_error": "euclidean_norm_of_signed_xy_error_px",
+    "percentile_algorithm": "linear_r7_v1",
+    "target_macro_unit": "target_id_within_capture_block",
+    "selected_model_error_condition": "successful_sensor_predictions_only",
+    "prediction_success_fraction_denominator": "all_frozen_evaluation_attempts"
+  },
+  "baseline_b0": {
+    "prediction": "viewport_center",
+    "coverage": 1.0,
+    "selection_metric": false
+  },
+  "target_region_decoder": {
+    "algorithm": "nearest_axis_on_frozen_4x4_target_grid_v1",
+    "tie_break": "lower_axis_index",
+    "prediction_clamping_added_by_analyzer": false
+  },
+  "temporal_drift": {
+    "start_block": "neutral_start",
+    "end_block": "neutral_end",
+    "per_target_prediction_centroid": true,
+    "vector": "end_centroid_minus_start_centroid",
+    "missing_successful_phase_action": "target_not_evaluable"
+  },
+  "timing": {
+    "inference_latency_percentiles": [0.5, 0.95],
+    "sample_frame_capture_timestamp_semantics": "v1_inference_start_proxy_because_completed_minus_capture_equals_inference_latency",
+    "camera_exposure_timestamp_available": false,
+    "camera_capture_jitter_status": "not_evaluable_without_trusted_exposure_timestamp",
+    "inference_start_interval_scope": "within_same_block_and_repeat_only",
+    "block_transition_intervals_excluded": true,
+    "jitter_statistic": "median_absolute_deviation"
+  },
+  "uncertainty": {
+    "ranking_direction": "lower_score_retained_first",
+    "fixed_conditional_coverage_grid": [1.0, 0.8, 0.6, 0.4, 0.2],
+    "retained_count_rule": "max_1_ceil_coverage_times_successful_scored_count",
+    "successful_prediction_missing_score_action": "uncertainty_not_evaluable",
+    "failed_sensor_attempt_score_required": false,
+    "threshold_selection_allowed": false,
+    "coverage_cutoff_is_deployable_threshold": false,
+    "error_deciles": 10
+  },
+  "bootstrap": {
+    "algorithm": "sha256_counter_target_cluster_v1",
+    "cluster_unit": "target_id_within_capture_block",
+    "resamples": 20000,
+    "seed": 20260810,
+    "interval_quantiles": [0.025, 0.975],
+    "independent_population_interval_claimed": false
+  },
+  "layout_reference": {
+    "line_gap_px": 27.2,
+    "median_word_width_px": 40.9,
+    "natural_reading_ground_truth_available": false,
+    "ratios_are_descriptive_only": true
+  },
+  "negative_controls": {
+    "target_label_permutation": "actual_region_plus_1_mod_16",
+    "text_prior": "not_applicable_no_input_surface",
+    "cursor_reference": "not_applicable_no_input_surface",
+    "evaluation_target_fitting": "must_be_verified_from_runner_training_provenance"
+  },
+  "claim_boundary": {
+    "measurement_claim_authorized": false,
+    "quality_band_change_authorized": false,
+    "threshold_selected": false,
+    "natural_reading_word_or_line_accuracy_claimed": false,
+    "population_or_device_generalization_claimed": false,
+    "post_result_metric_or_decoder_tuning_allowed": false
+  }
+}

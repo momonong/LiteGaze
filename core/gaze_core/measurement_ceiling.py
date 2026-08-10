@@ -16,18 +16,25 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from .capture_contract import compare_capture_contracts, normalize_capture_contract
 from .uncertainty_contract import (
+    RUNTIME_OBSERVATION_SCHEMA_VERSION,
     canonical_json_bytes as _uncertainty_canonical_json_bytes,
     canonical_sha256 as _uncertainty_canonical_sha256,
     normalize_uncertainty_observation,
+    unavailable_uncertainty,
     verified_definition,
 )
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 ANALYSIS_ID = "webcam-gaze-measurement-ceiling-v1"
 CORRECTION_ID = "start_trained_median_translation"
 DEFAULT_TARGET_OVERLAP_TOLERANCE_SIGNED = 0.2
+DEFAULT_LINE_GAP_PX = 27.2
+DEFAULT_MEDIAN_WORD_WIDTH_PX = 40.9
+DEFAULT_BOOTSTRAP_RESAMPLES = 20_000
+DEFAULT_BOOTSTRAP_SEED = 20260810
 FROZEN_PROTOCOL_TARGET_SEPARATION_VIEWPORT_FRACTION = 0.1
 MAX_CROSS_PHASE_CAMERA_ASPECT_RATIO_DIFFERENCE = 0.02
 SIGNED_COORDINATE_MIN = -1.0
@@ -37,6 +44,24 @@ REPEATABILITY_PROXY_COVERAGE_LEVELS = (0.2, 0.4, 0.6, 0.8, 1.0)
 UNCERTAINTY_V2_COVERAGE_LEVELS = (1.0, 0.8, 0.6, 0.4, 0.2)
 FIXED_TARGET_CLUSTER_COUNT = 5
 FIXED_TARGET_REPEATS_PER_PHASE = 3
+FIXED_TARGET_PHASES = ("start", "end")
+PREDICTION_RECEIPT_SCHEMA_VERSION = 1
+SUCCESS_CONTRADICTORY_UNCERTAINTY_STATUSES = frozenset(
+    {
+        "unavailable_capture_failure",
+        "unavailable_prediction_failure",
+        "unavailable_sensor_failure",
+    }
+)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_PREFLIGHT_PROTOCOL_PATH = (
+    PROJECT_ROOT
+    / "docs"
+    / "experiments"
+    / "protocols"
+    / "2026-08-10-participant-gaze-integrity-preflight-v1.json"
+)
+DEFAULT_AUDIT_CLI_PATH = PROJECT_ROOT / "scripts" / "audit_webcam_gaze_measurement_ceiling.py"
 
 
 class MeasurementCeilingError(ValueError):
@@ -51,6 +76,13 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _project_reference(path: Path) -> str:
+    try:
+        return path.resolve().relative_to(PROJECT_ROOT).as_posix()
+    except ValueError:
+        return path.name
+
+
 def _load_object(path: Path, *, label: str) -> dict[str, Any]:
     try:
         decoded = json.loads(path.read_text(encoding="utf-8"))
@@ -59,6 +91,148 @@ def _load_object(path: Path, *, label: str) -> dict[str, Any]:
     if not isinstance(decoded, dict):
         raise MeasurementCeilingError(f"{label} must contain a JSON object")
     return decoded
+
+
+def _canonical_equal(left: object, right: object) -> bool:
+    try:
+        return _uncertainty_canonical_json_bytes(left) == (
+            _uncertainty_canonical_json_bytes(right)
+        )
+    except (TypeError, ValueError):
+        return False
+
+
+def _load_preflight_protocol(path: Path) -> dict[str, Any]:
+    """Load and verify the dedicated five-point analysis protocol."""
+
+    wrapper = _load_object(path, label="participant gaze integrity preflight")
+    protocol = wrapper.get("protocol")
+    if wrapper.get("schema_version") != 1 or not isinstance(protocol, Mapping):
+        raise MeasurementCeilingError("preflight protocol wrapper is invalid")
+    canonical_sha256 = _lower_hex_sha256(
+        wrapper.get("canonical_sha256"),
+        field="preflight_protocol.canonical_sha256",
+    )
+    if _uncertainty_canonical_sha256(protocol) != canonical_sha256:
+        raise MeasurementCeilingError("preflight protocol canonical hash mismatch")
+    if (
+        protocol.get("protocol_id")
+        != "participant-gaze-integrity-preflight-v1"
+        or protocol.get("protocol_version") != "2026-08-10.v1"
+        or protocol.get("status")
+        != "frozen_before_fresh_matched_contract_capture"
+    ):
+        raise MeasurementCeilingError("unexpected participant preflight protocol")
+
+    scope = protocol.get("scope")
+    design = protocol.get("design")
+    fixed = design.get("fixed_target_validation") if isinstance(design, Mapping) else None
+    if (
+        not isinstance(scope, Mapping)
+        or scope.get("full_193_sample_measurement_ceiling_protocol_executed")
+        is not False
+        or not isinstance(fixed, Mapping)
+        or fixed.get("phases") != list(FIXED_TARGET_PHASES)
+        or fixed.get("target_clusters_per_phase") != FIXED_TARGET_CLUSTER_COUNT
+        or fixed.get("repeats_per_target") != FIXED_TARGET_REPEATS_PER_PHASE
+        or fixed.get("receipts_per_phase")
+        != FIXED_TARGET_CLUSTER_COUNT * FIXED_TARGET_REPEATS_PER_PHASE
+        or fixed.get("total_receipts")
+        != len(FIXED_TARGET_PHASES)
+        * FIXED_TARGET_CLUSTER_COUNT
+        * FIXED_TARGET_REPEATS_PER_PHASE
+        or design.get("participant_flow_total_observations") != 95
+    ):
+        raise MeasurementCeilingError("preflight five-point design changed")
+
+    measurement = protocol.get("measurement_contract")
+    if not isinstance(measurement, Mapping):
+        raise MeasurementCeilingError("preflight measurement contract binding is missing")
+    source_path = PROJECT_ROOT / str(measurement.get("source_path") or "")
+    if not source_path.is_file():
+        raise MeasurementCeilingError("preflight measurement contract source is missing")
+    source_file_sha256 = _lower_hex_sha256(
+        measurement.get("source_file_sha256"),
+        field="preflight_protocol.measurement_contract.source_file_sha256",
+    )
+    if _sha256(source_path) != source_file_sha256:
+        raise MeasurementCeilingError("preflight measurement contract file hash mismatch")
+    source_contract = _load_object(source_path, label="participant gaze measurement contract")
+    source_canonical_sha256 = _lower_hex_sha256(
+        measurement.get("canonical_sha256"),
+        field="preflight_protocol.measurement_contract.canonical_sha256",
+    )
+    if _uncertainty_canonical_sha256(source_contract) != source_canonical_sha256:
+        raise MeasurementCeilingError(
+            "preflight measurement contract canonical hash mismatch"
+        )
+    if (
+        source_contract.get("contract_id") != measurement.get("contract_id")
+        or source_contract.get("contract_version")
+        != measurement.get("contract_version")
+    ):
+        raise MeasurementCeilingError("preflight measurement contract identity mismatch")
+
+    config = protocol.get("analysis_config")
+    if not isinstance(config, Mapping):
+        raise MeasurementCeilingError("preflight analysis config is missing")
+    expected_config = {
+        "line_gap_px": DEFAULT_LINE_GAP_PX,
+        "median_word_width_px": DEFAULT_MEDIAN_WORD_WIDTH_PX,
+        "target_overlap_tolerance_signed": (
+            DEFAULT_TARGET_OVERLAP_TOLERANCE_SIGNED
+        ),
+        "bootstrap_resamples": DEFAULT_BOOTSTRAP_RESAMPLES,
+        "bootstrap_seed": DEFAULT_BOOTSTRAP_SEED,
+        "uncertainty_coverage_grid": list(UNCERTAINTY_V2_COVERAGE_LEVELS),
+        "repeatability_coverage_grid": list(REPEATABILITY_PROXY_COVERAGE_LEVELS),
+        "compute": "cpu_only",
+        "network": "disabled",
+    }
+    if not _canonical_equal(config, expected_config):
+        raise MeasurementCeilingError("preflight analysis config changed")
+    return {
+        "wrapper_schema_version": 1,
+        "protocol": dict(protocol),
+        "protocol_canonical_sha256": canonical_sha256,
+        "protocol_file_sha256": _sha256(path),
+        "protocol_path": path,
+        "measurement_contract": source_contract,
+        "measurement_contract_canonical_sha256": source_canonical_sha256,
+        "measurement_contract_file_sha256": source_file_sha256,
+        "analysis_config": dict(config),
+    }
+
+
+def _verify_analysis_config(
+    protocol: Mapping[str, Any],
+    *,
+    line_gap_px: float,
+    median_word_width_px: float,
+    target_overlap_tolerance: float,
+    bootstrap_resamples: int,
+    bootstrap_seed: int,
+) -> dict[str, Any]:
+    config = protocol["analysis_config"]
+    supplied = {
+        "line_gap_px": line_gap_px,
+        "median_word_width_px": median_word_width_px,
+        "target_overlap_tolerance_signed": target_overlap_tolerance,
+        "bootstrap_resamples": bootstrap_resamples,
+        "bootstrap_seed": bootstrap_seed,
+        "uncertainty_coverage_grid": list(UNCERTAINTY_V2_COVERAGE_LEVELS),
+        "repeatability_coverage_grid": list(REPEATABILITY_PROXY_COVERAGE_LEVELS),
+        "compute": "cpu_only",
+        "network": "disabled",
+    }
+    if not _canonical_equal(supplied, config):
+        raise MeasurementCeilingError(
+            "analysis arguments do not match the frozen preflight config"
+        )
+    return {
+        **supplied,
+        "canonical_sha256": _uncertainty_canonical_sha256(supplied),
+    }
 
 
 def _load_jsonl(path: Path, *, label: str) -> list[dict[str, Any]]:
@@ -1143,6 +1317,694 @@ def _receipt_phase_rows(
         }
 
 
+def _expected_receipt_target(
+    target: Mapping[str, Any],
+    viewport: Mapping[str, int],
+) -> dict[str, Any]:
+    return {
+        "target_id": target["target_id"],
+        "target_x_viewport_fraction": float(
+            target["target_x_viewport_fraction"]
+        ),
+        "target_y_viewport_fraction": float(
+            target["target_y_viewport_fraction"]
+        ),
+        "target_x_norm": float(target["target_x_norm"]),
+        "target_y_norm": float(target["target_y_norm"]),
+        "target_x_px": float(
+            math.floor(
+                float(target["target_x_viewport_fraction"])
+                * viewport["width_px"]
+                + 0.5
+            )
+        ),
+        "target_y_px": float(
+            math.floor(
+                float(target["target_y_viewport_fraction"])
+                * viewport["height_px"]
+                + 0.5
+            )
+        ),
+    }
+
+
+def _normalized_receipt_uncertainty(
+    prediction: Mapping[str, Any],
+    *,
+    prediction_success: bool,
+    viewport: Mapping[str, int],
+) -> dict[str, Any]:
+    schema_version = prediction.get("uncertainty_schema_version")
+    raw_observation = prediction.get("uncertainty")
+    if schema_version is None and raw_observation is None:
+        return unavailable_uncertainty(
+            (
+                "unavailable_receipt_missing"
+                if prediction_success
+                else "unavailable_sensor_failure"
+            ),
+            "legacy prediction receipt did not contain runtime uncertainty evidence",
+        )
+    if (
+        type(schema_version) is not int
+        or schema_version != RUNTIME_OBSERVATION_SCHEMA_VERSION
+    ):
+        raise MeasurementCeilingError("receipt uncertainty schema mismatch")
+    try:
+        normalized = normalize_uncertainty_observation(
+            raw_observation,
+            viewport=(viewport["width_px"], viewport["height_px"]),
+        )
+    except (OSError, TypeError, ValueError) as exc:
+        raise MeasurementCeilingError(
+            f"receipt uncertainty observation is invalid: {exc}"
+        ) from exc
+    if (
+        not prediction_success
+        and normalized.get("status") != "unavailable_sensor_failure"
+    ) or (
+        prediction_success
+        and normalized.get("status")
+        in SUCCESS_CONTRADICTORY_UNCERTAINTY_STATUSES
+    ):
+        raise MeasurementCeilingError(
+            "receipt uncertainty contradicts prediction outcome"
+        )
+    return normalized
+
+
+def _receipt_outcome_sample(
+    issued: Mapping[str, Any],
+    *,
+    expected_target: Mapping[str, Any],
+    viewport: Mapping[str, int],
+    issued_record_sha256: str,
+) -> tuple[dict[str, Any], dict[str, Any] | None, dict[str, Any]]:
+    prediction = issued.get("prediction")
+    if not isinstance(prediction, Mapping):
+        raise MeasurementCeilingError("prediction receipt outcome is invalid")
+    success = prediction.get("success")
+    if type(success) is not bool:
+        raise MeasurementCeilingError("prediction receipt success must be boolean")
+    sample: dict[str, Any] = {
+        "target_id": expected_target["target_id"],
+        "target_x_px": expected_target["target_x_px"],
+        "target_y_px": expected_target["target_y_px"],
+        "target_x_norm": expected_target["target_x_norm"],
+        "target_y_norm": expected_target["target_y_norm"],
+        "prediction_success": success,
+    }
+    failure: dict[str, Any] | None = None
+    if success:
+        raw_px = prediction.get("screen_xy_px")
+        raw_norm = prediction.get("screen_xy_norm")
+        if (
+            not isinstance(raw_px, Sequence)
+            or isinstance(raw_px, (str, bytes))
+            or len(raw_px) != 2
+            or not isinstance(raw_norm, Sequence)
+            or isinstance(raw_norm, (str, bytes))
+            or len(raw_norm) != 2
+        ):
+            raise MeasurementCeilingError(
+                "successful prediction receipt coordinates are invalid"
+            )
+        predicted_x = _finite(raw_px[0], field="receipt.screen_xy_px[0]")
+        predicted_y = _finite(raw_px[1], field="receipt.screen_xy_px[1]")
+        normalized_x = _finite(raw_norm[0], field="receipt.screen_xy_norm[0]")
+        normalized_y = _finite(raw_norm[1], field="receipt.screen_xy_norm[1]")
+        if (
+            not 0.0 <= predicted_x <= viewport["width_px"]
+            or not 0.0 <= predicted_y <= viewport["height_px"]
+            or not -1.0 <= normalized_x <= 1.0
+            or not -1.0 <= normalized_y <= 1.0
+        ):
+            raise MeasurementCeilingError(
+                "prediction receipt coordinates exceed frozen viewport"
+            )
+        transformed_x = ((normalized_x + 1.0) * 0.5) * viewport["width_px"]
+        transformed_y = ((normalized_y + 1.0) * 0.5) * viewport["height_px"]
+        if not math.isclose(
+            predicted_x, transformed_x, rel_tol=0.0, abs_tol=1e-6
+        ) or not math.isclose(
+            predicted_y, transformed_y, rel_tol=0.0, abs_tol=1e-6
+        ):
+            raise MeasurementCeilingError(
+                "prediction receipt pixel/normalized transform mismatch"
+            )
+        http_status = prediction.get("http_status")
+        if (
+            type(http_status) is not int
+            or not 200 <= http_status < 300
+            or prediction.get("failure_stage") is not None
+            or prediction.get("failure_code") is not None
+            or prediction.get("error") is not None
+        ):
+            raise MeasurementCeilingError(
+                "successful prediction receipt outcome fields are invalid"
+            )
+        sample.update(
+            {
+                "predicted_x_px": predicted_x,
+                "predicted_y_px": predicted_y,
+                "spatial_error_px": math.hypot(
+                    predicted_x - float(expected_target["target_x_px"]),
+                    predicted_y - float(expected_target["target_y_px"]),
+                ),
+            }
+        )
+    else:
+        http_status = prediction.get("http_status")
+        if (
+            prediction.get("failure_stage") != "attributable_sensor_failure"
+            or prediction.get("failure_code") != "no_face_detected"
+            or type(http_status) is not int
+            or http_status != 400
+            or prediction.get("screen_xy_px") is not None
+            or prediction.get("screen_xy_norm") is not None
+        ):
+            raise MeasurementCeilingError(
+                "prediction receipt failure is not an attributable no-face outcome"
+            )
+        sample.update(
+            {
+                "predicted_x_px": None,
+                "predicted_y_px": None,
+                "spatial_error_px": None,
+            }
+        )
+        failure = {
+            "receipt_record_sha256": issued_record_sha256,
+            "failure_stage": "attributable_sensor_failure",
+            "failure_code": "no_face_detected",
+            "http_status": 400,
+        }
+    uncertainty = _normalized_receipt_uncertainty(
+        prediction,
+        prediction_success=success,
+        viewport=viewport,
+    )
+    return sample, failure, uncertainty
+
+
+def _fixed_target_receipt_integrity(
+    participant: Mapping[str, Any],
+    validations: Mapping[str, Any],
+    collection: Mapping[str, Any],
+    *,
+    model_artifact_file_sha256: str,
+    viewport_width: float,
+    viewport_height: float,
+    frozen_measurement_contract: Mapping[str, Any],
+    frozen_measurement_contract_sha256: str,
+) -> dict[str, Any]:
+    """Reconstruct both fixed-target phases from the private receipt registry."""
+
+    expected_count = FIXED_TARGET_CLUSTER_COUNT * FIXED_TARGET_REPEATS_PER_PHASE
+    expected_total = expected_count * len(FIXED_TARGET_PHASES)
+    registry = collection.get("prediction_receipts")
+    summaries_claim_verified = any(
+        isinstance(validations.get(phase), Mapping)
+        and (
+            validations[phase].get("prediction_receipt_status") == "verified"
+            or validations[phase].get("prediction_receipts_verified") is True
+        )
+        for phase in FIXED_TARGET_PHASES
+    )
+    if registry is None:
+        if summaries_claim_verified:
+            return {
+                "status": "failed_integrity",
+                "integrity_status": "failed",
+                "reason": "validation claims verified receipts but registry is absent",
+                "record_count": 0,
+                "phases": {},
+            }
+        return {
+            "status": "diagnostic_only_unverified",
+            "integrity_status": "not_applicable",
+            "reason": "legacy session has no server prediction receipt registry",
+            "record_count": 0,
+            "required_record_count": expected_total,
+            "phases": {},
+        }
+
+    try:
+        if not isinstance(registry, Mapping):
+            raise MeasurementCeilingError("prediction receipt registry is invalid")
+        if registry.get("schema_version") != PREDICTION_RECEIPT_SCHEMA_VERSION:
+            raise MeasurementCeilingError(
+                "prediction receipt registry schema version mismatch"
+            )
+        raw_records = registry.get("records")
+        if not isinstance(raw_records, Mapping):
+            raise MeasurementCeilingError(
+                "prediction receipt registry records are invalid"
+            )
+        if not raw_records and not summaries_claim_verified:
+            return {
+                "status": "diagnostic_only_unverified",
+                "integrity_status": "not_applicable",
+                "reason": "legacy session has no consumed server prediction receipts",
+                "record_count": 0,
+                "required_record_count": expected_total,
+                "phases": {},
+            }
+        if len(raw_records) != expected_total:
+            raise MeasurementCeilingError(
+                f"prediction receipt registry must contain exactly {expected_total} records"
+            )
+
+        records: dict[str, Mapping[str, Any]] = {}
+        by_record_sha256: dict[
+            str, list[tuple[str, Mapping[str, Any]]]
+        ] = defaultdict(list)
+        for raw_key, raw_record in raw_records.items():
+            registry_key = _lower_hex_sha256(
+                raw_key, field="prediction_receipt_registry.key"
+            )
+            if not isinstance(raw_record, Mapping):
+                raise MeasurementCeilingError(
+                    "prediction receipt registry record must be an object"
+                )
+            if "token" in raw_record:
+                raise MeasurementCeilingError(
+                    "raw prediction receipt token was persisted"
+                )
+            issued = raw_record.get("issued")
+            if not isinstance(issued, Mapping):
+                raise MeasurementCeilingError(
+                    "prediction receipt issued record is invalid"
+                )
+            if "token" in issued:
+                raise MeasurementCeilingError(
+                    "raw prediction receipt token was persisted in issued record"
+                )
+            issued_record_sha256 = _lower_hex_sha256(
+                raw_record.get("issued_record_sha256"),
+                field="prediction_receipt_registry.issued_record_sha256",
+            )
+            if _uncertainty_canonical_sha256(issued) != issued_record_sha256:
+                raise MeasurementCeilingError(
+                    "prediction receipt registry record hash mismatch"
+                )
+            if issued.get("receipt_id_sha256") != registry_key:
+                raise MeasurementCeilingError(
+                    "prediction receipt registry identity mismatch"
+                )
+            records[registry_key] = raw_record
+            by_record_sha256[issued_record_sha256].append(
+                (registry_key, raw_record)
+            )
+
+        measurement_snapshot = collection.get("gaze_measurement_contract")
+        if not isinstance(measurement_snapshot, Mapping) or not isinstance(
+            measurement_snapshot.get("contract"), Mapping
+        ):
+            raise MeasurementCeilingError(
+                "frozen gaze measurement contract snapshot is unavailable"
+            )
+        measurement_contract = measurement_snapshot["contract"]
+        if not _canonical_equal(
+            measurement_contract, frozen_measurement_contract
+        ) or (
+            measurement_snapshot.get("sha256")
+            != frozen_measurement_contract_sha256
+        ) or (
+            _uncertainty_canonical_sha256(measurement_contract)
+            != frozen_measurement_contract_sha256
+        ) or (
+            measurement_snapshot.get("contract_id")
+            != frozen_measurement_contract.get("contract_id")
+        ) or (
+            measurement_snapshot.get("contract_version")
+            != frozen_measurement_contract.get("contract_version")
+        ):
+            raise MeasurementCeilingError(
+                "session measurement contract is not the frozen preflight contract"
+            )
+        target_spec = measurement_contract.get("target_independence")
+        targets = (
+            target_spec.get("selected_validation_targets")
+            if isinstance(target_spec, Mapping)
+            else None
+        )
+        if not isinstance(targets, list) or len(targets) != (
+            FIXED_TARGET_CLUSTER_COUNT
+        ):
+            raise MeasurementCeilingError(
+                "frozen five-target validation design is unavailable"
+            )
+        viewport = {
+            "width_px": int(viewport_width),
+            "height_px": int(viewport_height),
+        }
+        if collection.get("assessment_viewport") != viewport:
+            raise MeasurementCeilingError(
+                "collection assessment viewport does not match participant viewport"
+            )
+        if collection.get("model_artifact_sha256") != model_artifact_file_sha256:
+            raise MeasurementCeilingError(
+                "collection model artifact does not match analyzed model file"
+            )
+        linked = participant.get("linked_data")
+        if not isinstance(linked, Mapping):
+            raise MeasurementCeilingError(
+                "participant linked data is unavailable for receipt binding"
+            )
+        if linked.get("model_artifact_sha256") != model_artifact_file_sha256:
+            raise MeasurementCeilingError(
+                "linked model artifact hash does not match analyzed model file"
+            )
+        expected_common = {
+            "study_session_id": participant.get("study_session_id"),
+            "authorization_fingerprint_sha256": participant.get(
+                "access_token_sha256"
+            ),
+            "assessment_id": collection.get("assessment_id"),
+            "model_name": linked.get("model_name"),
+            "model_artifact_sha256": model_artifact_file_sha256,
+            "capture_session_id": linked.get("gaze_session_id"),
+            "viewport": viewport,
+            "measurement_contract_sha256": frozen_measurement_contract_sha256,
+        }
+        _lower_hex_sha256(
+            expected_common["authorization_fingerprint_sha256"],
+            field="participant.access_token_sha256",
+        )
+        for field in (
+            "study_session_id",
+            "assessment_id",
+            "model_name",
+            "capture_session_id",
+        ):
+            value = expected_common[field]
+            if not isinstance(value, str) or not value.strip():
+                raise MeasurementCeilingError(
+                    f"receipt binding {field} is unavailable"
+                )
+        if linked.get("assessment_id") != expected_common["assessment_id"]:
+            raise MeasurementCeilingError(
+                "participant assessment linkage does not match collection"
+            )
+
+        quality = participant.get("quality")
+        calibration_quality = (
+            quality.get("calibration") if isinstance(quality, Mapping) else None
+        )
+        calibration_capture_raw = (
+            calibration_quality.get("capture_contract")
+            if isinstance(calibration_quality, Mapping)
+            else None
+        )
+        if not isinstance(calibration_capture_raw, Mapping):
+            raise MeasurementCeilingError(
+                "calibration capture contract is unavailable for receipt binding"
+            )
+        if (
+            calibration_quality.get("model_artifact_sha256")
+            != model_artifact_file_sha256
+        ):
+            raise MeasurementCeilingError(
+                "calibration quality model artifact hash does not match analyzed model file"
+            )
+        calibration_capture = normalize_capture_contract(calibration_capture_raw)
+
+        used_registry_keys: set[str] = set()
+        used_record_sha256s: set[str] = set()
+        phases: dict[str, dict[str, Any]] = {}
+        phase_captures: dict[str, dict[str, Any]] = {}
+        for phase in FIXED_TARGET_PHASES:
+            validation = validations.get(phase)
+            if not isinstance(validation, Mapping):
+                raise MeasurementCeilingError(
+                    f"{phase} validation summary is unavailable"
+                )
+            summary_phase = _receipt_phase_rows(
+                validation,
+                phase=phase,
+                collection=collection,
+                model_artifact_file_sha256=model_artifact_file_sha256,
+                viewport_width=viewport_width,
+                viewport_height=viewport_height,
+            )
+            if summary_phase.get("integrity_status") != "passed":
+                raise MeasurementCeilingError(
+                    f"{phase} receipt summary failed: {summary_phase.get('reason')}"
+                )
+            if not _canonical_equal(
+                validation.get("gaze_measurement_contract"),
+                measurement_snapshot,
+            ):
+                raise MeasurementCeilingError(
+                    f"{phase} validation measurement contract snapshot mismatch"
+                )
+            summary_capture_check = validation.get("capture_contract_check")
+            if (
+                not isinstance(summary_capture_check, Mapping)
+                or summary_capture_check.get("compatible") is not True
+            ):
+                raise MeasurementCeilingError(
+                    f"{phase} validation capture contract check did not pass"
+                )
+            bundle = validation["prediction_receipt_bundle"]
+            record_sha256s = bundle["receipt_record_sha256s"]
+            reconstructed_samples: list[dict[str, Any]] = []
+            reconstructed_failures: list[dict[str, Any]] = []
+            reconstructed_observations: list[dict[str, Any]] = []
+            phase_capture: dict[str, Any] | None = None
+            capture_warnings: list[str] = []
+            for ordinal, record_sha256 in enumerate(record_sha256s):
+                normalized_record_sha256 = _lower_hex_sha256(
+                    record_sha256,
+                    field=f"{phase}.receipt_record_sha256",
+                )
+                if normalized_record_sha256 in used_record_sha256s:
+                    raise MeasurementCeilingError(
+                        "prediction receipt record was reused across phases"
+                    )
+                used_record_sha256s.add(normalized_record_sha256)
+                matches = by_record_sha256.get(normalized_record_sha256, [])
+                if len(matches) != 1:
+                    raise MeasurementCeilingError(
+                        f"{phase} receipt registry record is missing or duplicated"
+                    )
+                registry_key, record = matches[0]
+                used_registry_keys.add(registry_key)
+                issued = record["issued"]
+                if (
+                    not isinstance(record.get("consumed_at_utc"), str)
+                    or not str(record.get("consumed_at_utc") or "").strip()
+                    or record.get("consumed_validation_phase") != phase
+                ):
+                    raise MeasurementCeilingError(
+                        f"{phase} prediction receipt consumption binding mismatch"
+                    )
+                if issued.get("schema_version") != (
+                    PREDICTION_RECEIPT_SCHEMA_VERSION
+                ):
+                    raise MeasurementCeilingError(
+                        f"{phase} prediction receipt schema mismatch"
+                    )
+                if not isinstance(issued.get("issued_at_utc"), str) or not str(
+                    issued.get("issued_at_utc") or ""
+                ).strip():
+                    raise MeasurementCeilingError(
+                        f"{phase} prediction receipt issue time is invalid"
+                    )
+                for field, expected in expected_common.items():
+                    if not _canonical_equal(issued.get(field), expected):
+                        raise MeasurementCeilingError(
+                            f"{phase} prediction receipt {field} binding mismatch"
+                        )
+                if issued.get("phase") != phase:
+                    raise MeasurementCeilingError(
+                        f"{phase} prediction receipt phase binding mismatch"
+                    )
+                target = targets[ordinal // FIXED_TARGET_REPEATS_PER_PHASE]
+                if not isinstance(target, Mapping):
+                    raise MeasurementCeilingError(
+                        f"{phase} frozen target definition is invalid"
+                    )
+                expected_target = _expected_receipt_target(target, viewport)
+                if (
+                    type(issued.get("receipt_ordinal")) is not int
+                    or issued.get("receipt_ordinal") != ordinal
+                    or type(issued.get("target_repeat_index")) is not int
+                    or issued.get("target_repeat_index")
+                    != ordinal % FIXED_TARGET_REPEATS_PER_PHASE
+                    or not _canonical_equal(issued.get("target"), expected_target)
+                ):
+                    raise MeasurementCeilingError(
+                        f"{phase} prediction receipt frozen target/ordinal/repeat mismatch"
+                    )
+                capture_check = issued.get("capture_contract_check")
+                if (
+                    not isinstance(capture_check, Mapping)
+                    or capture_check.get("compatible") is not True
+                ):
+                    raise MeasurementCeilingError(
+                        f"{phase} prediction receipt capture check did not pass"
+                    )
+                receipt_capture = normalize_capture_contract(
+                    issued.get("capture_contract")
+                )
+                calibration_check = compare_capture_contracts(
+                    calibration_capture,
+                    receipt_capture,
+                )
+                if calibration_check.get("compatible") is not True:
+                    raise MeasurementCeilingError(
+                        f"{phase} prediction receipt capture is calibration-incompatible"
+                    )
+                capture_warnings.extend(
+                    str(value) for value in calibration_check.get("warnings", [])
+                )
+                if phase_capture is None:
+                    phase_capture = receipt_capture
+                else:
+                    within_phase = compare_capture_contracts(
+                        phase_capture,
+                        receipt_capture,
+                    )
+                    if within_phase.get("compatible") is not True:
+                        raise MeasurementCeilingError(
+                            f"{phase} prediction receipt capture changed within phase"
+                        )
+                    capture_warnings.extend(
+                        str(value) for value in within_phase.get("warnings", [])
+                    )
+                sample, failure, uncertainty = _receipt_outcome_sample(
+                    issued,
+                    expected_target=expected_target,
+                    viewport=viewport,
+                    issued_record_sha256=normalized_record_sha256,
+                )
+                reconstructed_samples.append(sample)
+                if failure is not None:
+                    reconstructed_failures.append(failure)
+                reconstructed_observations.append(
+                    {
+                        "schema_version": RUNTIME_OBSERVATION_SCHEMA_VERSION,
+                        "receipt_record_sha256": normalized_record_sha256,
+                        "phase": phase,
+                        "receipt_ordinal": ordinal,
+                        "target_id": expected_target["target_id"],
+                        "target_repeat_index": (
+                            ordinal % FIXED_TARGET_REPEATS_PER_PHASE
+                        ),
+                        "prediction_success": sample["prediction_success"],
+                        "uncertainty": json.loads(
+                            _uncertainty_canonical_json_bytes(uncertainty).decode(
+                                "utf-8"
+                            )
+                        ),
+                    }
+                )
+            if phase_capture is None:
+                raise MeasurementCeilingError(
+                    f"{phase} prediction receipt capture contract is unavailable"
+                )
+            if not _canonical_equal(
+                validation.get("capture_contract"), phase_capture
+            ):
+                raise MeasurementCeilingError(
+                    f"{phase} validation capture contract binding mismatch"
+                )
+            if not _canonical_equal(
+                validation.get("samples"), reconstructed_samples
+            ):
+                raise MeasurementCeilingError(
+                    f"{phase} validation samples do not reconstruct from receipts"
+                )
+            if not _canonical_equal(
+                validation.get("prediction_failures"),
+                reconstructed_failures,
+            ):
+                raise MeasurementCeilingError(
+                    f"{phase} validation failures do not reconstruct from receipts"
+                )
+            if not _canonical_equal(
+                validation.get("uncertainty_observations"),
+                reconstructed_observations,
+            ):
+                raise MeasurementCeilingError(
+                    f"{phase} uncertainty observations do not reconstruct from receipts"
+                )
+            phase_captures[phase] = phase_capture
+            phases[phase] = {
+                **summary_phase,
+                "status": "verified",
+                "geometry_integrity_status": "passed",
+                "uncertainty_availability_status": (
+                    "scored_for_all_successful_predictions"
+                    if summary_phase.get("status") == "verified_scored"
+                    else "not_evaluable_successful_uncertainty_unavailable"
+                ),
+                "samples": reconstructed_samples,
+                "prediction_failures": reconstructed_failures,
+                "capture_contract": phase_capture,
+                "capture_contract_warnings": sorted(set(capture_warnings)),
+            }
+        cross_phase = compare_capture_contracts(
+            phase_captures["start"], phase_captures["end"]
+        )
+        if cross_phase.get("compatible") is not True:
+            raise MeasurementCeilingError(
+                "start/end prediction receipt capture contracts are incompatible"
+            )
+        if set(records) != used_registry_keys:
+            raise MeasurementCeilingError(
+                "prediction receipt registry contains unbound records"
+            )
+        uncertainty_available = all(
+            phases[phase]["uncertainty_availability_status"]
+            == "scored_for_all_successful_predictions"
+            for phase in FIXED_TARGET_PHASES
+        )
+        return {
+            "status": "verified",
+            "integrity_status": "passed",
+            "reason": (
+                "both 15-receipt phases reconstructed from the complete registry"
+            ),
+            "record_count": len(records),
+            "required_record_count": expected_total,
+            "phase_count": len(FIXED_TARGET_PHASES),
+            "receipts_per_phase": expected_count,
+            "measurement_contract_sha256": frozen_measurement_contract_sha256,
+            "model_artifact_sha256": model_artifact_file_sha256,
+            "assessment_viewport": viewport,
+            "uncertainty_availability_status": (
+                "scored_for_all_successful_predictions"
+                if uncertainty_available
+                else "not_evaluable_successful_uncertainty_unavailable"
+            ),
+            "cross_phase_capture_contract": cross_phase,
+            "phases": phases,
+        }
+    except (
+        MeasurementCeilingError,
+        OSError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        return {
+            "status": "failed_integrity",
+            "integrity_status": "failed",
+            "reason": str(exc),
+            "record_count": (
+                len(registry.get("records", {}))
+                if isinstance(registry, Mapping)
+                and isinstance(registry.get("records"), Mapping)
+                else 0
+            ),
+            "required_record_count": expected_total,
+            "phases": {},
+        }
+
+
 def _fixed_uncertainty_coverage_scope(
     rows: Sequence[Mapping[str, Any]],
     *,
@@ -1355,18 +2217,42 @@ def _fixed_uncertainty_coverage_scope(
 
 def _heldout_uncertainty_coverage_risk(
     model: Mapping[str, Any],
-    validations: Mapping[str, Any],
-    collection: Mapping[str, Any],
-    *,
-    model_artifact_file_sha256: str,
-    viewport_width: float,
-    viewport_height: float,
+    fixed_target_receipt_integrity: Mapping[str, Any],
 ) -> dict[str, Any]:
+    receipt_status = fixed_target_receipt_integrity.get("integrity_status")
+    if receipt_status == "failed":
+        return {
+            "status": "not_evaluable_integrity_failure",
+            "integrity_status": "failed",
+            "receipt_integrity_status": "failed",
+            "reason": str(fixed_target_receipt_integrity.get("reason")),
+            "fixed_target_receipt_integrity": {
+                "status": fixed_target_receipt_integrity.get("status"),
+                "integrity_status": receipt_status,
+            },
+            "threshold_selected": False,
+            "quality_band_change_authorized": False,
+        }
+    if receipt_status != "passed":
+        return {
+            "status": "not_evaluable_receipts_unavailable",
+            "integrity_status": "not_applicable",
+            "receipt_integrity_status": "not_applicable",
+            "reason": str(fixed_target_receipt_integrity.get("reason")),
+            "fixed_target_receipt_integrity": {
+                "status": fixed_target_receipt_integrity.get("status"),
+                "integrity_status": receipt_status,
+            },
+            "threshold_selected": False,
+            "quality_band_change_authorized": False,
+        }
+
     model_binding = _uncertainty_model_binding(model)
     if model_binding["status"] == "unavailable":
         return {
-            "status": "not_evaluable",
+            "status": "not_evaluable_model_unavailable",
             "integrity_status": "not_applicable",
+            "receipt_integrity_status": "passed",
             "reason": model_binding["reason"],
             "model_binding": model_binding,
             "threshold_selected": False,
@@ -1376,6 +2262,7 @@ def _heldout_uncertainty_coverage_risk(
         return {
             "status": "not_evaluable_integrity_failure",
             "integrity_status": "failed",
+            "receipt_integrity_status": "passed",
             "reason": model_binding["reason"],
             "model_binding": model_binding,
             "threshold_selected": False,
@@ -1383,24 +2270,29 @@ def _heldout_uncertainty_coverage_risk(
         }
 
     phases: dict[str, dict[str, Any]] = {}
-    for phase in ("start", "end"):
-        validation = validations.get(phase)
-        if not isinstance(validation, Mapping):
+    receipt_phases = fixed_target_receipt_integrity.get("phases")
+    if not isinstance(receipt_phases, Mapping):
+        return {
+            "status": "not_evaluable_integrity_failure",
+            "integrity_status": "failed",
+            "receipt_integrity_status": "failed",
+            "reason": "verified receipt integrity has no phase reconstruction",
+            "model_binding": model_binding,
+            "threshold_selected": False,
+            "quality_band_change_authorized": False,
+        }
+    for phase in FIXED_TARGET_PHASES:
+        verified = receipt_phases.get(phase)
+        if not isinstance(verified, Mapping):
             phases[phase] = {
-                "status": "not_evaluable_receipts_unavailable",
-                "integrity_status": "not_applicable",
-                "reason": f"{phase} validation is unavailable",
+                "status": "not_evaluable_integrity_failure",
+                "integrity_status": "failed",
+                "reason": f"{phase} receipt phase is unavailable",
             }
-            continue
-        verified = _receipt_phase_rows(
-            validation,
-            phase=phase,
-            collection=collection,
-            model_artifact_file_sha256=model_artifact_file_sha256,
-            viewport_width=viewport_width,
-            viewport_height=viewport_height,
-        )
-        if verified.get("status") == "verified_scored":
+        elif (
+            verified.get("uncertainty_availability_status")
+            == "scored_for_all_successful_predictions"
+        ):
             coverage = _fixed_uncertainty_coverage_scope(
                 verified["rows"],
                 scope=phase,
@@ -1409,12 +2301,24 @@ def _heldout_uncertainty_coverage_risk(
             coverage["receipt_integrity"] = verified["receipt_integrity"]
             phases[phase] = coverage
         else:
-            phases[phase] = verified
+            phases[phase] = {
+                "status": "not_evaluable_successful_uncertainty_unavailable",
+                "integrity_status": "passed",
+                "reason": verified.get("reason"),
+                "attempted_count": verified.get("attempted_count"),
+                "successful_count": verified.get("successful_count"),
+                "no_face_count": verified.get("no_face_count"),
+                "successful_uncertainty_unavailable_count": verified.get(
+                    "successful_uncertainty_unavailable_count"
+                ),
+                "receipt_integrity": verified.get("receipt_integrity"),
+            }
 
     if any(phase.get("integrity_status") == "failed" for phase in phases.values()):
         return {
             "status": "not_evaluable_integrity_failure",
             "integrity_status": "failed",
+            "receipt_integrity_status": "passed",
             "reason": "at least one fixed-target receipt phase failed integrity",
             "model_binding": model_binding,
             "phases": phases,
@@ -1426,8 +2330,9 @@ def _heldout_uncertainty_coverage_risk(
         for phase in phases.values()
     ):
         return {
-            "status": "not_evaluable",
+            "status": "not_evaluable_uncertainty_unavailable",
             "integrity_status": "passed",
+            "receipt_integrity_status": "passed",
             "reason": (
                 "both receipt-verified phases require scored uncertainty for every "
                 "successful prediction"
@@ -1443,6 +2348,7 @@ def _heldout_uncertainty_coverage_risk(
         return {
             "status": "not_evaluable_integrity_failure",
             "integrity_status": "failed",
+            "receipt_integrity_status": "passed",
             "reason": "start/end uncertainty target cluster counts differ",
             "model_binding": model_binding,
             "phases": phases,
@@ -1465,6 +2371,7 @@ def _heldout_uncertainty_coverage_risk(
         return {
             "status": "not_evaluable_integrity_failure",
             "integrity_status": "failed",
+            "receipt_integrity_status": "passed",
             "reason": "start/end uncertainty target IDs or order differ",
             "model_binding": model_binding,
             "phases": phases,
@@ -1484,6 +2391,7 @@ def _heldout_uncertainty_coverage_risk(
     return {
         "status": "evaluable_descriptive_heldout",
         "integrity_status": "passed",
+        "receipt_integrity_status": "passed",
         "definition_sha256": model_binding["frozen_definition_sha256"],
         "model_binding": model_binding,
         "fixed_requested_coverages": list(UNCERTAINTY_V2_COVERAGE_LEVELS),
@@ -2467,14 +3375,15 @@ def build_measurement_ceiling_result(
     calibration_session_metadata_path: str | Path,
     calibration_manifest_path: str | Path,
     model_artifact_path: str | Path,
-    line_gap_px: float,
-    median_word_width_px: float,
+    line_gap_px: float = DEFAULT_LINE_GAP_PX,
+    median_word_width_px: float = DEFAULT_MEDIAN_WORD_WIDTH_PX,
     participant_session_label: str = "participant-session",
     calibration_manifest_label: str = "calibration-manifest",
     model_artifact_label: str = "model-artifact",
-    bootstrap_resamples: int = 10_000,
-    bootstrap_seed: int = 20260810,
+    bootstrap_resamples: int = DEFAULT_BOOTSTRAP_RESAMPLES,
+    bootstrap_seed: int = DEFAULT_BOOTSTRAP_SEED,
     target_overlap_tolerance: float = DEFAULT_TARGET_OVERLAP_TOLERANCE_SIGNED,
+    analysis_protocol_path: str | Path = DEFAULT_PREFLIGHT_PROTOCOL_PATH,
 ) -> dict[str, Any]:
     """Build a deterministic aggregate result from explicit target evidence."""
 
@@ -2482,9 +3391,19 @@ def build_measurement_ceiling_result(
     session_metadata_path = Path(calibration_session_metadata_path).resolve()
     manifest_path = Path(calibration_manifest_path).resolve()
     model_path = Path(model_artifact_path).resolve()
+    preflight_path = Path(analysis_protocol_path).resolve()
+    preflight = _load_preflight_protocol(preflight_path)
     line_gap = _positive(line_gap_px, field="line_gap_px")
     word_width = _positive(median_word_width_px, field="median_word_width_px")
     tolerance = _signed_distance_tolerance(target_overlap_tolerance)
+    analysis_config = _verify_analysis_config(
+        preflight,
+        line_gap_px=line_gap,
+        median_word_width_px=word_width,
+        target_overlap_tolerance=tolerance,
+        bootstrap_resamples=bootstrap_resamples,
+        bootstrap_seed=bootstrap_seed,
+    )
     participant = _load_object(participant_path, label="participant session")
     session_metadata = _load_object(
         session_metadata_path,
@@ -2493,6 +3412,13 @@ def build_measurement_ceiling_result(
     calibration_records = _load_jsonl(manifest_path, label="calibration manifest")
     model = _load_object(model_path, label="model artifact")
     model_file_sha256 = _sha256(model_path)
+    input_sha256s = {
+        "participant_session": _sha256(participant_path),
+        "calibration_session_metadata": _sha256(session_metadata_path),
+        "calibration_manifest": _sha256(manifest_path),
+        "model_artifact": model_file_sha256,
+        "analysis_protocol": preflight["protocol_file_sha256"],
+    }
 
     general_collection = participant.get("general_collection")
     if not isinstance(general_collection, Mapping):
@@ -2517,11 +3443,39 @@ def build_measurement_ceiling_result(
     viewport_width = _positive(device.get("viewport_width"), field="viewport_width")
     viewport_height = _positive(device.get("viewport_height"), field="viewport_height")
 
+    fixed_target_receipt_integrity = _fixed_target_receipt_integrity(
+        participant,
+        validations,
+        general_collection,
+        model_artifact_file_sha256=model_file_sha256,
+        viewport_width=viewport_width,
+        viewport_height=viewport_height,
+        frozen_measurement_contract=preflight["measurement_contract"],
+        frozen_measurement_contract_sha256=preflight[
+            "measurement_contract_canonical_sha256"
+        ],
+    )
+    verified_phases = fixed_target_receipt_integrity.get("phases")
+    if fixed_target_receipt_integrity.get("integrity_status") == "passed" and (
+        isinstance(verified_phases, Mapping)
+    ):
+        start_metric_source: Mapping[str, Any] = {
+            "samples": verified_phases["start"]["samples"]
+        }
+        end_metric_source: Mapping[str, Any] = {
+            "samples": verified_phases["end"]["samples"]
+        }
+    else:
+        start_metric_source = start_validation
+        end_metric_source = end_validation
     start_records, start_attempted = _validation_records(
-        start_validation,
+        start_metric_source,
         phase="start",
     )
-    end_records, end_attempted = _validation_records(end_validation, phase="end")
+    end_records, end_attempted = _validation_records(
+        end_metric_source,
+        phase="end",
+    )
     start_targets = _target_coordinates(start_records)
     end_targets = _target_coordinates(end_records)
     if start_targets != end_targets:
@@ -2550,11 +3504,7 @@ def build_measurement_ceiling_result(
     )
     heldout_uncertainty = _heldout_uncertainty_coverage_risk(
         model,
-        validations,
-        general_collection,
-        model_artifact_file_sha256=model_file_sha256,
-        viewport_width=viewport_width,
-        viewport_height=viewport_height,
+        fixed_target_receipt_integrity,
     )
     uncertainty_v2_requirements = _future_uncertainty_v2_requirements(
         model,
@@ -2594,16 +3544,58 @@ def build_measurement_ceiling_result(
             "p90_error_in_median_word_widths": p90_error / word_width,
         }
 
-    integrity_gate_passed = (
+    geometry_provenance_passed = (
         binding["status"] == "passed"
         and capture_provenance["status"] == "passed"
         and viewport_provenance["status"] == "passed"
         and camera_geometry["status"] == "passed"
         and target_independence["status"] == "passed"
         and model_metrics["validation_metric_consistency"]["status"] == "passed"
-        and heldout_uncertainty.get("integrity_status") != "failed"
     )
-    result_status = "completed" if integrity_gate_passed else "failed_integrity_gate"
+    receipt_integrity_status = fixed_target_receipt_integrity.get(
+        "integrity_status"
+    )
+    uncertainty_integrity_failed = (
+        heldout_uncertainty.get("integrity_status") == "failed"
+    )
+    if receipt_integrity_status == "failed" or not geometry_provenance_passed:
+        geometry_status = "failed_integrity_gate"
+    elif receipt_integrity_status != "passed":
+        geometry_status = "diagnostic_only_unverified"
+    else:
+        geometry_status = "completed_receipt_verified"
+    if geometry_status == "failed_integrity_gate" or uncertainty_integrity_failed:
+        result_status = "failed_integrity_gate"
+    elif geometry_status == "completed_receipt_verified":
+        result_status = "completed"
+    else:
+        result_status = "diagnostic_only_unverified"
+    integrity_gate_passed = result_status == "completed"
+    eligible_claim = (
+        "coarse fixed-target development evidence only"
+        if integrity_gate_passed
+        else "none"
+    )
+    final_input_sha256s = {
+        "participant_session": _sha256(participant_path),
+        "calibration_session_metadata": _sha256(session_metadata_path),
+        "calibration_manifest": _sha256(manifest_path),
+        "model_artifact": _sha256(model_path),
+        "analysis_protocol": _sha256(preflight_path),
+    }
+    if final_input_sha256s != input_sha256s:
+        raise MeasurementCeilingError("an input artifact changed during analysis")
+    measurement_contract_source_path = PROJECT_ROOT / preflight["protocol"][
+        "measurement_contract"
+    ]["source_path"]
+    if _sha256(measurement_contract_source_path) != preflight[
+        "measurement_contract_file_sha256"
+    ]:
+        raise MeasurementCeilingError(
+            "frozen measurement contract changed during analysis"
+        )
+    analysis_source_sha256 = _sha256(Path(__file__))
+    audit_cli_source_sha256 = _sha256(DEFAULT_AUDIT_CLI_PATH)
     linked = participant.get("linked_data", {})
     not_evaluable = {
         "natural_reading_line_accuracy": {
@@ -2629,7 +3621,60 @@ def build_measurement_ceiling_result(
         "schema_version": SCHEMA_VERSION,
         "analysis_id": ANALYSIS_ID,
         "status": result_status,
-        "evidence_class": "exploratory_self_development_only",
+        "measurement_status": {
+            "overall": result_status,
+            "geometry": geometry_status,
+            "geometry_provenance": (
+                "passed"
+                if geometry_provenance_passed
+                else "failed_integrity_gate"
+            ),
+            "uncertainty": heldout_uncertainty.get("status"),
+            "fixed_target_receipt_integrity": (
+                fixed_target_receipt_integrity.get("status")
+            ),
+        },
+        "evidence_class": (
+            "receipt_verified_exploratory_self_development_only"
+            if integrity_gate_passed
+            else "diagnostic_exploratory_self_development_only"
+        ),
+        "analysis_protocol": {
+            "protocol_id": preflight["protocol"]["protocol_id"],
+            "protocol_version": preflight["protocol"]["protocol_version"],
+            "status": preflight["protocol"]["status"],
+            "scope_kind": preflight["protocol"]["scope"]["kind"],
+            "full_193_sample_measurement_ceiling_protocol_executed": False,
+            "participant_flow_total_observations": 95,
+            "path": _project_reference(preflight_path),
+            "file_sha256": preflight["protocol_file_sha256"],
+            "canonical_sha256": preflight["protocol_canonical_sha256"],
+            "measurement_contract_path": preflight["protocol"][
+                "measurement_contract"
+            ]["source_path"],
+            "measurement_contract_file_sha256": preflight[
+                "measurement_contract_file_sha256"
+            ],
+            "measurement_contract_canonical_sha256": preflight[
+                "measurement_contract_canonical_sha256"
+            ],
+        },
+        "analysis_config": analysis_config,
+        "freshness": {
+            "status": "hash_bound_inputs_protocol_config_and_generator",
+            "protocol_frozen_before_fresh_capture": True,
+            "deterministic_without_wall_clock_state": True,
+            "input_sha256s": dict(input_sha256s),
+            "input_stability_check": "unchanged_before_result_assembly",
+            "analysis_source": {
+                "path": _project_reference(Path(__file__)),
+                "sha256": analysis_source_sha256,
+            },
+            "audit_cli_source": {
+                "path": _project_reference(DEFAULT_AUDIT_CLI_PATH),
+                "sha256": audit_cli_source_sha256,
+            },
+        },
         "analysis_contract": {
             "cpu_only": True,
             "standard_library_only": True,
@@ -2647,23 +3692,31 @@ def build_measurement_ceiling_result(
             "uncertainty_v2_score_uses_heldout_target_error": False,
             "fixed_target_sample_rows_treated_as_independent": False,
             "descriptive_percentile_method": "nearest rank at ceil(n * p)",
+            "fixed_target_geometry_requires_complete_server_receipt_registry": True,
+            "uncertainty_availability_separate_from_geometry_integrity": True,
+            "legacy_no_receipt_status": "diagnostic_only_unverified",
+            "full_193_sample_protocol_claimed_as_executed": False,
         },
         "inputs": {
             "participant_session": {
                 "label": participant_session_label,
-                "sha256": _sha256(participant_path),
+                "sha256": input_sha256s["participant_session"],
             },
             "calibration_session_metadata": {
                 "label": "linked calibration session metadata",
-                "sha256": _sha256(session_metadata_path),
+                "sha256": input_sha256s["calibration_session_metadata"],
             },
             "calibration_manifest": {
                 "label": calibration_manifest_label,
-                "sha256": _sha256(manifest_path),
+                "sha256": input_sha256s["calibration_manifest"],
             },
             "model_artifact": {
                 "label": model_artifact_label,
                 "sha256": model_file_sha256,
+            },
+            "analysis_protocol": {
+                "label": "participant five-point integrity preflight",
+                "sha256": preflight["protocol_file_sha256"],
             },
         },
         "provenance": {
@@ -2687,6 +3740,17 @@ def build_measurement_ceiling_result(
             "cross_phase_camera_geometry": camera_geometry,
             "bindings": binding,
             "model": model_metrics,
+            "fixed_target_receipt_integrity": {
+                "status": fixed_target_receipt_integrity.get("status"),
+                "integrity_status": receipt_integrity_status,
+                "reason": fixed_target_receipt_integrity.get("reason"),
+                "record_count": fixed_target_receipt_integrity.get(
+                    "record_count"
+                ),
+                "required_record_count": fixed_target_receipt_integrity.get(
+                    "required_record_count"
+                ),
+            },
             "uncertainty_v2_integrity": {
                 "status": heldout_uncertainty.get("integrity_status"),
                 "evaluation_status": heldout_uncertainty.get("status"),
@@ -2697,8 +3761,18 @@ def build_measurement_ceiling_result(
             "width_px": viewport_width,
             "height_px": viewport_height,
         },
+        "fixed_target_receipt_integrity": fixed_target_receipt_integrity,
         "target_independence": target_independence,
         "raw_validation": {
+            "evidence_status": (
+                "receipt_verified_geometry"
+                if receipt_integrity_status == "passed"
+                else (
+                    "failed_integrity_diagnostic_only"
+                    if receipt_integrity_status == "failed"
+                    else "diagnostic_only_unverified"
+                )
+            ),
             "start": start_metrics,
             "end": end_metrics,
         },
@@ -2718,9 +3792,11 @@ def build_measurement_ceiling_result(
         "decision": {
             "quality_band_changed": False,
             "production_model_changed": False,
-            "eligible_claim": "coarse fixed-target development evidence only",
+            "eligible_claim": eligible_claim,
             "line_or_word_accuracy_claimed": False,
             "integrity_gate_passed": integrity_gate_passed,
+            "promotion_authorized": False,
+            "fresh_confirmation_required": True,
         },
     }
     return result
@@ -2752,6 +3828,9 @@ def render_measurement_ceiling_markdown(
     heldout_uncertainty = result["heldout_uncertainty_coverage_risk"]
     uncertainty_v2 = result["future_uncertainty_v2_data_requirements"]
     model = result["provenance"]["model"]
+    fixed_receipts = result["fixed_target_receipt_integrity"]
+    measurement_status = result["measurement_status"]
+    analysis_protocol = result["analysis_protocol"]
     capture = result["provenance"]["capture_contract"]
     camera_geometry = result["provenance"]["cross_phase_camera_geometry"]
     drift = result["drift"]
@@ -2949,9 +4028,20 @@ def render_measurement_ceiling_markdown(
     lines = [
         "# Webcam Gaze Measurement Ceiling v1 - Existing-Data Audit",
         "",
-        f"Status: `{result['status']}`; exploratory self-development evidence only. "
+        f"Overall status: `{measurement_status['overall']}`; geometry: "
+        f"`{measurement_status['geometry']}`; uncertainty: "
+        f"`{measurement_status['uncertainty']}`. Exploratory self-development "
+        "evidence only. "
         "This audit does not promote a model, threshold, gaze quality band, or "
         "participant claim.",
+        "",
+        "Analysis protocol: "
+        f"`{analysis_protocol['protocol_id']}` "
+        f"(`{analysis_protocol['canonical_sha256']}`). This is the participant "
+        "five-point receipt-integrity preflight (65 calibration-context rows plus "
+        "15 start and 15 end receipts, 95 participant-flow observations total); "
+        "it does **not** claim that the separate 193-sample measurement-ceiling "
+        "protocol was executed.",
         "",
         f"Machine-readable result: [`{result_reference}`]({result_reference})",
         "",
@@ -2960,6 +4050,8 @@ def render_measurement_ceiling_markdown(
         "| Check | Result |",
         "| --- | --- |",
         f"| Artifact bindings | {result['provenance']['bindings']['status']} |",
+        "| Fixed-target server receipt registry | "
+        f"{fixed_receipts['status']} |",
         f"| Server session/manifest capture contract | {capture['status']} |",
         "| Calibration/evaluation viewport contract | "
         f"{result['provenance']['calibration_viewport_contract']['status']} |",
@@ -2992,6 +4084,7 @@ def render_measurement_ceiling_markdown(
         "calibration_session_metadata",
         "calibration_manifest",
         "model_artifact",
+        "analysis_protocol",
     ):
         source = result["inputs"][name]
         lines.append(f"- `{name}`: `{source['sha256']}`")
@@ -3043,6 +4136,23 @@ def render_measurement_ceiling_markdown(
                 "is retained for diagnosis but is ineligible for promotion.",
             ]
         )
+    if fixed_receipts["status"] == "diagnostic_only_unverified":
+        lines.extend(
+            [
+                "",
+                "**Legacy receipt boundary:** the numeric fixed-target values are "
+                "retained only as diagnostics because the complete private server "
+                "receipt registry is absent. Eligible claim: `none`.",
+            ]
+        )
+    elif fixed_receipts["integrity_status"] == "failed":
+        lines.extend(
+            [
+                "",
+                "**Prediction-receipt integrity failure:** "
+                f"{fixed_receipts['reason']}. Eligible claim: `none`.",
+            ]
+        )
     if camera_geometry["status"] != "passed":
         lines.extend(
             [
@@ -3083,6 +4193,10 @@ def render_measurement_ceiling_markdown(
         [
             "",
             "## Raw fixed-target result",
+            "",
+            "Evidence status: "
+            f"`{result['raw_validation']['evidence_status']}`. Receipt-unverified "
+            "legacy values remain diagnostic and cannot support an eligible claim.",
             "",
             "| Phase | Median px | P90 px | Target-macro mean px | Target-macro bias px | Median absolute X px | Median absolute Y px | Coarse nearest-target accuracy |",
             "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
@@ -3297,9 +4411,10 @@ def render_measurement_ceiling_markdown(
             "",
             "## Decision",
             "",
-            "Preserve the negative and mixed findings. The current data support at most "
-            "coarse fixed-target development evidence. Any failed integrity check is a "
-            "hard stop. No quality band, production model, or line/word claim is promoted.",
+            "Preserve the negative and mixed findings. Eligible claim: "
+            f"`{result['decision']['eligible_claim']}`. Receipt-unverified legacy "
+            "data and every failed integrity check are hard stops. No quality band, "
+            "production model, or line/word claim is promoted.",
             "",
         ]
     )

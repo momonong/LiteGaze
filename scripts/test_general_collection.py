@@ -6,6 +6,7 @@ import io
 import json
 import tempfile
 import unittest
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -607,6 +608,53 @@ class GeneralCollectionStoreTests(unittest.TestCase):
         self.session_id = self.enrolled["study_session_id"]
         self.token = self.enrolled["access_token"]
 
+    def _set_visit_one_completion(
+        self,
+        *,
+        used_at: datetime,
+        completed_at: datetime | None,
+        duplicate_completion_event: bool = False,
+    ) -> None:
+        session_path = self.store._session_path(  # noqa: SLF001 - fixture setup
+            self.session_id,
+            "rehearsal",
+        )
+        session = json.loads(session_path.read_text(encoding="utf-8"))
+        session["state"] = "completed"
+        session["events"] = [
+            event
+            for event in session.get("events", [])
+            if event.get("event") != "general_collection_completed"
+        ]
+        if completed_at is not None:
+            completion = {
+                "at_utc": completed_at.astimezone(UTC).isoformat(),
+                "event": "general_collection_completed",
+            }
+            session["events"].append(completion)
+            if duplicate_completion_event:
+                session["events"].append(dict(completion))
+        self.store._write(session_path, session)  # noqa: SLF001 - fixture setup
+
+        registry_path = (
+            self.store._study_root("rehearsal")  # noqa: SLF001 - fixture setup
+            / "collection_invites.json"
+        )
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        first = next(
+            item for item in registry["invites"] if item["visit_index"] == 1
+        )
+        first["used_at_utc"] = used_at.astimezone(UTC).isoformat()
+        registry_path.write_text(
+            json.dumps(registry, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    def _enroll_visit_two(self) -> dict[str, object]:
+        return self.store.enroll(
+            _consent_payload(self.pair["visits"][1]["invite_code"])
+        )
+
     def _prepare_collection(self, *, record_start_validation: bool = True) -> None:
         self.store.record_general_profile(
             self.session_id,
@@ -622,13 +670,19 @@ class GeneralCollectionStoreTests(unittest.TestCase):
         self.store.complete_calibration(
             self.session_id,
             self.token,
-            {"passed": True, "test_fixture": True},
+            {
+                "passed": True,
+                "test_fixture": True,
+                "model_artifact_sha256": "a" * 64,
+            },
             model_name="general-test-model",
+            model_artifact_sha256="a" * 64,
         )
         self.store.start_general_collection(
             self.session_id,
             self.token,
             assessment_viewport=_assessment_viewport(),
+            model_artifact_sha256="a" * 64,
         )
         if record_start_validation:
             self._record_receipt_validation(phase="start")
@@ -695,6 +749,100 @@ class GeneralCollectionStoreTests(unittest.TestCase):
                 _consent_payload(self.pair["visits"][1]["invite_code"])
             )
 
+    def test_visit_two_interval_is_anchored_to_completion_event(self) -> None:
+        now = datetime.now(UTC)
+        self._set_visit_one_completion(
+            used_at=now - timedelta(hours=20),
+            completed_at=now - timedelta(hours=17),
+        )
+        with self.assertRaisesRegex(Exception, "earlier than"):
+            self._enroll_visit_two()
+
+    def test_visit_two_accepts_completion_inside_window_even_if_invite_is_old(self) -> None:
+        now = datetime.now(UTC)
+        self._set_visit_one_completion(
+            used_at=now - timedelta(hours=80),
+            completed_at=now - timedelta(hours=71),
+        )
+        enrolled = self._enroll_visit_two()
+        self.assertEqual(enrolled["mode"], "rehearsal")
+
+    def test_visit_two_fails_closed_without_one_completion_event(self) -> None:
+        now = datetime.now(UTC)
+        for completed_at, duplicate in ((None, False), (now - timedelta(hours=20), True)):
+            with self.subTest(completed_at=completed_at, duplicate=duplicate):
+                self._set_visit_one_completion(
+                    used_at=now - timedelta(hours=20),
+                    completed_at=completed_at,
+                    duplicate_completion_event=duplicate,
+                )
+                with self.assertRaisesRegex(Exception, "completion timestamp"):
+                    self._enroll_visit_two()
+
+    def test_visit_two_system_check_requires_same_coarse_device_policy(self) -> None:
+        self.store.record_general_profile(self.session_id, self.token, _profile())
+        self.store.record_general_system_check(
+            self.session_id,
+            self.token,
+            _system_profile(),
+        )
+        now = datetime.now(UTC)
+        self._set_visit_one_completion(
+            used_at=now - timedelta(hours=20),
+            completed_at=now - timedelta(hours=20),
+        )
+        visit_two = self._enroll_visit_two()
+        visit_two_id = str(visit_two["study_session_id"])
+        visit_two_token = str(visit_two["access_token"])
+        self.store.record_general_profile(visit_two_id, visit_two_token, _profile())
+        mismatched = _system_profile()
+        mismatched["device"] = {
+            **dict(mismatched["device"]),
+            "browser_family": "firefox",
+        }
+        with self.assertRaisesRegex(Exception, "same device class and browser family"):
+            self.store.record_general_system_check(
+                visit_two_id,
+                visit_two_token,
+                mismatched,
+            )
+
+    def test_visit_two_geometry_differences_are_diagnostic_only(self) -> None:
+        self.store.record_general_profile(self.session_id, self.token, _profile())
+        self.store.record_general_system_check(
+            self.session_id,
+            self.token,
+            _system_profile(),
+        )
+        now = datetime.now(UTC)
+        self._set_visit_one_completion(
+            used_at=now - timedelta(hours=20),
+            completed_at=now - timedelta(hours=20),
+        )
+        visit_two = self._enroll_visit_two()
+        visit_two_id = str(visit_two["study_session_id"])
+        visit_two_token = str(visit_two["access_token"])
+        self.store.record_general_profile(visit_two_id, visit_two_token, _profile())
+        changed_geometry = _system_profile()
+        changed_geometry["device"] = {
+            **dict(changed_geometry["device"]),
+            "viewport_width": 1440,
+            "device_pixel_ratio_bucket": "1_5",
+            "camera_width": 1280,
+            "estimated_camera_fps_band": "30_60",
+        }
+        recorded = self.store.record_general_system_check(
+            visit_two_id,
+            visit_two_token,
+            changed_geometry,
+        )
+        comparison = recorded["quality"]["general_system_check"][
+            "paired_visit_device_comparison"
+        ]
+        self.assertTrue(comparison["policy_match"])
+        self.assertFalse(comparison["diagnostics"]["viewport_size"])
+        self.assertFalse(comparison["diagnostics"]["camera_resolution"])
+
     def test_legacy_invite_assignment_needs_no_additive_gaze_contract_field(self) -> None:
         status = self.store.get_session(self.session_id, self.token)
         self.assertNotIn(
@@ -741,6 +889,7 @@ class GeneralCollectionStoreTests(unittest.TestCase):
                 self.session_id,
                 self.token,
                 assessment_viewport=_assessment_viewport(),
+                model_artifact_sha256="a" * 64,
             )
             validated = self._record_receipt_validation(
                 phase="start",
@@ -776,15 +925,61 @@ class GeneralCollectionStoreTests(unittest.TestCase):
         self.store.complete_calibration(
             self.session_id,
             self.token,
-            {"passed": True, "test_fixture": True},
+            {
+                "passed": True,
+                "test_fixture": True,
+                "model_artifact_sha256": "a" * 64,
+            },
             model_name="viewport-test-model",
+            model_artifact_sha256="a" * 64,
         )
         with self.assertRaisesRegex(Exception, "viewport changed since system check"):
             self.store.start_general_collection(
                 self.session_id,
                 self.token,
                 assessment_viewport={"width_px": 1279, "height_px": 800},
+                model_artifact_sha256="a" * 64,
             )
+
+    def test_collection_start_rejects_post_training_model_artifact_replacement(
+        self,
+    ) -> None:
+        self.store.record_general_profile(self.session_id, self.token, _profile())
+        self.store.record_general_system_check(
+            self.session_id,
+            self.token,
+            _system_profile(),
+        )
+        self.store.start_calibration(
+            self.session_id,
+            self.token,
+            "GAZE-ARTIFACT-FREEZE",
+        )
+        self.store.complete_calibration(
+            self.session_id,
+            self.token,
+            {
+                "passed": True,
+                "test_fixture": True,
+                "model_artifact_sha256": "a" * 64,
+            },
+            model_name="artifact-freeze-test-model",
+            model_artifact_sha256="a" * 64,
+        )
+
+        with self.assertRaisesRegex(Exception, "artifact changed"):
+            self.store.start_general_collection(
+                self.session_id,
+                self.token,
+                assessment_viewport=_assessment_viewport(),
+                model_artifact_sha256="b" * 64,
+            )
+
+        public = self.store.get_session(self.session_id, self.token)
+        self.assertEqual(public["state"], "calibration_complete")
+        self.assertIsNone(
+            public.get("general_collection", {}).get("assessment_id")
+        )
 
     def test_validation_rejects_tampered_session_contract_hash(self) -> None:
         self._prepare_collection(record_start_validation=False)
@@ -1097,13 +1292,19 @@ class UnencryptedReadingVideoStoreTests(unittest.TestCase):
         self.store.complete_calibration(
             self.session_id,
             self.token,
-            {"passed": True, "test_fixture": True},
+            {
+                "passed": True,
+                "test_fixture": True,
+                "model_artifact_sha256": "a" * 64,
+            },
             model_name="reading-video-test-model",
+            model_artifact_sha256="a" * 64,
         )
         self.store.start_general_collection(
             self.session_id,
             self.token,
             assessment_viewport=_assessment_viewport(),
+            model_artifact_sha256="a" * 64,
         )
         _record_prediction_receipt_validation(
             self.store,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import tempfile
 import unittest
@@ -12,6 +13,11 @@ from io import StringIO
 from pathlib import Path
 
 from core.gaze_core.measurement_ceiling import (
+    DEFAULT_BOOTSTRAP_RESAMPLES,
+    DEFAULT_BOOTSTRAP_SEED,
+    DEFAULT_LINE_GAP_PX,
+    DEFAULT_MEDIAN_WORD_WIDTH_PX,
+    DEFAULT_PREFLIGHT_PROTOCOL_PATH,
     DEFAULT_TARGET_OVERLAP_TOLERANCE_SIGNED,
     MeasurementCeilingError,
     REPEATABILITY_PROXY_COVERAGE_LEVELS,
@@ -297,6 +303,8 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
         successful_unavailable: tuple[str, int] | None = None,
         definition_sha256: str | None = None,
         target_x_shift_px: float = 0.0,
+        include_model_v2: bool = True,
+        noncanonical_model_state: bool = False,
     ) -> None:
         participant_path, _, _, model_path = paths
         _, frozen_definition_sha256 = verified_definition()
@@ -321,30 +329,33 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
             },
         }
         score_state["state_sha256"] = canonical_sha256(score_state)
-        model["uncertainty_v2"] = {
-            "schema_version": 2,
-            "status": "scored_no_threshold",
-            "definition_sha256": selected_definition_sha256,
-            "threshold": None,
-            "abstention_policy": {
-                "status": "not_selected",
-                "threshold": None,
-                "quality_band": None,
-            },
-            "grid_validation": {
-                "status": "complete",
+        if noncanonical_model_state:
+            score_state["component_reference"]["ood"][0] = float("nan")
+        if include_model_v2:
+            model["uncertainty_v2"] = {
+                "schema_version": 2,
+                "status": "scored_no_threshold",
                 "definition_sha256": selected_definition_sha256,
-                "sample_count": 65,
-            },
-            "oof_evidence": {
-                "definition_sha256": selected_definition_sha256,
-                "coverage_grid": list(UNCERTAINTY_V2_COVERAGE_LEVELS),
-                "threshold_selected": False,
                 "threshold": None,
-                "fresh_matched_contract_capture_required": True,
-            },
-            "final_score_state": score_state,
-        }
+                "abstention_policy": {
+                    "status": "not_selected",
+                    "threshold": None,
+                    "quality_band": None,
+                },
+                "grid_validation": {
+                    "status": "complete",
+                    "definition_sha256": selected_definition_sha256,
+                    "sample_count": 65,
+                },
+                "oof_evidence": {
+                    "definition_sha256": selected_definition_sha256,
+                    "coverage_grid": list(UNCERTAINTY_V2_COVERAGE_LEVELS),
+                    "threshold_selected": False,
+                    "threshold": None,
+                    "fresh_matched_contract_capture_required": True,
+                },
+                "final_score_state": score_state,
+            }
         model_path.write_text(
             json.dumps(model, ensure_ascii=False, sort_keys=True),
             encoding="utf-8",
@@ -353,36 +364,41 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
 
         participant = json.loads(participant_path.read_text(encoding="utf-8"))
         collection = participant["general_collection"]
+        measurement_contract_path = (
+            Path(__file__).resolve().parents[1]
+            / "core"
+            / "gaze_core"
+            / "participant_gaze_measurement_contract_v1.json"
+        )
+        measurement_contract = json.loads(
+            measurement_contract_path.read_text(encoding="utf-8")
+        )
+        if target_x_shift_px:
+            for target in measurement_contract["target_independence"][
+                "selected_validation_targets"
+            ]:
+                target["target_x_viewport_fraction"] += target_x_shift_px / 1000.0
+                target["target_x_norm"] += target_x_shift_px / 500.0
         targets = [
-            ("top_left", 100.0, 100.0),
-            ("top_right", 900.0, 100.0),
-            ("center", 500.0, 400.0),
-            ("bottom_left", 100.0, 700.0),
-            ("bottom_right", 900.0, 700.0),
+            (
+                target["target_id"],
+                float(
+                    math.floor(
+                        float(target["target_x_viewport_fraction"]) * 1000.0
+                        + 0.5
+                    )
+                ),
+                float(
+                    math.floor(
+                        float(target["target_y_viewport_fraction"]) * 800.0
+                        + 0.5
+                    )
+                ),
+            )
+            for target in measurement_contract["target_independence"][
+                "selected_validation_targets"
+            ]
         ]
-        measurement_contract = {
-            "schema_version": 1,
-            "contract_id": "fixture-heldout-measurement",
-            "contract_version": "1",
-            "target_layout": "five-fixed-targets-three-repeats",
-            "target_independence": {
-                "selected_validation_targets": [
-                    {
-                        "target_id": target_id,
-                        "target_x_viewport_fraction": (
-                            base_x + target_x_shift_px
-                        )
-                        / 1000.0,
-                        "target_y_viewport_fraction": target_y / 800.0,
-                        "target_x_norm": (
-                            (base_x + target_x_shift_px) / 500.0 - 1.0
-                        ),
-                        "target_y_norm": target_y / 400.0 - 1.0,
-                    }
-                    for target_id, base_x, target_y in targets
-                ]
-            },
-        }
         measurement_sha256 = canonical_sha256(measurement_contract)
         collection["gaze_measurement_contract"] = {
             "contract_id": measurement_contract["contract_id"],
@@ -395,6 +411,32 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
             "height_px": 800,
         }
         collection["model_artifact_sha256"] = model_file_sha256
+        collection["assessment_id"] = "assessment-1"
+        participant["access_token_sha256"] = canonical_sha256(
+            {"fixture": "authorization"}
+        )
+        participant["linked_data"]["assessment_id"] = "assessment-1"
+        participant["linked_data"]["model_artifact_sha256"] = model_file_sha256
+        capture_contract = {
+            "schema_version": 1,
+            "intent_width_px": 1280,
+            "intent_height_px": 720,
+            "intent_frame_rate_hz": 30.0,
+            "source_width_px": 1280,
+            "source_height_px": 720,
+            "source_frame_rate_hz": 30.0,
+            "transport_width_px": 640,
+            "transport_height_px": 360,
+            "resize_policy": "fit_width_preserve_aspect",
+            "mime_type": "image/jpeg",
+            "jpeg_quality": 0.85,
+            "mirror_applied": False,
+            "facing_mode": "user",
+        }
+        participant["quality"]["calibration"] = {
+            "capture_contract": capture_contract,
+            "model_artifact_sha256": model_file_sha256,
+        }
 
         def scored_observation(score: float) -> dict[str, object]:
             covariance_norm = [[0.0004, 0.0], [0.0, 0.0004]]
@@ -417,12 +459,17 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
             }
 
         validations: dict[str, dict[str, object]] = {}
+        registry_records: dict[str, dict[str, object]] = {}
         for phase_index, phase in enumerate(("start", "end")):
             samples: list[dict[str, object]] = []
             observations: list[dict[str, object]] = []
+            failures: list[dict[str, object]] = []
             record_sha256s: list[str] = []
             for target_index, (target_id, base_x, target_y) in enumerate(targets):
-                target_x = base_x + target_x_shift_px
+                target_x = base_x
+                frozen_target = measurement_contract[
+                    "target_independence"
+                ]["selected_validation_targets"][target_index]
                 for repeat_index in range(3):
                     ordinal = target_index * 3 + repeat_index
                     prediction_success = no_face != (phase, ordinal)
@@ -431,19 +478,17 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
                         "target_id": target_id,
                         "target_x_px": target_x,
                         "target_y_px": target_y,
-                        "target_x_norm": target_x / 500.0 - 1.0,
-                        "target_y_norm": target_y / 400.0 - 1.0,
+                        "target_x_norm": float(frozen_target["target_x_norm"]),
+                        "target_y_norm": float(frozen_target["target_y_norm"]),
                         "prediction_success": prediction_success,
                         "predicted_x_px": (
-                            base_x + error_x if prediction_success else None
+                            target_x + error_x if prediction_success else None
                         ),
                         "predicted_y_px": (
                             target_y if prediction_success else None
                         ),
                         "spatial_error_px": (
-                            abs(error_x - target_x_shift_px)
-                            if prediction_success
-                            else None
+                            abs(error_x) if prediction_success else None
                         ),
                     }
                     score = 0.25 + ordinal * 0.02 + phase_index * 0.001
@@ -459,19 +504,98 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
                         )
                     else:
                         uncertainty = scored_observation(score)
-                    record_sha256 = canonical_sha256(
+                    receipt_id_sha256 = canonical_sha256(
                         {
+                            "fixture_receipt": "study-1",
                             "phase": phase,
                             "ordinal": ordinal,
-                            "target_id": target_id,
-                            "target_x_px": target_x,
-                            "target_y_px": target_y,
-                            "prediction_success": prediction_success,
+                        }
+                    )
+                    prediction = (
+                        {
+                            "success": True,
+                            "screen_xy_px": [target_x + error_x, target_y],
+                            "screen_xy_norm": [
+                                (target_x + error_x) / 500.0 - 1.0,
+                                target_y / 400.0 - 1.0,
+                            ],
+                            "http_status": 200,
+                            "failure_stage": None,
+                            "failure_code": None,
+                            "error": None,
+                            "uncertainty_schema_version": 1,
+                            "uncertainty": uncertainty,
+                        }
+                        if prediction_success
+                        else {
+                            "success": False,
+                            "screen_xy_px": None,
+                            "screen_xy_norm": None,
+                            "http_status": 400,
+                            "failure_stage": "attributable_sensor_failure",
+                            "failure_code": "no_face_detected",
+                            "error": "No face detected",
+                            "uncertainty_schema_version": 1,
                             "uncertainty": uncertainty,
                         }
                     )
+                    issued = {
+                        "schema_version": 1,
+                        "receipt_id_sha256": receipt_id_sha256,
+                        "issued_at_utc": "2026-08-10T00:10:00+00:00",
+                        "study_session_id": "study-1",
+                        "authorization_fingerprint_sha256": participant[
+                            "access_token_sha256"
+                        ],
+                        "assessment_id": "assessment-1",
+                        "model_name": model["name"],
+                        "model_artifact_sha256": model_file_sha256,
+                        "capture_session_id": "calibration-1",
+                        "phase": phase,
+                        "receipt_ordinal": ordinal,
+                        "target_repeat_index": repeat_index,
+                        "target": {
+                            "target_id": target_id,
+                            "target_x_viewport_fraction": float(
+                                frozen_target["target_x_viewport_fraction"]
+                            ),
+                            "target_y_viewport_fraction": float(
+                                frozen_target["target_y_viewport_fraction"]
+                            ),
+                            "target_x_norm": float(frozen_target["target_x_norm"]),
+                            "target_y_norm": float(frozen_target["target_y_norm"]),
+                            "target_x_px": target_x,
+                            "target_y_px": target_y,
+                        },
+                        "viewport": {"width_px": 1000, "height_px": 800},
+                        "measurement_contract_sha256": measurement_sha256,
+                        "capture_contract": capture_contract,
+                        "capture_contract_check": {
+                            "status": "compatible",
+                            "compatible": True,
+                            "reasons": [],
+                            "warnings": [],
+                        },
+                        "prediction": prediction,
+                    }
+                    record_sha256 = canonical_sha256(issued)
+                    registry_records[receipt_id_sha256] = {
+                        "issued": issued,
+                        "issued_record_sha256": record_sha256,
+                        "consumed_at_utc": "2026-08-10T00:20:00+00:00",
+                        "consumed_validation_phase": phase,
+                    }
                     record_sha256s.append(record_sha256)
                     samples.append(sample)
+                    if not prediction_success:
+                        failures.append(
+                            {
+                                "receipt_record_sha256": record_sha256,
+                                "failure_stage": "attributable_sensor_failure",
+                                "failure_code": "no_face_detected",
+                                "http_status": 400,
+                            }
+                        )
                     observations.append(
                         {
                             "schema_version": 1,
@@ -515,23 +639,27 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
                 "observation_sha256s": observation_sha256s,
                 "observations_sha256": canonical_sha256(observations),
             }
-            capture_contract = {
-                "schema_version": 1,
-                "capture_source": "study-direct-frame",
-                "camera_width": 1280,
-                "camera_height": 720,
-            }
             summary: dict[str, object] = {
                 "prediction_receipt_status": "verified",
                 "prediction_receipts_verified": True,
                 "samples": samples,
                 "samples_sha256": canonical_sha256(samples),
                 "capture_contract": capture_contract,
+                "capture_contract_check": {
+                    "status": "compatible",
+                    "compatible": True,
+                    "reasons": [],
+                    "warnings": [],
+                },
+                "prediction_failures": failures,
                 "prediction_receipt_bundle": bundle,
                 "uncertainty_observations": observations,
                 "uncertainty_summary": uncertainty_summary,
                 "model_artifact_sha256": model_file_sha256,
                 "gaze_measurement_contract_sha256": measurement_sha256,
+                "gaze_measurement_contract": collection[
+                    "gaze_measurement_contract"
+                ],
                 "assessment_viewport": {"width_px": 1000, "height_px": 800},
             }
             summary["validation_payload_sha256"] = canonical_sha256(
@@ -553,6 +681,10 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
             )
             validations[phase] = summary
         collection["validations"] = validations
+        collection["prediction_receipts"] = {
+            "schema_version": 1,
+            "records": registry_records,
+        }
         participant_path.write_text(
             json.dumps(participant, ensure_ascii=False, sort_keys=True),
             encoding="utf-8",
@@ -601,10 +733,10 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
             calibration_session_metadata_path=session_metadata_path,
             calibration_manifest_path=manifest_path,
             model_artifact_path=model_path,
-            line_gap_px=25.0,
-            median_word_width_px=50.0,
-            bootstrap_resamples=200,
-            bootstrap_seed=17,
+            line_gap_px=DEFAULT_LINE_GAP_PX,
+            median_word_width_px=DEFAULT_MEDIAN_WORD_WIDTH_PX,
+            bootstrap_resamples=DEFAULT_BOOTSTRAP_RESAMPLES,
+            bootstrap_seed=DEFAULT_BOOTSTRAP_SEED,
         )
 
     def test_build_is_deterministic_and_respects_truth_boundaries(self) -> None:
@@ -627,7 +759,16 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
             first["provenance"]["cross_phase_camera_geometry"]["status"],
             "passed",
         )
-        self.assertEqual(first["status"], "completed")
+        self.assertEqual(first["status"], "diagnostic_only_unverified")
+        self.assertEqual(
+            first["measurement_status"]["geometry"],
+            "diagnostic_only_unverified",
+        )
+        self.assertEqual(
+            first["fixed_target_receipt_integrity"]["status"],
+            "diagnostic_only_unverified",
+        )
+        self.assertEqual(first["decision"]["eligible_claim"], "none")
         self.assertEqual(first["target_independence"]["status"], "passed")
         self.assertEqual(first["target_independence"]["overlap_count"], 0)
         self.assertEqual(
@@ -680,7 +821,7 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
             first["layout_normalized_resolution"]["start"][
                 "median_error_in_line_gaps"
             ],
-            (10.0**2 + 20.0**2) ** 0.5 / 25.0,
+            (10.0**2 + 20.0**2) ** 0.5 / DEFAULT_LINE_GAP_PX,
         )
         self.assertAlmostEqual(
             first["temporal_correction"]["translation_x_px"],
@@ -741,6 +882,8 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
         self.assertIn("oof_residual_x_px", markdown)
         self.assertIn("uncertainty_definition_sha256", markdown)
         self.assertIn("new untouched capture", markdown)
+        self.assertIn("Legacy receipt boundary", markdown)
+        self.assertIn("does **not** claim", markdown)
 
     def test_fresh_v2_receipts_build_fixed_cluster_coverage_risk(self) -> None:
         with tempfile.TemporaryDirectory(prefix="lexigaze-ceiling-v2-") as name:
@@ -751,6 +894,34 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
 
         self.assertEqual(deterministic_json(first), deterministic_json(second))
         self.assertEqual(first["status"], "completed")
+        self.assertEqual(
+            first["measurement_status"]["geometry"],
+            "completed_receipt_verified",
+        )
+        self.assertEqual(
+            first["fixed_target_receipt_integrity"]["status"], "verified"
+        )
+        self.assertEqual(
+            first["fixed_target_receipt_integrity"]["record_count"], 30
+        )
+        self.assertEqual(
+            first["decision"]["eligible_claim"],
+            "coarse fixed-target development evidence only",
+        )
+        self.assertEqual(first["analysis_config"]["bootstrap_resamples"], 20_000)
+        self.assertEqual(
+            first["analysis_protocol"]["protocol_id"],
+            "participant-gaze-integrity-preflight-v1",
+        )
+        self.assertFalse(
+            first["analysis_protocol"][
+                "full_193_sample_measurement_ceiling_protocol_executed"
+            ]
+        )
+        self.assertRegex(
+            first["freshness"]["analysis_source"]["sha256"],
+            r"^[0-9a-f]{64}$",
+        )
         evidence = first["heldout_uncertainty_coverage_risk"]
         self.assertEqual(evidence["status"], "evaluable_descriptive_heldout")
         self.assertEqual(evidence["integrity_status"], "passed")
@@ -787,7 +958,12 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
             )
             self.assertEqual(
                 set(lowest["target_clusters_with_zero_coverage"]),
-                {"top_right", "center", "bottom_left", "bottom_right"},
+                {
+                    "heldout_top_right",
+                    "heldout_center_upper_left",
+                    "heldout_bottom_left",
+                    "heldout_bottom_right",
+                },
             )
             self.assertIsNone(
                 lowest["target_cluster_macro_all_clusters"][
@@ -826,6 +1002,137 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
         self.assertIn("Only five target clusters", markdown)
         self.assertIn("not independent units", markdown)
 
+    def test_valid_receipts_complete_geometry_when_model_v2_is_unavailable(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(prefix="lexigaze-ceiling-no-v2-") as name:
+            paths = self._write_fixture(Path(name))
+            self._add_v2_receipt_evidence(paths, include_model_v2=False)
+            result = self._build(*paths)
+
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(
+            result["fixed_target_receipt_integrity"]["integrity_status"],
+            "passed",
+        )
+        uncertainty = result["heldout_uncertainty_coverage_risk"]
+        self.assertEqual(
+            uncertainty["status"], "not_evaluable_model_unavailable"
+        )
+        self.assertEqual(uncertainty["receipt_integrity_status"], "passed")
+        self.assertEqual(uncertainty["integrity_status"], "not_applicable")
+        self.assertEqual(
+            result["decision"]["eligible_claim"],
+            "coarse fixed-target development evidence only",
+        )
+
+    def test_rehashed_registry_target_repeat_tamper_fails_integrity(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="lexigaze-ceiling-registry-") as name:
+            paths = self._write_fixture(Path(name))
+            self._add_v2_receipt_evidence(paths)
+            participant_path = paths[0]
+            participant = json.loads(participant_path.read_text(encoding="utf-8"))
+            collection = participant["general_collection"]
+            records = collection["prediction_receipts"]["records"]
+            record = next(
+                value
+                for value in records.values()
+                if value["issued"]["phase"] == "start"
+                and value["issued"]["receipt_ordinal"] == 0
+            )
+            old_sha256 = record["issued_record_sha256"]
+            record["issued"]["target_repeat_index"] = 1
+            new_sha256 = canonical_sha256(record["issued"])
+            record["issued_record_sha256"] = new_sha256
+            start = collection["validations"]["start"]
+            bundle = start["prediction_receipt_bundle"]
+            bundle["receipt_record_sha256s"][0] = new_sha256
+            bundle_core = {
+                "schema_version": 1,
+                "status": "verified",
+                "phase": "start",
+                "count": 15,
+                "receipt_record_sha256s": bundle["receipt_record_sha256s"],
+            }
+            bundle["bundle_sha256"] = canonical_sha256(bundle_core)
+            self.assertEqual(
+                start["uncertainty_observations"][0]["receipt_record_sha256"],
+                old_sha256,
+            )
+            start["uncertainty_observations"][0][
+                "receipt_record_sha256"
+            ] = new_sha256
+            self._rehash_v2_validation(start)
+            participant_path.write_text(
+                json.dumps(participant, ensure_ascii=False, sort_keys=True),
+                encoding="utf-8",
+            )
+            result = self._build(*paths)
+
+        self.assertEqual(result["status"], "failed_integrity_gate")
+        self.assertEqual(
+            result["fixed_target_receipt_integrity"]["status"],
+            "failed_integrity",
+        )
+        self.assertIn(
+            "frozen target/ordinal/repeat mismatch",
+            result["fixed_target_receipt_integrity"]["reason"],
+        )
+        self.assertEqual(result["decision"]["eligible_claim"], "none")
+
+    def test_receipt_model_hash_must_match_all_session_layers(self) -> None:
+        mutations = (
+            ("linked_data", "linked model artifact hash"),
+            ("calibration_quality", "calibration quality model artifact hash"),
+        )
+        for mutation, reason in mutations:
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory(
+                prefix=f"lexigaze-ceiling-model-binding-{mutation}-"
+            ) as name:
+                paths = self._write_fixture(Path(name))
+                self._add_v2_receipt_evidence(paths)
+                participant_path = paths[0]
+                participant = json.loads(
+                    participant_path.read_text(encoding="utf-8")
+                )
+                if mutation == "linked_data":
+                    participant["linked_data"]["model_artifact_sha256"] = "0" * 64
+                else:
+                    participant["quality"]["calibration"][
+                        "model_artifact_sha256"
+                    ] = "0" * 64
+                participant_path.write_text(
+                    json.dumps(participant, ensure_ascii=False, sort_keys=True),
+                    encoding="utf-8",
+                )
+                result = self._build(*paths)
+
+            self.assertEqual(result["status"], "failed_integrity_gate")
+            self.assertIn(
+                reason,
+                result["fixed_target_receipt_integrity"]["reason"],
+            )
+            self.assertEqual(result["decision"]["eligible_claim"], "none")
+
+    def test_analysis_arguments_must_match_frozen_preflight(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="lexigaze-ceiling-config-") as name:
+            paths = self._write_fixture(Path(name))
+            with self.assertRaisesRegex(
+                MeasurementCeilingError,
+                "do not match the frozen preflight config",
+            ):
+                build_measurement_ceiling_result(
+                    participant_session_path=paths[0],
+                    calibration_session_metadata_path=paths[1],
+                    calibration_manifest_path=paths[2],
+                    model_artifact_path=paths[3],
+                    line_gap_px=DEFAULT_LINE_GAP_PX + 0.1,
+                    median_word_width_px=DEFAULT_MEDIAN_WORD_WIDTH_PX,
+                    bootstrap_resamples=DEFAULT_BOOTSTRAP_RESAMPLES,
+                    bootstrap_seed=DEFAULT_BOOTSTRAP_SEED,
+                    analysis_protocol_path=DEFAULT_PREFLIGHT_PROTOCOL_PATH,
+                )
+
     def test_no_face_is_capture_coverage_not_missing_uncertainty(self) -> None:
         with tempfile.TemporaryDirectory(prefix="lexigaze-ceiling-no-face-") as name:
             paths = self._write_fixture(Path(name))
@@ -862,7 +1169,9 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
             result = self._build(*paths)
 
         evidence = result["heldout_uncertainty_coverage_risk"]
-        self.assertEqual(evidence["status"], "not_evaluable")
+        self.assertEqual(
+            evidence["status"], "not_evaluable_uncertainty_unavailable"
+        )
         self.assertEqual(evidence["integrity_status"], "passed")
         self.assertEqual(
             evidence["phases"]["start"]["status"],
@@ -976,15 +1285,9 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory(prefix="lexigaze-ceiling-state-") as name:
             paths = self._write_fixture(Path(name))
-            self._add_v2_receipt_evidence(paths)
-            model_path = paths[3]
-            model = json.loads(model_path.read_text(encoding="utf-8"))
-            model["uncertainty_v2"]["final_score_state"]["component_reference"][
-                "ood"
-            ][0] = float("nan")
-            model_path.write_text(
-                json.dumps(model, ensure_ascii=False, sort_keys=True),
-                encoding="utf-8",
+            self._add_v2_receipt_evidence(
+                paths,
+                noncanonical_model_state=True,
             )
             result = self._build(*paths)
 
@@ -994,7 +1297,7 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
         self.assertIn("not canonical JSON", evidence["reason"])
         self.assertEqual(result["status"], "failed_integrity_gate")
 
-    def test_heldout_target_mutation_changes_risk_not_score_or_order(self) -> None:
+    def test_frozen_heldout_target_mutation_fails_preflight_integrity(self) -> None:
         results: list[dict] = []
         for shift in (0.0, 30.0):
             with tempfile.TemporaryDirectory(
@@ -1007,39 +1310,17 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
                 )
                 results.append(self._build(*paths))
 
-        baseline = results[0]["heldout_uncertainty_coverage_risk"]["phases"][
-            "start"
-        ]
-        mutated = results[1]["heldout_uncertainty_coverage_risk"]["phases"][
-            "start"
-        ]
-
-        def ordered_score_and_ordinal(scope: dict) -> list[tuple[float, int]]:
-            by_id = {row["sample_id"]: row for row in scope["rows"]}
-            return [
-                (
-                    by_id[sample_id]["uncertainty_score"],
-                    by_id[sample_id]["receipt_ordinal"],
-                )
-                for sample_id in scope[
-                    "ordered_sample_ids_low_to_high_training_only_score"
-                ]
-            ]
-
+        self.assertEqual(results[0]["status"], "completed")
+        self.assertEqual(results[1]["status"], "failed_integrity_gate")
         self.assertEqual(
-            ordered_score_and_ordinal(baseline),
-            ordered_score_and_ordinal(mutated),
+            results[1]["fixed_target_receipt_integrity"]["status"],
+            "failed_integrity",
         )
-        self.assertNotEqual(
-            [
-                point["overall_retained_row_risk_px"]
-                for point in baseline["coverage_risk_curve"]
-            ],
-            [
-                point["overall_retained_row_risk_px"]
-                for point in mutated["coverage_risk_curve"]
-            ],
+        self.assertIn(
+            "not the frozen preflight contract",
+            results[1]["fixed_target_receipt_integrity"]["reason"],
         )
+        self.assertEqual(results[1]["decision"]["eligible_claim"], "none")
 
     def test_coverage_helper_never_uses_heldout_error_for_ordering(self) -> None:
         rows: list[dict[str, object]] = []
@@ -1097,6 +1378,12 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
             result["target_independence"]["overlapping_evaluation_target_ids"],
             ["center"],
         )
+        self.assertEqual(
+            result["fixed_target_receipt_integrity"]["status"],
+            "diagnostic_only_unverified",
+        )
+        self.assertEqual(result["status"], "failed_integrity_gate")
+        self.assertEqual(result["decision"]["eligible_claim"], "none")
 
     def test_target_at_frozen_separation_boundary_is_independent(self) -> None:
         with tempfile.TemporaryDirectory(prefix="lexigaze-ceiling-boundary-") as name:
@@ -1151,6 +1438,11 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
             consistency["checks"]["selected_stage_matches_selected_outer"]
         )
         self.assertEqual(result["status"], "failed_integrity_gate")
+        self.assertEqual(
+            result["measurement_status"]["geometry_provenance"],
+            "failed_integrity_gate",
+        )
+        self.assertEqual(result["decision"]["eligible_claim"], "none")
 
     def test_capture_source_conflict_is_a_hard_integrity_failure(self) -> None:
         with tempfile.TemporaryDirectory(prefix="lexigaze-ceiling-source-") as name:
@@ -1168,6 +1460,10 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
             ]
         )
         self.assertEqual(result["status"], "failed_integrity_gate")
+        self.assertEqual(
+            result["measurement_status"]["geometry_provenance"],
+            "failed_integrity_gate",
+        )
         self.assertFalse(result["decision"]["integrity_gate_passed"])
 
     def test_camera_aspect_mismatch_is_a_hard_integrity_failure(self) -> None:
@@ -1202,6 +1498,10 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
             geometry["warnings"],
         )
         self.assertEqual(result["status"], "failed_integrity_gate")
+        self.assertEqual(
+            result["measurement_status"]["geometry_provenance"],
+            "failed_integrity_gate",
+        )
 
     def test_resolution_and_frame_rate_warnings_do_not_fail_matching_aspect(self) -> None:
         with tempfile.TemporaryDirectory(prefix="lexigaze-ceiling-camera-") as name:
@@ -1226,7 +1526,7 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
                 "frame_rate_matches_participant_estimated_band_diagnostic"
             ]
         )
-        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["status"], "diagnostic_only_unverified")
         markdown = render_measurement_ceiling_markdown(result)
         self.assertIn("diagnostic warnings only", markdown)
 
@@ -1251,13 +1551,13 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
                 "--model-artifact",
                 str(model_path),
                 "--line-gap-px",
-                "25",
+                str(DEFAULT_LINE_GAP_PX),
                 "--median-word-width-px",
-                "50",
+                str(DEFAULT_MEDIAN_WORD_WIDTH_PX),
                 "--bootstrap-resamples",
-                "200",
+                str(DEFAULT_BOOTSTRAP_RESAMPLES),
                 "--bootstrap-seed",
-                "17",
+                str(DEFAULT_BOOTSTRAP_SEED),
                 "--json-output",
                 str(json_output),
                 "--markdown-output",
@@ -1286,6 +1586,7 @@ class WebcamGazeMeasurementCeilingTests(unittest.TestCase):
         help_text = " ".join(stream.getvalue().split())
         self.assertIn("signed normalized [-1, 1]", help_text)
         self.assertIn("0.2 equals 0.1", help_text)
+        self.assertIn("not the separate 193-sample", help_text)
 
 
 if __name__ == "__main__":

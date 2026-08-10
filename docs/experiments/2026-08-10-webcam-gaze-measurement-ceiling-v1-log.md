@@ -327,6 +327,28 @@ blocks, and receipt-bound start/end validation. Until that fresh capture exists,
 the readiness work is an engineering improvement only: it cannot replace the
 legacy `failed_integrity_gate` result or support a line/word accuracy claim.
 
+The final Visit-handoff audit found and closed two additional paired-session
+contract gaps before physical capture. The 18–72 hour server gate had been
+measured from invite consumption even though the runbook defined it from Visit
+1 completion; it now requires exactly one timezone-aware
+`general_collection_completed` event and uses that timestamp. The frozen
+`same_device_class_and_browser_family` policy had also been descriptive only.
+Visit 2 system check now fails closed on either coarse-field mismatch, and the
+private exporter independently recomputes the same policy before marking a pair
+comparable. Viewport, DPR bucket, camera resolution, and FPS-band differences
+remain explicit diagnostics rather than an unreviewed expansion of the frozen
+policy.
+
+A standard-library-only `preflight_general_collection_visit` CLI now checks the
+dedicated branch/expected commit, capture-critical working files, post-source
+server restart, stable single loopback listener, participant-safe HTTP surface,
+frozen registry/session digests, completion-anchored window, unused Visit 2,
+Visit 1 device reference, and target-linked calibration-image purge. It never
+accepts, reads, or prints plaintext invites and never writes study data. Raw
+directories belonging to unrelated legacy sessions are warning-only and are
+never deleted. Browser-field prefill remains a volatile manual convenience, not
+evidence that the researcher still possesses the one-time plaintext code.
+
 ## Verification and compute record
 
 - Focused frontend behavior: five independent Node tests passed.
@@ -348,7 +370,11 @@ legacy `failed_integrity_gate` result or support a line/word accuracy claim.
 - Participant/general/frontend and cross-process focused lane: 65 tests passed.
   The two true child-process invitation-lock tests are intentionally run
   outside the offline gate, whose safeguard blocks child process creation.
-- Complete offline quality gate: 319 tests passed with 0 failures, 0 errors,
+- Paired Visit handoff focused lane: 20 tests passed across both encrypted and
+  self-development unencrypted stores, exporter pair-policy recomputation, and
+  the read-only preflight. The preflight's 6-test subset also passed under
+  Python `-S`, confirming that it has no installed-package dependency.
+- Pre-surface offline quality-gate checkpoint: 319 tests passed with 0 failures, 0 errors,
   0 skips, and 0 unexpected successes. Worker time was 23.715 seconds;
   supervisor time was 24.025 seconds and measured wall time was 24.306 seconds.
   `artifact_changes=[]`, credentials were
@@ -358,24 +384,94 @@ legacy `failed_integrity_gate` result or support a line/word accuracy claim.
   `ad6d6303f5a5c5b5abbb9c7589498cfe574a614fe9171a9849e46f0f39475e1e`.
 - Changed Python modules: `py_compile` passed.
 - Repository patch hygiene: `git diff --check` passed.
-- Deterministic current-data output was reproduced twice:
+- Deterministic current-data output was reproduced twice again after the final
+  receipt and five-point preflight hardening:
   - JSON SHA-256:
-    `dadbca86ba3fc4b620665b47357433e1ae82db1953f7d2012ad457796ecf20d9`
+    `24202d8a00d6382fa97d2e95b350525993e357596c8d49921ffdf7944e51c7f4`
   - Markdown SHA-256:
-    `35dc78625ffba4493935ee4a8c22d6e49ae7e83bc7cc40d12d4be2f90a3ffa6b`
+    `d038ffb4992b0180a81a35603c1fff85d483e9dafe568ea97ae1759a2bbe4bde`
 - Analysis/test commands set `CUDA_VISIBLE_DEVICES=-1`; no work in this
   change imported Torch or launched a model/GPU workload.
-- External GPU snapshots immediately before/after the final gate showed the
+- External GPU snapshots immediately before/after that pre-surface checkpoint
+  showed the
   shared RTX 5090 Laptop GPU at 0% utilization and 166/24463 MiB allocated in
   both cases; temperature moved from 52 C to 53 C. The unchanged ambient
   allocation was not attributed to this CPU-only work.
 - The persisted machine-readable gate result is
-  [`results/2026-08-10-webcam-gaze-measurement-ceiling-v1-quality-gate.json`](results/2026-08-10-webcam-gaze-measurement-ceiling-v1-quality-gate.json),
-  SHA-256
-  `3ecf59a5f5d6983f262d22c5c28fb7a055c879fb60286c624cd9e0187e3f2a3a`.
+  [`results/2026-08-10-webcam-gaze-measurement-ceiling-v1-quality-gate.json`](results/2026-08-10-webcam-gaze-measurement-ceiling-v1-quality-gate.json);
+  its verified SHA-256 is
+  `ad6d6303f5a5c5b5abbb9c7589498cfe574a614fe9171a9849e46f0f39475e1e`,
+  as recorded above. The removed
+  `3ecf59a5...` value was stale and did not match the delivered file.
 - The frozen general-collection payload remained unchanged at
   `7c4b25bb306b68bb2a2ee5f34217a67aace0de6778fb3f1ed9b462741a0a26b9`,
   so existing Visit assignments were not invalidated.
+
+## Dedicated 193-row acquisition implementation checkpoint
+
+The previously design-only 193-row protocol now has a dedicated, no-invite,
+loopback-only acquisition implementation on `127.0.0.1:8099`. It remains
+separate from participant Visit collection on port 8098 and never writes to the
+participant-study store. The server owns all 65 calibration and 128 untouched
+evaluation rows, target order, model selector, viewport binding, and timing
+metadata. Text, cursor, cognitive-profile, reading layout, and client target
+labels are rejected from the capture record.
+
+The persistent runner now binds each attempt to the frozen schedule, base-model
+bundle, actual inference model echo, decoded frame/capture contract, and a
+hash-chained sidecar. Calibration training consumes exactly the 65 frozen rows,
+hashes the exact raw/crop/normalized bytes it reads, excludes all 128 evaluation
+rows, and verifies the resulting personal-model provenance before purging the
+dedicated calibration images. No-face remains a consumed negative attempt; it
+is never success-conditioned away.
+
+Crash injection preserved the negative findings that drove the final design:
+
+- encrypted-spool tamper becomes durable `failed_integrity` and requires
+  authenticated cleanup;
+- partial model output is removed only after a pre-training owned-path intent
+  proves that the file belongs to this run;
+- a crash after no-face classification cannot re-run preprocessing and change
+  the attempt to success;
+- a crash after inference but before observation sealing leaves an unsealed
+  inference intent, so restart keeps predictor calls at `1 -> 1` and fails
+  closed instead of replaying inference;
+- wrapper and UniGaze caches are cleared on recovery, and base bundle/model/
+  checkpoint identity is checked before and after training.
+
+The only public live-analysis entry point is the canonical
+`MeasurementRunner.analyze_verified_run` method, exposed locally as
+`POST /api/measurement-ceiling/analysis`. It revalidates the sealed artifact,
+attempt sidecar, bound model bytes, training provenance, spool absence, and
+calibration-image purge before computing the frozen descriptive analysis. A
+persisted file bundle or arbitrary duck-typed object cannot self-promote to
+live-runner provenance. The UI keeps `measurement_claim_authorized=false`,
+`physical_capture_claim_authorized=false`, and `threshold_selected=false`.
+
+Independent adversarial review ended with P0=0 and P1=0 for starting a local
+self-development acquisition rehearsal. The measurement-specific slice passed
+120/120 tests. The latest full CPU-only offline gate then passed 475/475 tests
+with zero failures, errors, or skips; unittest time was 248.935 seconds, gate
+duration 250.383 seconds, and supervisor duration 250.703 seconds.
+`artifact_changes=[]`, `network_attempts=[]`, credentials were cleared,
+network/process probes were blocked, Torch was not imported, and
+`CUDA_VISIBLE_DEVICES=-1`. GPU utilization was 0% before and after; external
+ambient memory moved from 2782 to 2913 MiB of 24463 MiB and is not attributed to
+the CUDA-hidden worker.
+
+The tracked final gate result is
+[`results/2026-08-10-webcam-gaze-measurement-ceiling-v1-final-quality-gate.json`](results/2026-08-10-webcam-gaze-measurement-ceiling-v1-final-quality-gate.json),
+byte SHA-256
+`9a2043172e996a7599bac56281d6b068fde7ef66ea55593ce4ea1aea3c7d54c8`.
+The frozen measurement protocol canonical SHA-256 remains
+`be4dfb0956ce3594546336fe7a54da6ba878f2d6fcd457d36cbaf0159132fced`;
+the frozen analysis definition canonical SHA-256 is
+`d3118fb8a1cb4eff437ea45e2b9b4619ce78e856d2bfbf84a4acef80f278755a`.
+
+No human 193-row capture has been completed yet. Therefore this checkpoint is
+capture-ready software and integrity evidence, not a webcam accuracy result,
+natural-reading result, population claim, selected abstention threshold, or
+quality-band promotion.
 
 The current-data audit itself is pure standard library. It was reproduced with
 the same CPU-only Python 3.11 runtime used for the complete gate. Private input

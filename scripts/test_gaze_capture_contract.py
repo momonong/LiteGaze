@@ -387,15 +387,18 @@ class ProvisionalGeometryStoreTests(unittest.TestCase):
             {
                 "passed": True,
                 "test_fixture": True,
+                "model_artifact_sha256": "a" * 64,
                 "capture_contract": calibration_contract,
                 "fit_target_contract": _reference_fit_target_contract(),
             },
             model_name="contract-test-model",
+            model_artifact_sha256="a" * 64,
         )
         self.store.start_general_collection(
             self.session_id,
             self.token,
             assessment_viewport=_assessment_viewport(),
+            model_artifact_sha256="a" * 64,
         )
 
     def test_public_start_quality_is_immediate_and_behavior_can_continue(self) -> None:

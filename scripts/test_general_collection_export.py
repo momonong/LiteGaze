@@ -454,6 +454,7 @@ def _session(
     measurement_contract: dict[str, object] | None = None,
     uncertainty_mode: str = "scored",
     no_face_ordinal: int | None = None,
+    device_overrides: dict[str, object] | None = None,
 ) -> Path:
     protocol = load_general_protocol()
     bank = load_general_bank()
@@ -544,6 +545,7 @@ def _session(
             "gaze_session_id": capture_session_id,
             "assessment_id": assessment_id,
             "model_name": model_name,
+            "model_artifact_sha256": model_artifact_sha256,
         },
         "data_governance": {
             "storage_security": "unencrypted_self_development",
@@ -593,12 +595,15 @@ def _session(
                     "browser_family": "chromium",
                     "viewport_width": VIEWPORT["width_px"],
                     "viewport_height": VIEWPORT["height_px"],
+                    "device_pixel_ratio_bucket": "1_2",
                     "camera_width": 1280,
                     "camera_height": 720,
                     "estimated_camera_fps_band": "20_30",
+                    **(device_overrides or {}),
                 }
             },
             "calibration": {
+                "model_artifact_sha256": model_artifact_sha256,
                 "capture_contract": calibration_capture,
                 "fit_target_contract": fit_target_contract,
             },
@@ -916,6 +921,49 @@ class GeneralCollectionExportProvenanceTests(unittest.TestCase):
             manifest["gaze_provenance"]["session_gaze_excluded_count"],
             1,
         )
+
+    def test_training_time_artifact_bindings_are_revalidated(self) -> None:
+        cases = (
+            (
+                "linked",
+                ("linked_data", "model_artifact_sha256"),
+                "training_time_model_artifact_linkage_mismatch",
+            ),
+            (
+                "calibration",
+                ("quality", "calibration", "model_artifact_sha256"),
+                "training_time_calibration_artifact_binding_mismatch",
+            ),
+        )
+        for name, path, reason in cases:
+            with self.subTest(name=name):
+                session_path = _session(
+                    self.root,
+                    session_id=f"ST-TRAINING-FREEZE-{name.upper()}",
+                    participant_id=f"P-TRAINING-FREEZE-{name.upper()}",
+                    pair_id=f"PAIR-TRAINING-FREEZE-{name.upper()}",
+                    visit_index=1,
+                )
+                session = json.loads(session_path.read_text(encoding="utf-8"))
+                target = session
+                for key in path[:-1]:
+                    target = target[key]
+                target[path[-1]] = "f" * 64
+                session_path.write_text(
+                    json.dumps(session, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+                output = self.root / f"export-{name}"
+                export_bundle(self.root, output)
+                excluded_rows = _rows(output / "gaze_excluded_sessions.csv")
+                matching = next(
+                    row
+                    for row in excluded_rows
+                    if row["study_session_id"]
+                    == f"ST-TRAINING-FREEZE-{name.upper()}"
+                )
+                self.assertIn(reason, matching["validation_exclusion_reasons"])
+                self.assertEqual(len(_rows(output / "validation_samples.csv")), 0)
 
     def test_missing_receipt_registry_excludes_only_validation_gaze(self) -> None:
         session_path = _session(
@@ -1557,6 +1605,87 @@ class GeneralCollectionExportProvenanceTests(unittest.TestCase):
             ],
             {"pair_measurement_contract_mismatch": 1},
         )
+
+    def test_pair_requires_same_device_class_and_browser_family(self) -> None:
+        _session(
+            self.root,
+            session_id="ST-DEVICE1",
+            participant_id="P-DEVICE",
+            pair_id="PAIR-DEVICE",
+            visit_index=1,
+        )
+        _session(
+            self.root,
+            session_id="ST-DEVICE2",
+            participant_id="P-DEVICE",
+            pair_id="PAIR-DEVICE",
+            visit_index=2,
+            device_overrides={"browser_family": "firefox"},
+        )
+
+        output = self.root / "export"
+        manifest = export_bundle(self.root, output)
+        sessions = _rows(output / "sessions.csv")
+        self.assertEqual(
+            {row["pair_validation_gaze_comparison_status"] for row in sessions},
+            {"pair_device_policy_mismatch"},
+        )
+        self.assertEqual(
+            {row["pair_validation_gaze_comparable"] for row in sessions},
+            {"False"},
+        )
+        self.assertEqual(
+            {row["pair_device_policy_match"] for row in sessions},
+            {"False"},
+        )
+        self.assertEqual(
+            manifest["gaze_provenance"][
+                "pair_validation_comparison_status_counts"
+            ],
+            {"pair_device_policy_mismatch": 1},
+        )
+
+    def test_pair_geometry_changes_are_diagnostic_not_policy_expansion(self) -> None:
+        _session(
+            self.root,
+            session_id="ST-GEOMETRY1",
+            participant_id="P-GEOMETRY",
+            pair_id="PAIR-GEOMETRY",
+            visit_index=1,
+        )
+        _session(
+            self.root,
+            session_id="ST-GEOMETRY2",
+            participant_id="P-GEOMETRY",
+            pair_id="PAIR-GEOMETRY",
+            visit_index=2,
+            device_overrides={"device_pixel_ratio_bucket": "1_5"},
+        )
+
+        output = self.root / "export"
+        export_bundle(self.root, output)
+        sessions = _rows(output / "sessions.csv")
+        self.assertEqual(
+            {row["pair_validation_gaze_comparison_status"] for row in sessions},
+            {"comparable_same_measurement_contract"},
+        )
+        self.assertEqual(
+            {row["pair_validation_gaze_comparable"] for row in sessions},
+            {"True"},
+        )
+        self.assertEqual(
+            {row["pair_device_policy_match"] for row in sessions},
+            {"True"},
+        )
+        self.assertEqual(
+            {row["pair_device_diagnostics_status"] for row in sessions},
+            {"changed"},
+        )
+        for row in sessions:
+            self.assertEqual(
+                json.loads(row["pair_device_diagnostic_mismatches"]),
+                ["device_pixel_ratio_bucket"],
+            )
 
     def test_ineligible_sibling_does_not_exclude_valid_visit_gaze(self) -> None:
         _session(

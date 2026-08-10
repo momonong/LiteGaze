@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_TIMEOUT_SECONDS = 180
+DEFAULT_TIMEOUT_SECONDS = 300
 
 # Explicit IDs keep heavyweight/model tests out of this lane. In particular,
 # cross-attention imports PyTorch and belongs in the separately managed heavy
@@ -31,8 +31,10 @@ DEFAULT_TIMEOUT_SECONDS = 180
 TEST_TARGETS = (
     "scripts.test_app_factory",
     "scripts.test_gaze_benchmark",
+    "scripts.test_gaze_base_inference_bundle",
     "scripts.test_gaze_calibration_regression",
     "scripts.test_gaze_capture_contract",
+    "scripts.test_gaze_runtime_assets",
     "scripts.test_gaze_frontend_node_contracts",
     "scripts.test_gaze_motion_experiment",
     "scripts.test_gaze_uncertainty_v2",
@@ -44,6 +46,7 @@ TEST_TARGETS = (
     "scripts.test_gaze_session_independence",
     "scripts.test_gaze_torch_runtime",
     "scripts.test_general_collection_export",
+    "scripts.test_general_collection_visit_preflight",
     "scripts.test_independent_capture_plan",
     "scripts.test_adaptive_stepper",
     "scripts.test_participant_study",
@@ -60,7 +63,18 @@ TEST_TARGETS = (
     "scripts.test_onestop_confirmation_preparation",
     "scripts.test_fusion_routes",
     "scripts.test_webcam_gaze_measurement_ceiling",
+    "scripts.test_webcam_gaze_measurement_schedule",
     "scripts.test_webcam_gaze_measurement_protocol",
+    "scripts.test_webcam_gaze_measurement_preflight",
+    "scripts.test_webcam_gaze_measurement_browser_gate",
+    "scripts.test_webcam_gaze_measurement_surface_security",
+    "scripts.test_webcam_gaze_measurement_frontend",
+    "scripts.test_webcam_gaze_measurement_surface",
+    # The sibling multiprocess TestCase stays in the standalone module because
+    # this worker intentionally rejects every child-process launch.
+    "scripts.test_webcam_gaze_measurement_run_store.WebcamGazeMeasurementRunStoreTests",
+    "scripts.test_webcam_gaze_measurement_runner",
+    "scripts.test_webcam_gaze_measurement_run_analysis",
 )
 
 PROVIDER_CREDENTIALS = (

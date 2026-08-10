@@ -2,6 +2,7 @@ import json
 import mimetypes
 import os
 import secrets
+import time
 import uuid
 from collections.abc import Mapping
 from datetime import datetime
@@ -9,6 +10,7 @@ from pathlib import Path
 
 from flask import (
     Flask,
+    g,
     jsonify,
     redirect,
     render_template,
@@ -30,6 +32,7 @@ DEFAULT_BLUEPRINTS = (
     "inspector",
     "gaze_video",
 )
+KNOWN_BLUEPRINTS = (*DEFAULT_BLUEPRINTS, "measurement")
 
 mimetypes.add_type("text/javascript", ".js")
 
@@ -43,7 +46,7 @@ def _register_blueprints(app: Flask) -> None:
     else:
         enabled = tuple(enabled)
 
-    unknown = sorted(set(enabled) - set(DEFAULT_BLUEPRINTS))
+    unknown = sorted(set(enabled) - set(KNOWN_BLUEPRINTS))
     if unknown:
         raise ValueError(f"Unknown LexiGaze blueprints: {', '.join(unknown)}")
 
@@ -79,6 +82,10 @@ def _register_blueprints(app: Flask) -> None:
         from web.routes.gaze_video import gaze_video_bp
 
         app.register_blueprint(gaze_video_bp)
+    if "measurement" in enabled:
+        from web.routes.measurement import measurement_bp
+
+        app.register_blueprint(measurement_bp)
 
 
 def create_app(config: Mapping[str, object] | None = None):
@@ -86,6 +93,8 @@ def create_app(config: Mapping[str, object] | None = None):
     app = Flask(__name__, static_folder="static", template_folder="templates")
     app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024  # 500 MB upload limit
     app.config["LEXIGAZE_BLUEPRINTS"] = None
+    app.config["LEXIGAZE_MEASUREMENT_CEILING_MODE"] = False
+    app.config["LEXIGAZE_MEASUREMENT_AUTHORITY"] = "127.0.0.1:8099"
     if config:
         app.config.update(config)
 
@@ -101,6 +110,89 @@ def create_app(config: Mapping[str, object] | None = None):
             "yes",
             "on",
         }
+
+    def measurement_ceiling_mode() -> bool:
+        value = app.config.get("LEXIGAZE_MEASUREMENT_CEILING_MODE", False)
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    if measurement_ceiling_mode():
+        from web.measurement_surface_security import (
+            MAX_MEASUREMENT_CONTENT_LENGTH,
+            measurement_security_headers,
+            normalize_measurement_authority,
+            request_policy_rejection,
+        )
+
+        if public_study_mode():
+            raise ValueError(
+                "measurement-ceiling mode and public-study mode are mutually exclusive"
+            )
+        enabled = app.config.get("LEXIGAZE_BLUEPRINTS")
+        normalized_enabled = (enabled,) if isinstance(enabled, str) else tuple(enabled or ())
+        if normalized_enabled != ("measurement",):
+            raise ValueError(
+                "measurement-ceiling mode requires only the measurement blueprint"
+            )
+        authority = normalize_measurement_authority(
+            app.config.get("LEXIGAZE_MEASUREMENT_AUTHORITY")
+        )
+        app.config["LEXIGAZE_MEASUREMENT_AUTHORITY"] = authority
+        app.config["MAX_CONTENT_LENGTH"] = MAX_MEASUREMENT_CONTENT_LENGTH
+
+        runner = app.config.get("LEXIGAZE_MEASUREMENT_RUNNER")
+        preflight = app.config.get("LEXIGAZE_MEASUREMENT_PREFLIGHT")
+        if runner is not None:
+            app.extensions["lexigaze_measurement_runner"] = runner
+        if preflight is not None:
+            app.extensions["lexigaze_measurement_preflight"] = preflight
+
+        @app.before_request
+        def restrict_measurement_ceiling_surface():
+            g.lexigaze_measurement_started = time.perf_counter()
+            rejection = request_policy_rejection(
+                authority=authority,
+                remote_addr=request.remote_addr,
+                host=request.host,
+                path=request.path,
+                method=request.method,
+                query_string=request.query_string,
+                origin=request.headers.get("Origin"),
+                sec_fetch_site=request.headers.get("Sec-Fetch-Site"),
+            )
+            if rejection is None:
+                return None
+            status, detail = rejection
+            return jsonify(
+                {
+                    "ok": False,
+                    "classification": "measurement_surface_rejected",
+                    "error": detail,
+                    "measurement_claim_authorized": False,
+                }
+            ), status
+
+        @app.after_request
+        def secure_measurement_ceiling_surface(response):
+            for name, value in measurement_security_headers().items():
+                response.headers[name] = value
+            started = getattr(g, "lexigaze_measurement_started", None)
+            if isinstance(started, float):
+                elapsed_ms = max(0.0, (time.perf_counter() - started) * 1000.0)
+                response.headers["Server-Timing"] = f"measurement;dur={elapsed_ms:.3f}"
+            return response
+
+        @app.errorhandler(413)
+        def reject_oversized_measurement_request(_error):
+            return jsonify(
+                {
+                    "ok": False,
+                    "classification": "measurement_payload_too_large",
+                    "error": "measurement request exceeds the 12 MiB limit",
+                    "measurement_claim_authorized": False,
+                }
+            ), 413
 
     if public_study_mode():
         self_development_video = configured(

@@ -274,10 +274,23 @@ def participant_general_system_check(session_id: str):
 def start_participant_general_collection(session_id: str):
     body = request.get_json(force=True) or {}
     try:
-        session = _store().start_general_collection(
+        store = _store()
+        access_token = _access_token(body)
+        participant = store.get_session(session_id, access_token)
+        model_name = str(
+            dict(participant.get("linked_data") or {}).get("model_name") or ""
+        )
+        if not model_name:
+            raise StudyStateError("calibration model linkage is unavailable")
+        try:
+            artifact_sha256 = model_artifact_sha256(_gaze_root(), model_name)
+        except (FileNotFoundError, OSError, ValueError) as exc:
+            raise StudyStateError(str(exc)) from exc
+        session = store.start_general_collection(
             session_id,
-            _access_token(body),
+            access_token,
             assessment_viewport=body.get("assessment_viewport"),
+            model_artifact_sha256=artifact_sha256,
         )
         return jsonify({"ok": True, "session": session})
     except (
@@ -317,7 +330,7 @@ def participant_general_validation(session_id: str):
             )
             try:
                 artifact_sha256 = model_artifact_sha256(_gaze_root(), model_name)
-            except FileNotFoundError as exc:
+            except (FileNotFoundError, OSError, ValueError) as exc:
                 raise StudyStateError(str(exc)) from exc
         session = store.record_general_validation(
             session_id,
@@ -636,6 +649,62 @@ def complete_participant_calibration(session_id: str):
                 }
             ), 422
 
+        try:
+            artifact_sha256 = model_artifact_sha256(
+                gaze_root, str(training["model_name"])
+            )
+        except (FileNotFoundError, OSError, ValueError) as exc:
+            quality["reasons"].append("personalization_artifact_missing")
+            quality["training"]["artifact_failure_type"] = type(exc).__name__
+            session = _failed_calibration(
+                store,
+                session_id,
+                access_token,
+                gaze_root,
+                gaze_session_id,
+                quality,
+                model_name=model_name,
+            )
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": "personalization artifact is unavailable after training",
+                    "quality": quality,
+                    "session": session,
+                }
+            ), 422
+        reported_artifact_sha256 = str(
+            training.get("model_artifact_sha256") or ""
+        ).strip().lower()
+        if reported_artifact_sha256 != artifact_sha256:
+            quality["reasons"].append("personalization_artifact_binding_mismatch")
+            quality["training"].update(
+                {
+                    "reported_model_artifact_sha256": (
+                        reported_artifact_sha256 or None
+                    ),
+                    "verified_model_artifact_sha256": artifact_sha256,
+                }
+            )
+            session = _failed_calibration(
+                store,
+                session_id,
+                access_token,
+                gaze_root,
+                gaze_session_id,
+                quality,
+                model_name=model_name,
+            )
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": "personalization artifact binding failed",
+                    "quality": quality,
+                    "session": session,
+                }
+            ), 422
+        quality["model_artifact_sha256"] = artifact_sha256
+
         if isinstance(training.get("capture_contract"), dict):
             quality["capture_contract"] = training["capture_contract"]
         if isinstance(training.get("fit_target_contract"), dict):
@@ -672,6 +741,7 @@ def complete_participant_calibration(session_id: str):
             access_token,
             quality,
             model_name=training["model_name"],
+            model_artifact_sha256=artifact_sha256,
         )
         return jsonify({"ok": True, "quality": quality, "session": session})
     except (

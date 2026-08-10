@@ -286,14 +286,17 @@ class PredictionReceiptTests(unittest.TestCase):
             {
                 "passed": True,
                 "test_fixture": True,
+                "model_artifact_sha256": TEST_MODEL_ARTIFACT_SHA256,
                 "capture_contract": _capture_contract(),
             },
             model_name=model_name,
+            model_artifact_sha256=TEST_MODEL_ARTIFACT_SHA256,
         )
         self.store.start_general_collection(
             session_id,
             token,
             assessment_viewport=_assessment_viewport(),
+            model_artifact_sha256=TEST_MODEL_ARTIFACT_SHA256,
         )
         return session_id, token
 

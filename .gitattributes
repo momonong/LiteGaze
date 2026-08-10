@@ -6,3 +6,10 @@
 /docs/experiments/protocols/2026-08-06-production-text-fusion-v1.json text eol=lf
 /scripts/build_provenance_text_artifact.py text eol=lf
 /scripts/evaluate_provenance_fusion.py text eol=lf
+/core/gaze_core/participant_gaze_measurement_contract_v1.json text eol=lf
+/core/gaze_core/uncertainty_v2_definition.json text eol=lf
+/docs/experiments/protocols/2026-08-10-participant-gaze-integrity-preflight-v1.json text eol=lf
+/docs/experiments/protocols/2026-08-10-training-only-gaze-uncertainty-v2-phase1.json text eol=lf
+/docs/experiments/protocols/2026-08-10-webcam-gaze-measurement-ceiling-v1.json text eol=lf
+/docs/experiments/protocols/2026-08-10-webcam-gaze-measurement-analysis-v1.json text eol=lf
+/docs/experiments/results/2026-08-10-webcam-gaze-measurement-ceiling-v1-final-quality-gate.json text eol=lf

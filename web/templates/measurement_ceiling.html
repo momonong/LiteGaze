@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LexiGaze Webcam Measurement Ceiling</title>
+  <link rel="stylesheet" href="/static/measurement_ceiling.css">
+</head>
+<body>
+  <header class="top-status" aria-live="polite">
+    <strong>Webcam measurement ceiling v1</strong>
+    <span id="progressText">尚未開始 · 0 / 193</span>
+    <span id="phaseText">工程自我開發流程</span>
+  </header>
+
+  <main>
+    <section id="setupPanel" class="panel setup-panel">
+      <h1>193 筆獨立目標量測</h1>
+      <p>
+        這個頁面只量測目前單一 webcam 感測與個人校準的工程上限。它不衡量認知能力、
+        英文能力、閱讀能力，也不把 cursor、文章或 cognitive profile 當成眼動真值。
+      </p>
+      <div class="camera-card">
+        <video id="cameraPreview" autoplay playsinline muted></video>
+        <canvas id="captureCanvas" hidden></canvas>
+        <p id="cameraSummary">相機尚未啟動。</p>
+      </div>
+      <div class="actions">
+        <button id="startCameraButton" type="button">1. 啟動相機</button>
+        <button id="preflightButton" type="button" disabled>2. 檢查連續 3 幀</button>
+        <button id="startRunButton" type="button" disabled>3. 建立新量測</button>
+        <button id="resumeRunButton" type="button" hidden>繼續本分頁的量測</button>
+      </div>
+      <p id="preflightSummary" class="preflight-summary">
+        Readiness preflight 不顯示 target、不寫入量測資料，也不選模型；通過後才會建立 run。
+      </p>
+      <p class="privacy-note">
+        Readiness 與 evaluation frame 只做本機 ephemeral 處理。Calibration 成功列會在 D 槽
+        dedicated session 暫存 raw/crop/normalized 影像，直到 65-row 訓練、失敗或 abort 後完成
+        verified purge；crash-recovery spool 也可能短暫存在。Ledger 與 final artifact 不含影像。
+        請保持這個分頁可見、視窗大小固定，並只注視畫面上的圓點。
+      </p>
+    </section>
+
+    <section id="blockPanel" class="panel block-panel" hidden>
+      <p class="eyebrow">下一個區塊</p>
+      <h2 id="blockTitle">姿勢準備</h2>
+      <p id="blockInstruction"></p>
+      <button id="confirmBlockButton" type="button">我已就位，顯示目標</button>
+    </section>
+
+    <section id="runPanel" class="run-panel" hidden aria-live="polite">
+      <div id="targetDot" class="target-dot" role="img" aria-label="請注視這個目標" hidden></div>
+      <p id="runMessage" class="run-message">等待下一個目標。</p>
+      <button id="retryButton" class="floating-action" type="button" hidden>重試目前目標</button>
+    </section>
+
+    <section id="completionPanel" class="panel completion-panel" hidden>
+      <h2 id="completionTitle">本次擷取已結束</h2>
+      <p id="completionMessage"></p>
+      <button id="verifyArtifactButton" type="button">重新驗證 193-row artifact</button>
+      <button id="analyzeRunButton" type="button" hidden>執行已驗證的描述性分析</button>
+      <button id="refreshStatusButton" type="button">重新讀取 run status</button>
+      <pre id="analysisSummary" class="analysis-summary" hidden></pre>
+    </section>
+  </main>
+
+  <footer class="claim-boundary">
+    完成流程不代表 gaze 準確；結果仍需獨立 holdout、uncertainty 與 abstention 分析。
+    Browser dwell/render gate 是結構性檢查，不是視覺 attestation。
+    <button id="abortButton" type="button" hidden>中止這次量測</button>
+  </footer>
+
+  <script src="/static/gaze_capture_contract.js"></script>
+  <script src="/static/measurement_ceiling_gate.js"></script>
+  <script src="/static/measurement_ceiling_client_policy.js"></script>
+  <script src="/static/measurement_ceiling.js"></script>
+</body>
+</html>

@@ -386,6 +386,29 @@ def _utc_now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _completed_general_collection_at(session: Mapping[str, object]) -> datetime:
+    """Return the single authoritative Visit completion event timestamp."""
+
+    events = session.get("events")
+    if not isinstance(events, list):
+        raise StudyStateError("visit 1 completion timestamp is unavailable")
+    completed = [
+        event
+        for event in events
+        if isinstance(event, Mapping)
+        and event.get("event") == "general_collection_completed"
+    ]
+    if len(completed) != 1:
+        raise StudyStateError("visit 1 completion timestamp is unavailable")
+    try:
+        timestamp = datetime.fromisoformat(str(completed[0].get("at_utc") or ""))
+    except ValueError as exc:
+        raise StudyStateError("visit 1 completion timestamp is invalid") from exc
+    if timestamp.tzinfo is None:
+        raise StudyStateError("visit 1 completion timestamp is invalid")
+    return timestamp.astimezone(UTC)
+
+
 def _atomic_json(path: Path, payload: Mapping[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -653,9 +676,8 @@ class ParticipantStudyStore:
             if first_session.get("state") != "completed":
                 raise StudyStateError("visit 1 must be completed before visit 2")
             general_protocol = load_general_protocol()
-            elapsed = datetime.now(UTC) - datetime.fromisoformat(
-                str(first["used_at_utc"])
-            )
+            completed_at = _completed_general_collection_at(first_session)
+            elapsed = datetime.now(UTC) - completed_at
             minimum = timedelta(
                 hours=int(general_protocol["sessions"]["minimum_interval_hours"])
             )
@@ -1168,15 +1190,19 @@ class ParticipantStudyStore:
                 "prediction receipt model is not linked to this study session"
             )
         artifact_sha256 = _normalized_model_artifact_sha256(model_artifact_sha256)
-        frozen_artifact_sha256 = str(
-            collection.get("model_artifact_sha256") or ""
-        ).strip()
-        if frozen_artifact_sha256 and (
-            _normalized_model_artifact_sha256(frozen_artifact_sha256)
-            != artifact_sha256
+        linked_artifact_sha256 = _normalized_model_artifact_sha256(
+            linked_data.get("model_artifact_sha256")
+        )
+        frozen_artifact_sha256 = _normalized_model_artifact_sha256(
+            collection.get("model_artifact_sha256")
+        )
+        if not (
+            artifact_sha256
+            == linked_artifact_sha256
+            == frozen_artifact_sha256
         ):
             raise StudyStateError(
-                "linked model artifact changed after assessment receipt freeze"
+                "linked model artifact changed or differs from its training-time freeze"
             )
         assessment_id = str(collection.get("assessment_id") or "")
         if (
@@ -1427,12 +1453,11 @@ class ParticipantStudyStore:
                 viewport=(viewport_width, viewport_height),
             )
             collection = dict(session.get("general_collection") or {})
-            frozen_artifact_sha256 = str(
-                collection.get("model_artifact_sha256") or ""
+            frozen_artifact_sha256 = _normalized_model_artifact_sha256(
+                collection.get("model_artifact_sha256")
             )
-            if frozen_artifact_sha256 and frozen_artifact_sha256 != artifact_after:
-                raise StudyStateError("model artifact changed after receipt freeze")
-            collection["model_artifact_sha256"] = artifact_after
+            if frozen_artifact_sha256 != artifact_after:
+                raise StudyStateError("model artifact changed after training-time freeze")
             receipt_token = "PR-" + secrets.token_hex(24).upper()
             receipt_sha256 = _receipt_token_sha256(receipt_token)
             issued = {
@@ -1925,6 +1950,88 @@ class ParticipantStudyStore:
                 raise StudyStateError("system check requires a consented session")
             if not collection.get("profile"):
                 raise StudyStateError("participant profile must be recorded first")
+            assignment = dict(session.get("collection_assignment") or {})
+            if assignment.get("visit_index") == 2:
+                pair_id = str(assignment.get("pair_id") or "")
+                registry_path = (
+                    self._study_root("rehearsal") / "collection_invites.json"
+                )
+                with _exclusive_registry_lock(registry_path):
+                    if not registry_path.exists():
+                        raise StudyStateError(
+                            "visit 1 device contract is unavailable"
+                        )
+                    registry = json.loads(
+                        registry_path.read_text(encoding="utf-8")
+                    )
+                    first_matches = [
+                        item
+                        for item in registry.get("invites", [])
+                        if isinstance(item, Mapping)
+                        and item.get("pair_id") == pair_id
+                        and item.get("visit_index") == 1
+                    ]
+                    if len(first_matches) != 1:
+                        raise StudyStateError(
+                            "visit 1 device contract is unavailable"
+                        )
+                    first_session_id = str(
+                        first_matches[0].get("study_session_id") or ""
+                    )
+                    try:
+                        _, first_session = self._read(first_session_id)
+                    except StudyError as exc:
+                        raise StudyStateError(
+                            "visit 1 device contract is unavailable"
+                        ) from exc
+                first_device = dict(
+                    dict(
+                        dict(first_session.get("quality") or {}).get(
+                            "general_system_check"
+                        )
+                        or {}
+                    ).get("device")
+                    or {}
+                )
+                current_device = dict(normalized.get("device") or {})
+                policy_fields = ("device_class", "browser_family")
+                if any(not first_device.get(field) for field in policy_fields):
+                    raise StudyStateError(
+                        "visit 1 device contract is unavailable"
+                    )
+                field_matches = {
+                    field: first_device.get(field) == current_device.get(field)
+                    for field in policy_fields
+                }
+                if not all(field_matches.values()):
+                    raise StudyStateError(
+                        "visit 2 requires the same device class and browser "
+                        "family as visit 1"
+                    )
+                diagnostic_fields = {
+                    "viewport_size": ("viewport_width", "viewport_height"),
+                    "device_pixel_ratio_bucket": (
+                        "device_pixel_ratio_bucket",
+                    ),
+                    "camera_resolution": ("camera_width", "camera_height"),
+                    "estimated_camera_fps_band": (
+                        "estimated_camera_fps_band",
+                    ),
+                }
+                normalized["paired_visit_device_comparison"] = {
+                    "schema_version": 1,
+                    "policy": "same_device_class_and_browser_family",
+                    "policy_fields": list(policy_fields),
+                    "policy_match": True,
+                    "field_matches": field_matches,
+                    "diagnostics": {
+                        name: all(
+                            first_device.get(field) == current_device.get(field)
+                            for field in fields
+                        )
+                        for name, fields in diagnostic_fields.items()
+                    },
+                }
             session["state"] = "system_check_passed"
             session["quality"]["general_system_check"] = normalized
             collection["phase"] = "system_check_passed"
@@ -1938,8 +2045,12 @@ class ParticipantStudyStore:
         access_token: str,
         *,
         assessment_viewport: Mapping[str, object] | None,
+        model_artifact_sha256: str,
     ) -> dict[str, Any]:
         requested_viewport = _normalized_assessment_viewport(assessment_viewport)
+        requested_artifact_sha256 = _normalized_model_artifact_sha256(
+            model_artifact_sha256
+        )
         with self._lock:
             path, session = self._read(session_id)
             self._authorize(session, access_token)
@@ -1972,6 +2083,27 @@ class ParticipantStudyStore:
                 raise StudyValidationError(
                     "assessment viewport changed since system check; "
                     "restart the system check before collection"
+                )
+            linked_data = dict(session.get("linked_data") or {})
+            linked_model = str(linked_data.get("model_name") or "")
+            if not linked_model:
+                raise StudyStateError("calibration model linkage is unavailable")
+            linked_artifact_sha256 = _normalized_model_artifact_sha256(
+                linked_data.get("model_artifact_sha256")
+            )
+            calibration = dict(
+                dict(session.get("quality") or {}).get("calibration") or {}
+            )
+            calibration_artifact_sha256 = _normalized_model_artifact_sha256(
+                calibration.get("model_artifact_sha256")
+            )
+            if not (
+                requested_artifact_sha256
+                == linked_artifact_sha256
+                == calibration_artifact_sha256
+            ):
+                raise StudyStateError(
+                    "calibration model artifact changed before collection start"
                 )
             assessment_id = collection.get("assessment_id")
             if not assessment_id:
@@ -2035,7 +2167,7 @@ class ParticipantStudyStore:
                             "reasons": [],
                             "interrupted_rounds": [],
                         },
-                        "model_artifact_sha256": None,
+                        "model_artifact_sha256": requested_artifact_sha256,
                         "prediction_receipts": {
                             "schema_version": PREDICTION_RECEIPT_SCHEMA_VERSION,
                             "records": {},
@@ -2049,6 +2181,15 @@ class ParticipantStudyStore:
                 if frozen_viewport != requested_viewport:
                     raise StudyValidationError(
                         "assessment viewport differs from the frozen collection viewport"
+                    )
+                if (
+                    _normalized_model_artifact_sha256(
+                        collection.get("model_artifact_sha256")
+                    )
+                    != requested_artifact_sha256
+                ):
+                    raise StudyStateError(
+                        "model artifact differs from the frozen collection artifact"
                     )
             session["state"] = "assessment_in_progress"
             session["linked_data"]["assessment_id"] = str(assessment_id)
@@ -2959,23 +3100,57 @@ class ParticipantStudyStore:
         quality: Mapping[str, object],
         *,
         model_name: str | None = None,
+        model_artifact_sha256: str | None = None,
     ) -> dict[str, Any]:
         passed = quality.get("passed") is True
+        stored_quality = dict(quality)
+        normalized_artifact_sha256: str | None = None
+        simulated_dry_run = (
+            passed
+            and stored_quality.get("simulated") is True
+            and model_name == "DRY-RUN-NO-MODEL"
+            and model_artifact_sha256 is None
+        )
+        if (
+            passed
+            and not simulated_dry_run
+            and (not model_name or not model_artifact_sha256)
+        ):
+            raise StudyValidationError(
+                "passed model calibration requires both model name and artifact SHA-256"
+            )
+        if passed and model_name and not simulated_dry_run:
+            normalized_artifact_sha256 = _normalized_model_artifact_sha256(
+                model_artifact_sha256
+            )
+            quality_artifact_sha256 = _normalized_model_artifact_sha256(
+                stored_quality.get("model_artifact_sha256")
+            )
+            if quality_artifact_sha256 != normalized_artifact_sha256:
+                raise StudyValidationError(
+                    "calibration quality artifact differs from the verified model artifact"
+                )
+            stored_quality["model_artifact_sha256"] = normalized_artifact_sha256
         with self._lock:
             path, session = self._read(session_id)
             self._authorize(session, access_token)
             if session["state"] != "calibration_in_progress":
                 raise StudyStateError("calibration is not in progress")
-            session["quality"]["calibration"] = dict(quality)
+            session["quality"]["calibration"] = stored_quality
             if passed:
                 session["state"] = "calibration_complete"
                 if model_name:
                     session["linked_data"]["model_name"] = str(model_name)
+                    if normalized_artifact_sha256 is not None:
+                        session["linked_data"]["model_artifact_sha256"] = (
+                            normalized_artifact_sha256
+                        )
                 self._event(session, "calibration_completed")
             else:
                 session["state"] = "system_check_passed"
                 session["linked_data"].pop("gaze_session_id", None)
                 session["linked_data"].pop("model_name", None)
+                session["linked_data"].pop("model_artifact_sha256", None)
                 self._event(session, "calibration_failed_quality_gate")
             self._write(path, session)
             return self._public_session(session)

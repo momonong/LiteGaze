@@ -1,28 +1,72 @@
 {
+  "analysis_config": {
+    "bootstrap_resamples": 20000,
+    "bootstrap_seed": 20260810,
+    "canonical_sha256": "a2f004edb2b03550214ccf065768726db3ab0ad6e57cdf8ae43b7e7a9b8e26e5",
+    "compute": "cpu_only",
+    "line_gap_px": 27.2,
+    "median_word_width_px": 40.9,
+    "network": "disabled",
+    "repeatability_coverage_grid": [
+      0.2,
+      0.4,
+      0.6,
+      0.8,
+      1.0
+    ],
+    "target_overlap_tolerance_signed": 0.2,
+    "uncertainty_coverage_grid": [
+      1.0,
+      0.8,
+      0.6,
+      0.4,
+      0.2
+    ]
+  },
   "analysis_contract": {
     "correction_evaluation_data": "end validation only",
     "correction_fit_data": "start validation only",
     "cpu_only": true,
     "descriptive_percentile_method": "nearest rank at ceil(n * p)",
+    "fixed_target_geometry_requires_complete_server_receipt_registry": true,
     "fixed_target_sample_rows_treated_as_independent": false,
+    "full_193_sample_protocol_claimed_as_executed": false,
     "images_or_videos_opened": false,
+    "legacy_no_receipt_status": "diagnostic_only_unverified",
     "model_or_threshold_selection_authorized": false,
     "natural_reading_nearest_word_index_used_as_ground_truth": false,
     "repeatability_proxy_quality_band_change_authorized": false,
     "repeatability_proxy_threshold_selection_authorized": false,
     "standard_library_only": true,
     "torch_or_gpu_loaded": false,
+    "uncertainty_availability_separate_from_geometry_integrity": true,
     "uncertainty_v2_quality_band_change_authorized": false,
     "uncertainty_v2_risk_uses_heldout_target_error_only": true,
     "uncertainty_v2_score_uses_heldout_target_error": false,
     "uncertainty_v2_threshold_selection_authorized": false
   },
   "analysis_id": "webcam-gaze-measurement-ceiling-v1",
+  "analysis_protocol": {
+    "canonical_sha256": "798b68b8a44b7b77719af0345044921c75d2e0cb1053971def01d5d387e51af1",
+    "file_sha256": "5bc18bdf3a0ec4e984eb38fdd94ff4ccaeb1030b042d5e40a9791d0a3655fc52",
+    "full_193_sample_measurement_ceiling_protocol_executed": false,
+    "measurement_contract_canonical_sha256": "efb396ab96943e20f5ba556b4cb0abab377d8325d26f1b3745f0197fa60fdf45",
+    "measurement_contract_file_sha256": "399f211b20df85348c963fb3292cd1839ea7805142f7f3f67923197cdd17b73a",
+    "measurement_contract_path": "core/gaze_core/participant_gaze_measurement_contract_v1.json",
+    "participant_flow_total_observations": 95,
+    "path": "docs/experiments/protocols/2026-08-10-participant-gaze-integrity-preflight-v1.json",
+    "protocol_id": "participant-gaze-integrity-preflight-v1",
+    "protocol_version": "2026-08-10.v1",
+    "scope_kind": "participant_five_point_receipt_integrity_preflight",
+    "status": "frozen_before_fresh_matched_contract_capture"
+  },
   "decision": {
-    "eligible_claim": "coarse fixed-target development evidence only",
+    "eligible_claim": "none",
+    "fresh_confirmation_required": true,
     "integrity_gate_passed": false,
     "line_or_word_accuracy_claimed": false,
     "production_model_changed": false,
+    "promotion_authorized": false,
     "quality_band_changed": false
   },
   "drift": {
@@ -73,14 +117,43 @@
       }
     }
   },
-  "evidence_class": "exploratory_self_development_only",
+  "evidence_class": "diagnostic_exploratory_self_development_only",
+  "fixed_target_receipt_integrity": {
+    "integrity_status": "not_applicable",
+    "phases": {},
+    "reason": "legacy session has no server prediction receipt registry",
+    "record_count": 0,
+    "required_record_count": 30,
+    "status": "diagnostic_only_unverified"
+  },
+  "freshness": {
+    "analysis_source": {
+      "path": "core/gaze_core/measurement_ceiling.py",
+      "sha256": "8a5d285bdd20c623c1ee54392465fb28827757b018179e7619e449ee18aa7cfb"
+    },
+    "audit_cli_source": {
+      "path": "scripts/audit_webcam_gaze_measurement_ceiling.py",
+      "sha256": "78e1e4ab3940933489939cd3ae4d57be7e455ff8e880a9b679f88578937f8c66"
+    },
+    "deterministic_without_wall_clock_state": true,
+    "input_sha256s": {
+      "analysis_protocol": "5bc18bdf3a0ec4e984eb38fdd94ff4ccaeb1030b042d5e40a9791d0a3655fc52",
+      "calibration_manifest": "af61c6d83708292d98a707f6a5fd083bd99db6beae13d369b09ad4d6130bc7d4",
+      "calibration_session_metadata": "5ae737030f096c18a16eb8e8e68d5a1772fb1a717183cb430c80e3fe56d78d64",
+      "model_artifact": "012dbd0c7c11c8b34536895964f82ed4b2352c0585f2154b6ba0aa548a5ba19c",
+      "participant_session": "d420db6a05bfd7685d52da3e13a08a498430b4d8f2c3cba6fb0841e33b23e67e"
+    },
+    "input_stability_check": "unchanged_before_result_assembly",
+    "protocol_frozen_before_fresh_capture": true,
+    "status": "hash_bound_inputs_protocol_config_and_generator"
+  },
   "future_uncertainty_v2_data_requirements": {
     "current_evidence_inventory": {
       "calibration_reconstructable_sensor_fields_present": [],
-      "heldout_evaluation_status": "not_evaluable",
+      "heldout_evaluation_status": "not_evaluable_receipts_unavailable",
       "model_oof_or_uncertainty_fields_present": [],
       "predictive_uncertainty_curve_constructable_from_current_artifacts": false,
-      "reason": "model artifact has no uncertainty_v2 bundle",
+      "reason": "legacy session has no server prediction receipt registry",
       "validation_uncertainty_fields_present": []
     },
     "protocol_requirement": {
@@ -129,25 +202,22 @@
     "status": "required_before_predictive_uncertainty_claim"
   },
   "heldout_uncertainty_coverage_risk": {
-    "integrity_status": "not_applicable",
-    "model_binding": {
-      "coverage_grid": [
-        1.0,
-        0.8,
-        0.6,
-        0.4,
-        0.2
-      ],
-      "frozen_definition_sha256": "75a24c436e9a89024462268812ecc9be149a1958b3911e5cd71c3974b235a180",
-      "reason": "model artifact has no uncertainty_v2 bundle",
-      "status": "unavailable"
+    "fixed_target_receipt_integrity": {
+      "integrity_status": "not_applicable",
+      "status": "diagnostic_only_unverified"
     },
+    "integrity_status": "not_applicable",
     "quality_band_change_authorized": false,
-    "reason": "model artifact has no uncertainty_v2 bundle",
-    "status": "not_evaluable",
+    "reason": "legacy session has no server prediction receipt registry",
+    "receipt_integrity_status": "not_applicable",
+    "status": "not_evaluable_receipts_unavailable",
     "threshold_selected": false
   },
   "inputs": {
+    "analysis_protocol": {
+      "label": "participant five-point integrity preflight",
+      "sha256": "5bc18bdf3a0ec4e984eb38fdd94ff4ccaeb1030b042d5e40a9791d0a3655fc52"
+    },
     "calibration_manifest": {
       "label": "linked calibration manifest",
       "sha256": "af61c6d83708292d98a707f6a5fd083bd99db6beae13d369b09ad4d6130bc7d4"
@@ -182,6 +252,13 @@
     },
     "status": "descriptive_resolution_only_not_reading_accuracy"
   },
+  "measurement_status": {
+    "fixed_target_receipt_integrity": "diagnostic_only_unverified",
+    "geometry": "failed_integrity_gate",
+    "geometry_provenance": "failed_integrity_gate",
+    "overall": "failed_integrity_gate",
+    "uncertainty": "not_evaluable_receipts_unavailable"
+  },
   "not_evaluable": {
     "natural_reading_line_accuracy": {
       "reason": "no independent line-level gaze ground truth was recorded",
@@ -192,7 +269,7 @@
       "status": "not_evaluable"
     },
     "per_sample_uncertainty_calibration": {
-      "reason": "model artifact has no uncertainty_v2 bundle",
+      "reason": "legacy session has no server prediction receipt registry",
       "status": "not_evaluable"
     }
   },
@@ -310,6 +387,13 @@
         "calibration_frame_rate_outside_participant_estimated_band_diagnostic_only"
       ]
     },
+    "fixed_target_receipt_integrity": {
+      "integrity_status": "not_applicable",
+      "reason": "legacy session has no server prediction receipt registry",
+      "record_count": 0,
+      "required_record_count": 30,
+      "status": "diagnostic_only_unverified"
+    },
     "model": {
       "hyperparameter_cv_px_error": 199.18219539890904,
       "selected_calibrator": "gaze_polynomial",
@@ -345,8 +429,8 @@
       "state": "completed"
     },
     "uncertainty_v2_integrity": {
-      "evaluation_status": "not_evaluable",
-      "reason": "model artifact has no uncertainty_v2 bundle",
+      "evaluation_status": "not_evaluable_receipts_unavailable",
+      "reason": "legacy session has no server prediction receipt registry",
       "status": "not_applicable"
     }
   },
@@ -500,6 +584,7 @@
         "signed_median": 72.55262562157029
       }
     },
+    "evidence_status": "diagnostic_only_unverified",
     "start": {
       "attempted_sample_count": 15,
       "coarse_region": {
@@ -650,7 +735,7 @@
       }
     }
   },
-  "schema_version": 1,
+  "schema_version": 2,
   "status": "failed_integrity_gate",
   "target_independence": {
     "calibration_target_count": 13,

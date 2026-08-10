@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "canonical_sha256": "798b68b8a44b7b77719af0345044921c75d2e0cb1053971def01d5d387e51af1",
+  "protocol": {
+    "protocol_id": "participant-gaze-integrity-preflight-v1",
+    "protocol_version": "2026-08-10.v1",
+    "frozen_date": "2026-08-10",
+    "branch": "experiment/webcam-gaze-measurement-ceiling-v1",
+    "status": "frozen_before_fresh_matched_contract_capture",
+    "objective": "Fail closed unless the participant five-target start/end validation can be reconstructed from the complete server receipt registry with exact frozen sequence and artifact bindings.",
+    "scope": {
+      "kind": "participant_five_point_receipt_integrity_preflight",
+      "full_193_sample_measurement_ceiling_protocol_executed": false,
+      "full_protocol_reference": "docs/experiments/protocols/2026-08-10-webcam-gaze-measurement-ceiling-v1.json",
+      "limitation": "This preflight covers the existing 65-row participant calibration context plus two 15-receipt fixed-target phases (95 total participant-flow observations). It is not the separate 193-sample measurement-ceiling capture."
+    },
+    "measurement_contract": {
+      "contract_id": "lexigaze-participant-gaze-measurement-v1",
+      "contract_version": "2026-08-10.v1",
+      "source_path": "core/gaze_core/participant_gaze_measurement_contract_v1.json",
+      "source_file_sha256": "399f211b20df85348c963fb3292cd1839ea7805142f7f3f67923197cdd17b73a",
+      "canonical_sha256": "efb396ab96943e20f5ba556b4cb0abab377d8325d26f1b3745f0197fa60fdf45"
+    },
+    "design": {
+      "calibration_context": {
+        "motion_blocks": 5,
+        "targets_per_block": 13,
+        "rows": 65,
+        "role": "model training and training-only out-of-fold diagnostics; not held-out measurement evidence"
+      },
+      "fixed_target_validation": {
+        "phases": ["start", "end"],
+        "target_clusters_per_phase": 5,
+        "repeats_per_target": 3,
+        "receipts_per_phase": 15,
+        "total_receipts": 30,
+        "sequence": "server_frozen_target_major_contiguous_repeats",
+        "receipt_ordinal_range_per_phase": [0, 14]
+      },
+      "participant_flow_total_observations": 95,
+      "independent_fixed_target_clusters": 5,
+      "repeated_rows_are_independent_units": false
+    },
+    "receipt_integrity": {
+      "registry_schema_version": 1,
+      "required_registry_record_count": 30,
+      "raw_receipt_tokens_may_be_persisted": false,
+      "all_registry_records_must_be_consumed_once": true,
+      "required_bindings": [
+        "study_session_id",
+        "authorization_fingerprint_sha256",
+        "assessment_id",
+        "model_name",
+        "model_artifact_sha256",
+        "capture_session_id",
+        "phase",
+        "receipt_ordinal",
+        "target_repeat_index",
+        "target",
+        "viewport",
+        "measurement_contract_sha256",
+        "capture_contract",
+        "prediction_outcome"
+      ],
+      "missing_registry_action": "diagnostic_only_unverified",
+      "malformed_or_tampered_registry_action": "failed_integrity_gate"
+    },
+    "analysis_config": {
+      "line_gap_px": 27.2,
+      "median_word_width_px": 40.9,
+      "target_overlap_tolerance_signed": 0.2,
+      "bootstrap_resamples": 20000,
+      "bootstrap_seed": 20260810,
+      "uncertainty_coverage_grid": [1.0, 0.8, 0.6, 0.4, 0.2],
+      "repeatability_coverage_grid": [0.2, 0.4, 0.6, 0.8, 1.0],
+      "compute": "cpu_only",
+      "network": "disabled"
+    },
+    "claim_boundary": {
+      "receipt_verified_geometry_claim": "coarse fixed-target development evidence only",
+      "legacy_or_missing_receipt_eligible_claim": "none",
+      "integrity_failure_eligible_claim": "none",
+      "uncertainty_availability_is_separate_from_geometry_receipt_integrity": true,
+      "uncertainty_threshold_selected": false,
+      "quality_band_change_authorized": false,
+      "natural_reading_line_or_word_accuracy_claimed": false,
+      "population_participant_device_or_session_generalization_claimed": false,
+      "promotion_requires_fresh_confirmation": true
+    }
+  }
+}

@@ -171,16 +171,11 @@ class MediaPipeUniGazePreprocessor:
     def __init__(self, min_detection_confidence: float = 0.5) -> None:
         from mediapipe.tasks.python.vision import FaceLandmarker, FaceLandmarkerOptions
         from mediapipe.tasks.python.core import base_options
-        import os
 
-        model_path = os.path.join(os.path.dirname(__file__), "..", "..", "web", "static", "face_landmarker.task")
-        if not os.path.exists(model_path):
-            os.makedirs(os.path.dirname(model_path), exist_ok=True)
-            import urllib.request
-            url = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
-            urllib.request.urlretrieve(url, model_path)
+        from .runtime_assets import resolve_face_landmarker_asset
 
-        base_opts = base_options.BaseOptions(model_asset_path=model_path)
+        model_path = resolve_face_landmarker_asset()
+        base_opts = base_options.BaseOptions(model_asset_path=str(model_path))
         opts = FaceLandmarkerOptions(
             base_options=base_opts,
             num_faces=1,

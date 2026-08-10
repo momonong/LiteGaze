@@ -14,8 +14,9 @@ from unittest.mock import patch
 
 from core.cognitive_inspector.adaptive import PASSAGE_BY_ID
 from core.gaze_core.capture_contract import build_fit_target_contract
+from core.gaze_core.model_registry import model_path
 from core.gaze_core.sample_store import create_session, safe_session_dir
-from core.participant_study import ParticipantStudyStore
+from core.participant_study import ParticipantStudyStore, StudyValidationError
 from core.participant_study.protocol import activation_status, load_protocol
 from scripts import audit_participant_study_readiness as readiness_audit
 from web import create_app
@@ -551,6 +552,22 @@ class ParticipantCalibrationRouteTests(unittest.TestCase):
             json={"gaze_session_id": self.gaze_session_id},
         )
 
+    def test_passed_calibration_requires_a_real_model_artifact_binding(self) -> None:
+        with self.assertRaisesRegex(
+            StudyValidationError,
+            "requires both model name and artifact SHA-256",
+        ):
+            self.store.complete_calibration(
+                self.enrolled["study_session_id"],
+                self.enrolled["access_token"],
+                {"passed": True, "model_artifact_sha256": None},
+            )
+        status = self.store.get_session(
+            self.enrolled["study_session_id"],
+            self.enrolled["access_token"],
+        )
+        self.assertEqual(status["state"], "calibration_in_progress")
+
     def test_model_name_is_visit_and_capture_specific(self) -> None:
         shared = {"participant_id": "GP-SHARED", "mode": "rehearsal"}
         visit_one = {
@@ -605,10 +622,18 @@ class ParticipantCalibrationRouteTests(unittest.TestCase):
         fit_target_contract = build_fit_target_contract([(-0.8, -0.8), (0.0, 0.0)])
 
         def successful_training(_root, payload):
+            artifact_path = model_path(_root, payload["output_model_name"])
+            artifact_path.parent.mkdir(parents=True, exist_ok=True)
+            artifact_path.write_text(
+                '{"fixture":"training-time-artifact"}\n',
+                encoding="utf-8",
+            )
+            artifact_sha256 = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
             return (
                 {
                     "ok": True,
                     "model_name": payload["output_model_name"],
+                    "model_artifact_sha256": artifact_sha256,
                     "training_device": "cpu",
                     "best_val_px_error": 30.0,
                     "validation_scheme": "participant_holdout",
@@ -676,6 +701,64 @@ class ParticipantCalibrationRouteTests(unittest.TestCase):
             status["linked_data"]["model_name"],
             training_payload["output_model_name"],
         )
+        self.assertEqual(
+            status["linked_data"]["model_artifact_sha256"],
+            status["quality"]["calibration"]["model_artifact_sha256"],
+        )
+        self.assertEqual(
+            status["quality"]["calibration"]["model_artifact_sha256"],
+            hashlib.sha256(
+                model_path(
+                    self.root,
+                    training_payload["output_model_name"],
+                ).read_bytes()
+            ).hexdigest(),
+        )
+
+    def test_training_time_artifact_hash_mismatch_fails_closed(self) -> None:
+        quality = {"passed": True, "reasons": [], "sample_count": 65}
+
+        def mismatched_training(_root, payload):
+            artifact_path = model_path(_root, payload["output_model_name"])
+            artifact_path.parent.mkdir(parents=True, exist_ok=True)
+            artifact_path.write_text('{"fixture":"actual"}\n', encoding="utf-8")
+            return (
+                {
+                    "ok": True,
+                    "model_name": payload["output_model_name"],
+                    "model_artifact_sha256": "0" * 64,
+                    "training_device": "cpu",
+                    "best_val_px_error": 30.0,
+                    "validation_scheme": "participant_holdout",
+                },
+                200,
+            )
+
+        with (
+            patch("web.routes.study.ParticipantStudyStore", return_value=self.store),
+            patch(
+                "web.routes.study.audit_participant_calibration",
+                return_value=quality,
+            ),
+            patch(
+                "web.routes.study.train_placeholder",
+                side_effect=mismatched_training,
+            ),
+        ):
+            response = self._complete()
+
+        self.assertEqual(response.status_code, 422, response.get_data(as_text=True))
+        payload = response.get_json()
+        self.assertIn(
+            "personalization_artifact_binding_mismatch",
+            payload["quality"]["reasons"],
+        )
+        status = self.store.get_session(
+            self.enrolled["study_session_id"],
+            self.enrolled["access_token"],
+        )
+        self.assertEqual(status["state"], "system_check_passed")
+        self.assertNotIn("model_name", status["linked_data"])
 
     def test_training_response_model_name_mismatch_fails_closed(self) -> None:
         quality = {"passed": True, "reasons": [], "sample_count": 65}
@@ -745,8 +828,13 @@ class ParticipantAdaptiveIntegrationTests(unittest.TestCase):
         self.store.complete_calibration(
             session_id,
             token,
-            {"passed": True, "simulated_test_fixture": True},
+            {
+                "passed": True,
+                "simulated_test_fixture": True,
+                "model_artifact_sha256": "a" * 64,
+            },
             model_name="test-participant-model",
+            model_artifact_sha256="a" * 64,
         )
         config = {
             "TESTING": True,

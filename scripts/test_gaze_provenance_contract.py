@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import tempfile
 import unittest
@@ -242,23 +243,27 @@ class PredictionReceiptRouteTests(unittest.TestCase):
             self.session_id, self.token, _system_profile()
         )
         self.store.start_calibration(self.session_id, self.token, "GAZE-ROUTE")
+        artifact = model_path(self.root, self.model_name)
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        artifact.write_text('{"fixture":true}\n', encoding="utf-8")
+        self.artifact_sha256 = hashlib.sha256(artifact.read_bytes()).hexdigest()
         self.store.complete_calibration(
             self.session_id,
             self.token,
             {
                 "passed": True,
+                "model_artifact_sha256": self.artifact_sha256,
                 "capture_contract": _capture_contract(),
             },
             model_name=self.model_name,
+            model_artifact_sha256=self.artifact_sha256,
         )
         self.store.start_general_collection(
             self.session_id,
             self.token,
             assessment_viewport=_assessment_viewport(),
+            model_artifact_sha256=self.artifact_sha256,
         )
-        artifact = model_path(self.root, self.model_name)
-        artifact.parent.mkdir(parents=True, exist_ok=True)
-        artifact.write_text('{"fixture":true}\n', encoding="utf-8")
         self.client = create_app(self.config).test_client()
         self.headers = {
             "Authorization": f"Bearer {self.token}",
@@ -342,6 +347,55 @@ class PredictionReceiptRouteTests(unittest.TestCase):
         self.assertNotIn(first, json.dumps(public))
         self.assertNotIn(second, json.dumps(public))
 
+    def test_validation_labels_never_cross_the_sensor_inference_boundary(self) -> None:
+        success = {
+            "ok": True,
+            "screen_xy_px": [640.0, 400.0],
+            "screen_xy_norm": [0.0, 0.0],
+            "capture_contract_check": {
+                "status": "compatible",
+                "compatible": True,
+            },
+        }
+        with patch("web.routes.gaze.predict", return_value=(success, 200)) as predict:
+            response = self.client.post(
+                "/api/gaze/predict",
+                json={
+                    **self.payload,
+                    "validation_phase": "start",
+                    "validation_target_id": "heldout_top_left",
+                    "target_x_norm": -0.75,
+                    "target_y_norm": -0.75,
+                    "text_context": "must never reach inference",
+                    "cognitive_profile": {"must": "never reach inference"},
+                },
+                headers=self.headers,
+            )
+
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        inference_payload = predict.call_args.args[1]
+        self.assertEqual(
+            set(inference_payload),
+            {
+                "image_data",
+                "capture_contract",
+                "model_name",
+                "viewport_width",
+                "viewport_height",
+                "allow_cuda",
+            },
+        )
+        for forbidden in (
+            "validation_phase",
+            "validation_target_id",
+            "target_x_norm",
+            "target_y_norm",
+            "text_context",
+            "cognitive_profile",
+            "study_session_id",
+        ):
+            self.assertNotIn(forbidden, inference_payload)
+
     def test_receipt_routes_reject_non_object_json_without_predicting(self) -> None:
         endpoints = (
             "/api/gaze/predict",
@@ -370,6 +424,64 @@ class PredictionReceiptRouteTests(unittest.TestCase):
             session["general_collection"]["phase"],
             "start_validation_required",
         )
+
+    def test_model_artifact_io_failures_are_stable_and_fail_closed(self) -> None:
+        with patch(
+            "web.routes.study.model_artifact_sha256",
+            side_effect=PermissionError("artifact unreadable"),
+        ):
+            start = self.client.post(
+                f"/api/study/sessions/{self.session_id}/general/start",
+                headers=self.headers,
+                json={"assessment_viewport": _assessment_viewport()},
+            )
+            validation = self.client.post(
+                f"/api/study/sessions/{self.session_id}/general/validation",
+                headers=self.headers,
+                json={
+                    "phase": "start",
+                    "prediction_receipts": ["PR-" + "A" * 48],
+                },
+            )
+        for response in (start, validation):
+            self.assertEqual(response.status_code, 409)
+            self.assertEqual(response.get_json()["error"], "artifact unreadable")
+            self.assertEqual(response.get_json()["error_type"], "StudyStateError")
+
+        success = {
+            "ok": True,
+            "screen_xy_px": [640.0, 400.0],
+            "screen_xy_norm": [0.0, 0.0],
+            "capture_contract_check": {
+                "status": "compatible",
+                "compatible": True,
+            },
+        }
+        with patch(
+            "web.routes.gaze.model_artifact_sha256",
+            side_effect=PermissionError("artifact unreadable"),
+        ), patch("web.routes.gaze.predict") as predict:
+            before = self.client.post(
+                "/api/gaze/predict",
+                json=self.payload,
+                headers=self.headers,
+            )
+        self.assertEqual(before.status_code, 409)
+        self.assertEqual(before.get_json()["failure_stage"], "model_hard_error")
+        self.assertFalse(predict.called)
+
+        with patch(
+            "web.routes.gaze.model_artifact_sha256",
+            side_effect=[self.artifact_sha256, PermissionError("artifact unreadable")],
+        ), patch("web.routes.gaze.predict", return_value=(success, 200)) as predict:
+            after = self.client.post(
+                "/api/gaze/predict",
+                json=self.payload,
+                headers=self.headers,
+            )
+        self.assertEqual(after.status_code, 409)
+        self.assertEqual(after.get_json()["failure_stage"], "model_hard_error")
+        self.assertTrue(predict.called)
 
 
 if __name__ == "__main__":

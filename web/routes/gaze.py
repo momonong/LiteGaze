@@ -298,7 +298,7 @@ def _predict_response(body: dict) -> tuple[dict, int]:
                         "height_px": body.get("viewport_height"),
                     },
                 )
-            except FileNotFoundError as exc:
+            except (FileNotFoundError, OSError, ValueError) as exc:
                 return {
                     "ok": False,
                     "error": str(exc),
@@ -310,7 +310,24 @@ def _predict_response(body: dict) -> tuple[dict, int]:
                 return {"ok": False, "error": str(exc)}, 409
             except StudyValidationError as exc:
                 return {"ok": False, "error": str(exc)}, 400
-    response, status = predict(_gaze_root(), body)
+    # Keep study target/challenge metadata outside the sensor model boundary.
+    # Inference only needs the captured frame, calibrated model, viewport, and
+    # capture contract.  An explicit allowlist prevents future inference code
+    # from accidentally learning from held-out validation labels that happen to
+    # be present in the route payload.
+    inference_body = {
+        key: body[key]
+        for key in (
+            "image_data",
+            "capture_contract",
+            "model_name",
+            "viewport_width",
+            "viewport_height",
+            "allow_cuda",
+        )
+        if key in body
+    }
+    response, status = predict(_gaze_root(), inference_body)
     if receipt_challenge is None:
         return response, status
     receipt_eligible = response.get("ok") is True or response.get(
@@ -333,7 +350,7 @@ def _predict_response(body: dict) -> tuple[dict, int]:
             prediction_response=response,
             prediction_status=status,
         )
-    except FileNotFoundError as exc:
+    except (FileNotFoundError, OSError, ValueError) as exc:
         return {
             "ok": False,
             "error": str(exc),

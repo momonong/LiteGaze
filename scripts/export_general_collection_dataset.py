@@ -527,6 +527,7 @@ def _audit_prediction_receipts(
 
     linked_data = dict(session.get("linked_data") or {})
     frozen_artifact_sha256 = collection.get("model_artifact_sha256")
+    calibration = dict(dict(session.get("quality") or {}).get("calibration") or {})
     expected_common = {
         "study_session_id": session.get("study_session_id"),
         "authorization_fingerprint_sha256": session.get("access_token_sha256"),
@@ -542,6 +543,12 @@ def _audit_prediction_receipts(
         registry_ok = False
     if not _valid_sha256(frozen_artifact_sha256):
         _add_reason(audit, "prediction_receipt_model_artifact_binding_unavailable")
+        registry_ok = False
+    if linked_data.get("model_artifact_sha256") != frozen_artifact_sha256:
+        _add_reason(audit, "training_time_model_artifact_linkage_mismatch")
+        registry_ok = False
+    if calibration.get("model_artifact_sha256") != frozen_artifact_sha256:
+        _add_reason(audit, "training_time_calibration_artifact_binding_mismatch")
         registry_ok = False
     if not expected_common["model_name"]:
         _add_reason(audit, "prediction_receipt_model_binding_unavailable")
@@ -882,6 +889,8 @@ def _audit_session_gaze(
     quality_root = dict(session.get("quality") or {})
     calibration = dict(quality_root.get("calibration") or {})
     final_quality = dict(quality_root.get("general_collection") or {})
+    system_check = dict(quality_root.get("general_system_check") or {})
+    device = dict(system_check.get("device") or {})
     linked_data = dict(session.get("linked_data") or {})
     assignment = dict(session.get("collection_assignment") or {})
     session_id = str(session.get("study_session_id") or session_path.parent.name)
@@ -928,6 +937,25 @@ def _audit_session_gaze(
         "source_validation_sample_count": 0,
         "pair_validation_gaze_comparison_status": "not_evaluated",
         "pair_validation_gaze_comparable": False,
+        "pair_device_policy": "same_device_class_and_browser_family",
+        "pair_device_policy_signature": {
+            "device_class": device.get("device_class"),
+            "browser_family": device.get("browser_family"),
+        },
+        "pair_device_policy_match": False,
+        "pair_device_diagnostics": {
+            field: device.get(field)
+            for field in (
+                "viewport_width",
+                "viewport_height",
+                "device_pixel_ratio_bucket",
+                "camera_width",
+                "camera_height",
+                "estimated_camera_fps_band",
+            )
+        },
+        "pair_device_diagnostics_status": "not_evaluated",
+        "pair_device_diagnostic_mismatches": [],
         "pair_gaze_comparison_status": "reading_telemetry_unverified",
         "pair_gaze_comparable": False,
         "validation_reasons": [],
@@ -1672,6 +1700,24 @@ def _apply_pair_gaze_policy(audits: list[dict[str, Any]]) -> dict[str, str]:
                 status = "pair_visit_set_invalid"
             elif len({audit["participant_id"] for audit in pair_audits}) != 1:
                 status = "pair_participant_mismatch"
+            elif any(
+                not all(
+                    audit["pair_device_policy_signature"].get(field)
+                    for field in ("device_class", "browser_family")
+                )
+                for audit in pair_audits
+            ):
+                status = "pair_device_policy_unavailable"
+            elif len(
+                {
+                    (
+                        audit["pair_device_policy_signature"]["device_class"],
+                        audit["pair_device_policy_signature"]["browser_family"],
+                    )
+                    for audit in pair_audits
+                }
+            ) != 1:
+                status = "pair_device_policy_mismatch"
             elif not all(audit["base_eligible"] for audit in pair_audits):
                 status = "paired_visit_gaze_ineligible"
             elif len({audit["contract_sha256"] for audit in pair_audits}) != 1:
@@ -1680,6 +1726,44 @@ def _apply_pair_gaze_policy(audits: list[dict[str, Any]]) -> dict[str, str]:
                 status = "comparable_same_measurement_contract"
                 for audit in pair_audits:
                     audit["pair_validation_gaze_comparable"] = True
+            if status not in {
+                "pair_visit_set_invalid",
+                "pair_participant_mismatch",
+                "pair_device_policy_unavailable",
+                "pair_device_policy_mismatch",
+            }:
+                for audit in pair_audits:
+                    audit["pair_device_policy_match"] = True
+            diagnostic_fields = tuple(
+                pair_audits[0]["pair_device_diagnostics"].keys()
+            )
+            if any(
+                audit["pair_device_diagnostics"].get(field) is None
+                for audit in pair_audits
+                for field in diagnostic_fields
+            ):
+                diagnostic_status = "unavailable"
+                diagnostic_mismatches: list[str] = []
+            else:
+                diagnostic_mismatches = sorted(
+                    field
+                    for field in diagnostic_fields
+                    if len(
+                        {
+                            audit["pair_device_diagnostics"][field]
+                            for audit in pair_audits
+                        }
+                    )
+                    != 1
+                )
+                diagnostic_status = (
+                    "changed" if diagnostic_mismatches else "matched"
+                )
+            for audit in pair_audits:
+                audit["pair_device_diagnostics_status"] = diagnostic_status
+                audit["pair_device_diagnostic_mismatches"] = list(
+                    diagnostic_mismatches
+                )
         pair_status[pair_id] = status
         for audit in pair_audits:
             audit["pair_validation_gaze_comparison_status"] = status
@@ -1841,6 +1925,9 @@ def export_bundle(
                 "browser_family": device.get("browser_family"),
                 "viewport_width": device.get("viewport_width"),
                 "viewport_height": device.get("viewport_height"),
+                "device_pixel_ratio_bucket": device.get(
+                    "device_pixel_ratio_bucket"
+                ),
                 "camera_width": device.get("camera_width"),
                 "camera_height": device.get("camera_height"),
                 "estimated_camera_fps_band": device.get("estimated_camera_fps_band"),
@@ -1967,6 +2054,14 @@ def export_bundle(
                 "pair_validation_gaze_comparable": audit[
                     "pair_validation_gaze_comparable"
                 ],
+                "pair_device_policy": audit["pair_device_policy"],
+                "pair_device_policy_match": audit["pair_device_policy_match"],
+                "pair_device_diagnostics_status": audit[
+                    "pair_device_diagnostics_status"
+                ],
+                "pair_device_diagnostic_mismatches": _json_cell(
+                    audit["pair_device_diagnostic_mismatches"]
+                ),
                 "start_validation_payload_sha256": audit[
                     "validation_payload_sha256"
                 ]["start"],
@@ -2287,6 +2382,7 @@ def export_bundle(
                 "retention_policy", "self_only", "formal_promotion_allowed",
                 "created_at_utc", "completed_at_utc",
                 "device_class", "browser_family", "viewport_width", "viewport_height",
+                "device_pixel_ratio_bucket",
                 "camera_width", "camera_height", "estimated_camera_fps_band",
                 "gaze_measurement_contract_id", "gaze_measurement_contract_version",
                 "gaze_measurement_contract_sha256", "gaze_contract_snapshot_valid",
@@ -2326,6 +2422,9 @@ def export_bundle(
                 "pair_gaze_comparison_status", "pair_gaze_comparable",
                 "pair_validation_gaze_comparison_status",
                 "pair_validation_gaze_comparable",
+                "pair_device_policy", "pair_device_policy_match",
+                "pair_device_diagnostics_status",
+                "pair_device_diagnostic_mismatches",
                 "start_validation_payload_sha256", "end_validation_payload_sha256",
                 "gaze_quality_band", "median_spatial_error_px", "p90_spatial_error_px",
                 "precision_rms_px", "validation_prediction_success_fraction",

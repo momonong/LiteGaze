@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import unittest
@@ -16,12 +17,56 @@ PROTOCOL_PATH = (
     / "protocols"
     / "2026-08-10-webcam-gaze-measurement-ceiling-v1.json"
 )
+PREFLIGHT_PROTOCOL_PATH = (
+    ROOT
+    / "docs"
+    / "experiments"
+    / "protocols"
+    / "2026-08-10-participant-gaze-integrity-preflight-v1.json"
+)
 
 
 class WebcamGazeMeasurementProtocolTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.protocol = json.loads(PROTOCOL_PATH.read_text(encoding="utf-8"))
+        cls.preflight_wrapper = json.loads(
+            PREFLIGHT_PROTOCOL_PATH.read_text(encoding="utf-8")
+        )
+        cls.preflight = cls.preflight_wrapper["protocol"]
+
+    def test_participant_preflight_is_hash_bound_and_not_the_193_capture(
+        self,
+    ) -> None:
+        canonical = json.dumps(
+            self.preflight,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        self.assertEqual(
+            hashlib.sha256(canonical).hexdigest(),
+            self.preflight_wrapper["canonical_sha256"],
+        )
+        self.assertEqual(
+            self.preflight["protocol_id"],
+            "participant-gaze-integrity-preflight-v1",
+        )
+        self.assertFalse(
+            self.preflight["scope"][
+                "full_193_sample_measurement_ceiling_protocol_executed"
+            ]
+        )
+        design = self.preflight["design"]
+        self.assertEqual(design["calibration_context"]["rows"], 65)
+        self.assertEqual(
+            design["fixed_target_validation"]["receipts_per_phase"], 15
+        )
+        self.assertEqual(design["fixed_target_validation"]["total_receipts"], 30)
+        self.assertEqual(design["participant_flow_total_observations"], 95)
+        self.assertEqual(
+            self.preflight["analysis_config"]["bootstrap_resamples"], 20_000
+        )
 
     def test_protocol_is_frozen_before_new_capture(self) -> None:
         self.assertEqual(

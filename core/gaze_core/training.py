@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import secrets
 import time
+from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
@@ -32,6 +36,145 @@ from .sample_store import ensure_sessions_dir
 from .stage_pipeline import apply_stage_chain
 from .torch_runtime import cuda_runtime_available
 from .uncertainty import validate_complete_motion_grid
+
+
+MEASUREMENT_TRAINING_BINDING_TYPE = (
+    "webcam_gaze_measurement_ceiling_training_input_binding_v1"
+)
+
+
+def _canonical_sha256(value: Any) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _validated_measurement_training_binding(
+    payload: object,
+    *,
+    dataset_id: str,
+    records: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    if payload is None:
+        return None
+    if not isinstance(payload, Mapping):
+        raise ValueError("measurement_training_binding must be an object")
+    binding = dict(payload)
+    required = {
+        "schema_version",
+        "binding_type",
+        "data_session_id",
+        "capture_run_id",
+        "manifest_sha256",
+        "base_inference_bundle",
+        "rows",
+        "rows_sha256",
+        "binding_sha256",
+    }
+    if set(binding) != required:
+        raise ValueError("measurement_training_binding fields are not exact")
+    if binding.get("schema_version") != 1 or binding.get(
+        "binding_type"
+    ) != MEASUREMENT_TRAINING_BINDING_TYPE:
+        raise ValueError("measurement_training_binding identity is invalid")
+    if binding.get("data_session_id") != dataset_id:
+        raise ValueError("measurement_training_binding session changed")
+    base_bundle = binding.get("base_inference_bundle")
+    base_fields = {
+        "model_id",
+        "model_name",
+        "model_sha256",
+        "bundle_sha256",
+        "checkpoint_sha256",
+    }
+    if not isinstance(base_bundle, Mapping) or set(base_bundle) != base_fields:
+        raise ValueError("measurement training base bundle fields are not exact")
+    if any(
+        not isinstance(base_bundle.get(field), str)
+        or len(str(base_bundle[field])) != 64
+        or any(character not in "0123456789abcdef" for character in base_bundle[field])
+        for field in ("model_sha256", "bundle_sha256", "checkpoint_sha256")
+    ):
+        raise ValueError("measurement training base bundle SHA-256 is invalid")
+    rows = binding.get("rows")
+    if not isinstance(rows, list) or len(rows) != 65 or len(records) != 65:
+        raise ValueError("measurement training requires exactly 65 rows")
+    if binding.get("rows_sha256") != _canonical_sha256(rows):
+        raise ValueError("measurement training row binding hash changed")
+    core = dict(binding)
+    stored_sha = str(core.pop("binding_sha256", ""))
+    if stored_sha != _canonical_sha256(core):
+        raise ValueError("measurement training binding hash changed")
+    exact_row_keys = {
+        "sequence_index",
+        "manifest_sample_index",
+        "manifest_record_sha256",
+        "frame_sha256",
+        "normalized_face_path",
+        "normalized_face_sha256",
+    }
+    for index, (expected, record) in enumerate(zip(rows, records, strict=True)):
+        if not isinstance(expected, Mapping) or set(expected) != exact_row_keys:
+            raise ValueError("measurement training row fields are not exact")
+        if expected.get("sequence_index") != index or expected.get(
+            "manifest_sample_index"
+        ) != index:
+            raise ValueError("measurement training row order changed")
+        if expected.get("manifest_record_sha256") != _canonical_sha256(record):
+            raise ValueError("measurement training manifest row changed")
+        if expected.get("normalized_face_path") != record.get(
+            "normalized_face_path"
+        ):
+            raise ValueError("measurement training normalized path changed")
+    return binding
+
+
+def _read_measurement_training_image(
+    session_dir: Path,
+    record: Mapping[str, Any],
+    expected: Mapping[str, Any],
+    *,
+    manifest_index: int,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Hash and decode the exact same immutable byte reads for one bound row."""
+
+    normalized_root = (session_dir / "normalized_face").resolve()
+    raw_root = (session_dir / "raw").resolve()
+    image_path = (session_dir / str(record.get("normalized_face_path") or "")).resolve()
+    raw_path = (session_dir / str(record.get("raw_path") or "")).resolve()
+    if image_path.parent != normalized_root or raw_path.parent != raw_root:
+        raise ValueError("measurement training image path is unsafe")
+    image_bytes = image_path.read_bytes()
+    raw_bytes = raw_path.read_bytes()
+    normalized_sha = hashlib.sha256(image_bytes).hexdigest()
+    raw_sha = hashlib.sha256(raw_bytes).hexdigest()
+    if normalized_sha != expected["normalized_face_sha256"]:
+        raise ValueError(
+            "measurement normalized-face bytes changed before consumption"
+        )
+    if raw_sha != expected["frame_sha256"]:
+        raise ValueError("measurement raw-frame bytes changed before consumption")
+    image_bgr = cv2.imdecode(
+        np.frombuffer(image_bytes, dtype=np.uint8),
+        cv2.IMREAD_COLOR,
+    )
+    if image_bgr is None:
+        raise ValueError("measurement normalized-face bytes cannot decode")
+    consumed = {
+        "sequence_index": manifest_index,
+        "manifest_sample_index": manifest_index,
+        "manifest_record_sha256": expected["manifest_record_sha256"],
+        "frame_sha256": raw_sha,
+        "normalized_face_path": record["normalized_face_path"],
+        "normalized_face_sha256": normalized_sha,
+    }
+    return image_bgr, consumed
 
 
 def _selected_motion_validation_metrics(
@@ -134,6 +277,64 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
         records = read_manifest(manifest_path)
         if not records:
             return {"ok": False, "error": "no valid calibration samples found"}, 400
+        try:
+            measurement_binding = _validated_measurement_training_binding(
+                payload.get("measurement_training_binding"),
+                dataset_id=str(dataset_id),
+                records=records,
+            )
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}, 400
+        if measurement_binding is not None:
+            if payload.get("allow_cuda") is not False:
+                return {
+                    "ok": False,
+                    "error": "measurement ceiling training must set allow_cuda=false",
+                }, 400
+            if hashlib.sha256(manifest_path.read_bytes()).hexdigest() != (
+                measurement_binding["manifest_sha256"]
+            ):
+                return {
+                    "ok": False,
+                    "error": "measurement training manifest byte hash changed",
+                }, 400
+            from .base_inference_bundle import (
+                build_base_inference_bundle,
+                verify_base_inference_bundle,
+            )
+
+            repository_root = Path(__file__).resolve().parents[2]
+            fresh_bundle = build_base_inference_bundle(
+                repository_root=repository_root
+            )
+            verified_bundle = verify_base_inference_bundle(
+                fresh_bundle, repository_root=repository_root
+            )
+            if verified_bundle.get("status") != "passed":
+                return {
+                    "ok": False,
+                    "error": "measurement training base bundle verification failed",
+                }, 400
+            consumed_base_bundle = {
+                field: fresh_bundle[field]
+                for field in (
+                    "model_id",
+                    "model_name",
+                    "model_sha256",
+                    "bundle_sha256",
+                    "checkpoint_sha256",
+                )
+            }
+            if consumed_base_bundle != measurement_binding["base_inference_bundle"]:
+                return {
+                    "ok": False,
+                    "error": "measurement training base bundle identity changed",
+                }, 400
+            # Dedicated training must load from verified bytes, not an object
+            # retained by the loader's process-global LRU cache.
+            load_unigaze_b16.cache_clear()
+        else:
+            consumed_base_bundle = None
         capture_contract = representative_capture_contract(records)
 
         # Load baseline UniGaze-B model (CPU or GPU with safe fallback)
@@ -158,6 +359,25 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
         except Exception:
             device = "cpu"
             base_model = UniGazeFeatureWrapper(load_unigaze_b16(device)).to(device).eval()
+        if measurement_binding is not None:
+            post_load_bundle = build_base_inference_bundle(
+                repository_root=repository_root
+            )
+            post_load_verification = verify_base_inference_bundle(
+                post_load_bundle, repository_root=repository_root
+            )
+            post_load_identity = {
+                field: post_load_bundle[field]
+                for field in consumed_base_bundle
+            }
+            if (
+                post_load_verification.get("status") != "passed"
+                or post_load_identity != consumed_base_bundle
+            ):
+                return {
+                    "ok": False,
+                    "error": "measurement training base bundle changed during load",
+                }, 400
 
         gaze_list = []
         target_list = []
@@ -167,6 +387,7 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
         face_geometry_list = []
         uncertainty_sample_ids = []
         uncertainty_target_ids = []
+        consumed_measurement_rows: list[dict[str, Any]] = []
 
         # 2. Extract baseline predictions
         for manifest_index, record in enumerate(records):
@@ -182,11 +403,21 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                 except (KeyError, TypeError, ValueError):
                     continue
             image_path = session_dir / record["normalized_face_path"]
-            if not image_path.exists():
-                continue
-            image_bgr = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
-            if image_bgr is None:
-                continue
+            if measurement_binding is not None:
+                expected = measurement_binding["rows"][manifest_index]
+                image_bgr, consumed = _read_measurement_training_image(
+                    session_dir,
+                    record,
+                    expected,
+                    manifest_index=manifest_index,
+                )
+                consumed_measurement_rows.append(consumed)
+            else:
+                if not image_path.exists():
+                    continue
+                image_bgr = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+                if image_bgr is None:
+                    continue
             image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
             image_tensor = to_unigaze_tensor(image_rgb).unsqueeze(0).to(device)
 
@@ -212,6 +443,21 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
         N = len(gaze_list)
         if N == 0:
             return {"ok": False, "error": "no valid face images processed successfully"}, 400
+        consumed_training_rows_sha256 = None
+        if measurement_binding is not None:
+            if len(consumed_measurement_rows) != 65:
+                return {
+                    "ok": False,
+                    "error": "measurement training did not consume exactly 65 rows",
+                }, 400
+            consumed_training_rows_sha256 = _canonical_sha256(
+                consumed_measurement_rows
+            )
+            if consumed_training_rows_sha256 != measurement_binding["rows_sha256"]:
+                return {
+                    "ok": False,
+                    "error": "measurement training consumed binding changed",
+                }, 400
         if uses_motion_protocol:
             try:
                 validate_complete_motion_grid(
@@ -535,6 +781,14 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
         if uncertainty_v2_bundle is not None:
             calibration_data["model_artifact_schema_version"] = 2
             calibration_data["uncertainty_v2"] = uncertainty_v2_bundle
+        if consumed_training_rows_sha256 is not None:
+            calibration_data["measurement_training_input_binding"] = {
+                "binding_sha256": measurement_binding["binding_sha256"],
+                "rows_sha256": consumed_training_rows_sha256,
+                "row_count": len(consumed_measurement_rows),
+                "capture_run_id": measurement_binding["capture_run_id"],
+                "base_inference_bundle": consumed_base_bundle,
+            }
         if "hyperparameter_cv_px_error" in stages[-1]:
             calibration_data["hyperparameter_cv_px_error"] = stages[-1][
                 "hyperparameter_cv_px_error"
@@ -542,14 +796,26 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
         if capture_contract is not None:
             calibration_data["capture_contract"] = capture_contract
         
-        output_model_path.write_text(
-            json.dumps(calibration_data, ensure_ascii=False, indent=2),
-            encoding="utf-8"
+        serialized_model = json.dumps(
+            calibration_data,
+            ensure_ascii=False,
+            indent=2,
         )
+        temporary_model_path = output_model_path.with_name(
+            f".{output_model_path.name}.{secrets.token_hex(8)}.tmp"
+        )
+        try:
+            temporary_model_path.write_text(serialized_model, encoding="utf-8")
+            os.replace(temporary_model_path, output_model_path)
+        finally:
+            if temporary_model_path.exists():
+                temporary_model_path.unlink()
+        artifact_sha256 = hashlib.sha256(output_model_path.read_bytes()).hexdigest()
 
         response = {
             "ok": True,
             "model_name": output_name,
+            "model_artifact_sha256": artifact_sha256,
             "train_samples": N,
             "best_val_px_error": best_validation_error,
             "train_px_error": mean_px_error,
@@ -571,6 +837,14 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                 ]["status"],
                 "fresh_matched_contract_capture_required": True,
             }
+        if consumed_training_rows_sha256 is not None:
+            response["consumed_training_rows_sha256"] = (
+                consumed_training_rows_sha256
+            )
+            response["measurement_training_binding_sha256"] = (
+                measurement_binding["binding_sha256"]
+            )
+            response["base_inference_bundle"] = consumed_base_bundle
         if "hyperparameter_cv_px_error" in stages[-1]:
             response["hyperparameter_cv_px_error"] = stages[-1][
                 "hyperparameter_cv_px_error"

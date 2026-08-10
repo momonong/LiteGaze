@@ -37,6 +37,31 @@ exact PID 和啟動來源後再停止；不要批次終止 Python 進程。本�
 瀏覽器因而讀到舊的 data-location 與 raw-frame 設定。必須先切換為單一
 current-branch listener，才能把後續 preflight 當作本輪結果。
 
+### 專用 193-row measurement-ceiling（8099；不是 participant Visit）
+
+Participant rehearsal 固定走 8098；新的 measurement-ceiling runner 固定走
+`http://127.0.0.1:8099/measurement-ceiling`。後者不接受邀請碼、不載入
+participant-study store，也不建立 Visit session。啟動前先確認 8099 沒有舊 listener：
+
+```powershell
+netstat -ano | Select-String ':8099\s+.*LISTENING'
+& $python -X utf8 -m scripts.run_webcam_gaze_measurement_server `
+  --data-root $studyRoot `
+  --port 8099
+```
+
+這個 runner 只綁定 `127.0.0.1`，使用 Waitress、CPU-only 與 Hugging Face
+offline mode。它不要求 audio。Readiness 與 evaluation frame 只在記憶體中處理；
+calibration 成功列會暫存在 D 槽專用 session 的 `raw/crop/normalized_face`，另有
+最多一幀的加密 crash-recovery spool，直到 training、terminal failure 或
+authenticated abort 完成 verified purge。Run/create/challenge token 只存在 request
+headers 與該分頁的 `sessionStorage`，不可放進 URL、JSON body、console、Git 或文件。
+
+Artifact 驗證後可在同一頁執行 authenticated descriptive analysis；結果固定維持
+`measurement_claim_authorized=false`、`physical_capture_claim_authorized=false` 與
+`threshold_selected=false`。本 runbook 更新時仍尚未完成真人 193-row capture，
+所以這是 capture-ready 操作路徑，不是 gaze accuracy 結果。
+
 ### A. 已加密儲存
 
 以系統管理員 PowerShell 確認實際資料位置已加密，例如檢查磁碟的
@@ -101,8 +126,10 @@ participant/pair 配對與 schedule cell。
    非研究團隊人員。開啟 `http://127.0.0.1:8098/study`，本次只使用 visit 1 code。
    若要保存本人的閱讀影片，必須親自在 consent 頁勾選獨立 optional scope；它預設
    不勾選。瀏覽器只建立 video track，不請求或保存 audio。
-2. Visit 2 必須在 visit 1 完成後 18–72 小時，以同一裝置類別與瀏覽器 family
-   使用配對 code；server 會拒絕過早、過晚或 visit 1 未完成的 code。
+2. Visit 2 必須在 visit 1 的 `general_collection_completed` 事件後 18–72 小時，
+   以同一裝置類別與瀏覽器 family 使用配對 code；server 會拒絕過早、過晚、
+   visit 1 未完成、完成事件缺失／重複，以及 coarse device policy 不相符的流程。
+   邀請碼被使用的時間不是重測時窗起點。
 3. 每次完成後執行：
 
    ```powershell
@@ -142,13 +169,36 @@ participant/pair 配對與 schedule cell。
   重啟服務。
 - Visit 2 仍必須在 Visit 1 完成後 18–72 小時開始，不是「拿到新碼就能
   提早開始」。
+- 不要把瀏覽器欄位的暫時預填當成邀請碼已保存的證據。分頁關閉、重載或按
+  「開始另一個邀請 / Visit」都可能清空欄位；研究者必須另行確認仍持有明文碼。
+  Registry 只能證明未使用與 hash 完整，不能還原或驗證研究者是否仍持有明文碼。
 - 要在同一瀏覽器分頁輸入下一個 invite 時，先保存撤回碼與同意憑證，再按
   「開始另一個邀請 / Visit」。這只會清除該分頁的 session 連結，不會撤回、刪除
   或修改 server 資料；未完成的 Visit 清除後無法從該分頁續接。
 
 ### 服務與手動相機門檻
 
-1. 在只有一個 current-branch listener 後，從另一個 PowerShell 的參與者
+1. 每次實體 Visit 前，先執行不接受邀請碼、也不寫入 study data 的標準函式庫
+   preflight。`--expected-head` 必須是研究者已核對的交付 commit；結果只有
+   `machine_ready` 才可進入後續手動門檻，`waiting_for_window` 代表服務正確但尚未
+   到完成事件起算的 18 小時，`failed` 必須先修正：
+
+   ```powershell
+   $expectedHead = (git -C $codeRoot rev-parse HEAD).Trim()
+   & $python -S -X utf8 -m scripts.preflight_general_collection_visit `
+     --code-root $codeRoot `
+     --study-root $studyRoot `
+     --base-url 'http://127.0.0.1:8098' `
+     --expected-head $expectedHead
+   ```
+
+   這個工具會確認 capture-critical working files 與 HEAD 相符、服務是在最新 runtime
+   source 之後重啟、只有一個 loopback listener、participant-safe endpoint、凍結
+   protocol/bank digest、Visit 1 完成事件、Visit 2 未使用狀態、coarse device 參考，
+   以及 target linked gaze session 的 calibration image 已清除。它不讀取／輸出明文
+   invite，也不啟動／停止服務、不刪除任何資料；其他 legacy session 的 `raw`
+   directory 只會產生 warning，絕不自動清除。
+2. 在只有一個 current-branch listener 後，從另一個 PowerShell 的參與者
    公開面確認：
 
    ```powershell
@@ -159,19 +209,19 @@ participant/pair 配對與 schedule cell。
    liveness 必須回傳只含 `{"ok":true}` 的 participant-safe 結果；不需 researcher
    key，也不應暴露 model/dataset 細節。protocol 回傳的 activation、data location、
    retention 與 self-only scope 必須與本次啟動相符。
-2. 在 system check 先手動確認私密空間、均勻正面光線與舒適距離，再允許
+3. 在 system check 先手動確認私密空間、均勻正面光線與舒適距離，再允許
    localhost 使用相機。預覽中額頭、雙眼、鼻子與下巴都要入鏡，不可有
    強烈背光或遮擋。相機至少 640×480，viewport 至少 1024×700。
-3. 儲存 system check 後不要改變視窗大小、顯示縮放、方向、瀏覽器、相機、
+4. 儲存 system check 後不要改變視窗大小、顯示縮放、方向、瀏覽器、相機、
    螢幕或裝置位置。若 viewport 已變更，不要硬續；回到 system check 重建凍結狀態。
-4. 動作校正必須完成 neutral、left、right、near、far 五個區塊的 13 個目標；
+5. 動作校正必須完成 neutral、left、right、near、far 五個區塊的 13 個目標；
    left/right 各轉頭約 15 度、眼睛仍看目標，near/far 各移動約 15–20 公分。
    不要略過區塊、切換分頁或在進行中搬動裝置。
-5. 若顯示「偵測不到完整臉部」，先把臉移回預覽中央、改善光線後才繼續。
+6. 若顯示「偵測不到完整臉部」，先把臉移回預覽中央、改善光線後才繼續。
    反覆 no-face 會使品質門檻失敗。校正失敗時要閱讀畫面上的 reason code；可修正的
    動作／距離問題可在同頁重來，出現 model binding、影像清除無法驗證或 audit 錯誤時
    必須停止並聯絡研究者。失敗回傳不是測量成果。
-6. 校正成功後才進入閱讀前五點驗證，每點三次，只看橘色圓點並保持相機／
+7. 校正成功後才進入閱讀前五點驗證，每點三次，只看橘色圓點並保持相機／
    螢幕不動。若 gaze 降級，behavioral reading 可依畫面提示繼續；若本次必須取得
    gaze，則在開始閱讀前停止並聯絡研究者，不要在同一 session 自行反覆調整。
 
@@ -184,11 +234,11 @@ preflight 與手動執行門檻，不是新的 measurement result。
 2. 執行工程測試：
 
    ```powershell
-   .\.venv\Scripts\python.exe -X utf8 -m unittest scripts.test_participant_study scripts.test_adaptive_stepper -v
-   .\.venv\Scripts\python.exe -X utf8 -m scripts.audit_participant_study_readiness --target dry-run
+   & $python -X utf8 -m unittest scripts.test_participant_study scripts.test_adaptive_stepper -v
+   & $python -X utf8 -m scripts.audit_participant_study_readiness --target dry-run
    ```
 
-3. 本機啟動：`.\.venv\Scripts\python.exe -X utf8 run.py`，開啟 `http://127.0.0.1:8080/study`。
+3. 本機啟動：`& $python -X utf8 run.py`，開啟 `http://127.0.0.1:8080/study`。
 4. 完整走一次 dry run：同意、理解題、收據下載、系統檢查、模擬校準、模擬評量、退出。
 5. 不使用朋友資料、不分享 tunnel、不把 dry run 當研究收案。
 
@@ -207,7 +257,7 @@ preflight 與手動執行門檻，不是新的 measurement result。
 9. 執行：
 
    ```powershell
-   .\.venv\Scripts\python.exe -X utf8 -m scripts.audit_participant_study_readiness --target pilot
+   & $python -X utf8 -m scripts.audit_participant_study_readiness --target pilot
    ```
 
    只有 exit code 0 才能繼續。
@@ -215,20 +265,20 @@ preflight 與手動執行門檻，不是新的 measurement result。
 10. 建立一次性邀請碼：
 
    ```powershell
-   .\.venv\Scripts\python.exe -X utf8 -m scripts.create_pilot_invites --count 1
+   & $python -X utf8 -m scripts.create_pilot_invites --count 1
    ```
 
 11. 啟動 participant-only tunnel：
 
     ```powershell
-    .\.venv\Scripts\python.exe -X utf8 run.py --study-tunnel
+    & $python -X utf8 run.py --study-tunnel
     ```
 
     legacy `--tunnel` 已停用。正式 tunnel 使用 Waitress、公開 API allowlist 與 ngrok local inspection disabled；仍須確認帳號層 full capture 關閉。
 
 ## 每位受試者前後
 
-- 前：確認版本／digest、剩餘一次性 invite、磁碟加密、相機、CPU 餘裕、無殘留 raw directory、同意與退出聯絡可用。
+- 前：確認版本／digest、剩餘一次性 invite、磁碟加密、相機、CPU 餘裕、target/current participant-linked gaze session 無 calibration `raw`／`crop`／`normalized_face` artifact、同意與退出聯絡可用。其他 legacy session 的 raw directory 只記錄 warning，不得在 preflight 自動刪除。
 - 中：不要看受試者答案或提示；如不適立即停止。不可為通過品質閘而手改資料。
 - 後：確認狀態 `completed` 或 `withdrawn`、校準影像已清除、事件與失敗原因完整；關閉 tunnel。
 - 任何 incident：停止新增 invite，保存不含敏感 body 的時間線，依 `INCIDENT_RESPONSE.md` 處理。
