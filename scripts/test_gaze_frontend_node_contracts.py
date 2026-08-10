@@ -20,6 +20,12 @@ PARTICIPANT_ASSESSMENT_TEMPLATE_PATH = (
 PARTICIPANT_ASSESSMENT_PATH = (
     ROOT / "web" / "static" / "participant_assessment.js"
 )
+GAZE_TEMPLATE_PATH = ROOT / "web" / "templates" / "gaze_page.html"
+GAZE_PAGE_PATH = ROOT / "web" / "static" / "gaze_page.js"
+PARTICIPANT_COLLECTION_PATH = (
+    ROOT / "web" / "static" / "participant_collection.js"
+)
+PARTICIPANT_STUDY_PATH = ROOT / "web" / "static" / "participant_study.js"
 EXPECTED_PREDICT_CALLSITES = {
     "web/static/gaze_integration.js",
     "web/static/gaze_page.js",
@@ -50,6 +56,20 @@ NODE_TEST_CONTRACTS = (
         "web/static/gaze_line_decoder.js",
         'require("../web/static/gaze_line_decoder.js")',
         "gaze line-first shadow decoder: ok",
+    ),
+    (
+        "node scripts/test_gaze_calibration_feedback.js",
+        "scripts/test_gaze_calibration_feedback.js",
+        "web/static/gaze_calibration_feedback.js",
+        'require("../web/static/gaze_calibration_feedback.js")',
+        "gaze calibration feedback tests passed",
+    ),
+    (
+        "node scripts/test_participant_study_context.js",
+        "scripts/test_participant_study_context.js",
+        "web/static/participant_study.js",
+        'readFileSync(\n  path.join(root, "web/static/participant_study.js")',
+        "participant study context reset tests passed",
     ),
 )
 
@@ -132,13 +152,33 @@ class GazeFrontendNodeContractTests(unittest.TestCase):
             ROOT / "web" / "static" / "gaze_page.js",
             ROOT / "web" / "static" / "participant_assessment.js",
             ROOT / "web" / "static" / "participant_collection.js",
+            PARTICIPANT_STUDY_PATH,
         )
         for path in paths:
             with self.subTest(path=path.relative_to(ROOT).as_posix()):
                 source = path.read_text(encoding="utf-8")
                 self.assertNotIn("study_access_token:", source)
+                self.assertNotIn("payload.access_token =", source)
                 self.assertIn("Authorization", source)
                 self.assertIn("Bearer", source)
+
+    def test_participant_calibration_failure_feedback_is_actionable(self) -> None:
+        template = GAZE_TEMPLATE_PATH.read_text(encoding="utf-8")
+        feedback_index = template.index("gaze_calibration_feedback.js")
+        page_index = template.index("gaze_page.js")
+        self.assertLess(feedback_index, page_index)
+
+        gaze_page = GAZE_PAGE_PATH.read_text(encoding="utf-8")
+        self.assertIn("error.payload = data", gaze_page)
+        self.assertIn("feedback.buildFailureMessage(err.payload)", gaze_page)
+        self.assertIn("feedback?.noFacePrompt(pointIndex)", gaze_page)
+        self.assertIn("window.alert(guidance)", gaze_page)
+
+        collection = PARTICIPANT_COLLECTION_PATH.read_text(encoding="utf-8")
+        self.assertNotIn("建議先重新校準", collection)
+        self.assertNotIn("請重新校準後再驗證", collection)
+        self.assertIn("這個 session 不支援重新校準或自助重試", collection)
+        self.assertNotIn("取得新的有效邀請", collection)
 
     def test_node_contract_does_not_spawn_from_python_worker(self) -> None:
         source = Path(__file__).read_text(encoding="utf-8")

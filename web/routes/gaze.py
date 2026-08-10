@@ -352,6 +352,8 @@ def _predict_response(body: dict) -> tuple[dict, int]:
 
 @gaze_bp.get("/health")
 def health():
+    if _public_study_mode() and not _researcher_authorized():
+        return jsonify({"ok": True})
     ensure_runs_dir(_gaze_root())
     return jsonify({"ok": True, "backend": "chenghao-gaze", "mode": "http-polling"})
 

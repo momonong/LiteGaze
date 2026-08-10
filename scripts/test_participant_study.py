@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
+import os
 import tempfile
 import unittest
 from datetime import UTC, datetime, timedelta
@@ -15,6 +17,7 @@ from core.gaze_core.capture_contract import build_fit_target_contract
 from core.gaze_core.sample_store import create_session, safe_session_dir
 from core.participant_study import ParticipantStudyStore
 from core.participant_study.protocol import activation_status, load_protocol
+from scripts import audit_participant_study_readiness as readiness_audit
 from web import create_app
 from web.routes.study import _participant_model_name
 
@@ -59,8 +62,26 @@ def _pilot_settings() -> dict[str, object]:
 
 
 def _approved_protocol() -> dict:
-    protocol = load_protocol()
+    protocol = _formal_video_disabled_protocol()
     protocol["collection_status"] = "approved_for_pilot"
+    return protocol
+
+
+def _formal_video_disabled_protocol() -> dict:
+    protocol = load_protocol()
+    protocol["optional_scopes"] = []
+    protocol["data_categories"] = [
+        copy.deepcopy(readiness_audit.FORMAL_TRANSIENT_READING_CATEGORY)
+        if item["id"] == "transient_reading_frames"
+        else item
+        for item in protocol["data_categories"]
+        if item["id"] != readiness_audit.SELF_ONLY_READING_VIDEO_CATEGORY_ID
+    ]
+    protocol["comprehension_checks"] = [
+        item
+        for item in protocol["comprehension_checks"]
+        if item["id"] != "reading_video_optional_self_only"
+    ]
     return protocol
 
 
@@ -92,6 +113,222 @@ class ParticipantProtocolTests(unittest.TestCase):
             self.assertEqual(first["mode"], "pilot")
             with self.assertRaisesRegex(Exception, "already-used"):
                 store.enroll(payload)
+
+    def test_pilot_runtime_rejects_unsafe_video_scope_and_extra_category(
+        self,
+    ) -> None:
+        self_only_video = load_protocol()
+        self_only_video["collection_status"] = "approved_for_pilot"
+
+        extra_category = _approved_protocol()
+        extra_category["data_categories"].append(
+            {
+                "id": "unexpected_derived_summary",
+                "required": False,
+                "description_zh": "額外的衍生摘要欄位",
+            }
+        )
+
+        for name, unsafe_protocol in (
+            ("self_only_video", self_only_video),
+            ("extra_category", extra_category),
+        ):
+            with self.subTest(name=name), tempfile.TemporaryDirectory(
+                prefix="lexigaze-unsafe-pilot-"
+            ) as temp_name:
+                root = Path(temp_name)
+                safe_store = ParticipantStudyStore(
+                    root,
+                    settings=_pilot_settings(),
+                    protocol=_approved_protocol(),
+                )
+                invite = safe_store.create_invites(1)[0]
+
+                unsafe_store = ParticipantStudyStore(
+                    root,
+                    settings=_pilot_settings(),
+                    protocol=unsafe_protocol,
+                )
+                self.assertFalse(unsafe_store.activation["pilot_ready"])
+                self.assertIn(
+                    readiness_audit.FORMAL_VIDEO_SCOPE_BLOCKER,
+                    unsafe_store.activation["missing_requirements"],
+                )
+                with self.assertRaisesRegex(
+                    Exception, "activation gates pass"
+                ):
+                    unsafe_store.create_invites(1)
+
+                payload = _consent_payload(unsafe_protocol, mode="pilot")
+                payload["invite_code"] = invite
+                with self.assertRaisesRegex(
+                    Exception, "real participant collection is locked"
+                ):
+                    unsafe_store.enroll(payload)
+
+                enrolled = safe_store.enroll(
+                    {
+                        **_consent_payload(safe_store.protocol, mode="pilot"),
+                        "invite_code": invite,
+                    }
+                )
+                self.assertEqual(enrolled["mode"], "pilot")
+
+
+class ParticipantReadinessVideoBoundaryTests(unittest.TestCase):
+    def test_frozen_self_only_reading_video_scope_is_dry_run_only(self) -> None:
+        protocol = load_protocol()
+        boundary = readiness_audit.audit_optional_video_scope(protocol)
+        self.assertEqual(
+            boundary["status"],
+            "bounded_self_only_development_reading_video",
+        )
+        self.assertTrue(boundary["dry_run_allowed"])
+        self.assertTrue(boundary["full_video_collection_disabled"])
+        self.assertFalse(boundary["formal_collection_allowed"])
+        self.assertEqual(boundary["errors"], [])
+
+        with patch.dict(os.environ, {}, clear=True):
+            result = readiness_audit.audit()
+        self.assertTrue(result["dry_run_ready"])
+        self.assertFalse(result["pilot_ready"])
+        self.assertIn(
+            readiness_audit.FORMAL_VIDEO_SCOPE_BLOCKER,
+            result["pilot_missing_requirements"],
+        )
+
+    def test_no_optional_video_scope_is_safe_for_formal_readiness(self) -> None:
+        protocol = _formal_video_disabled_protocol()
+        boundary = readiness_audit.audit_optional_video_scope(protocol)
+        self.assertEqual(boundary["status"], "video_collection_disabled")
+        self.assertTrue(boundary["dry_run_allowed"])
+        self.assertTrue(boundary["formal_collection_allowed"])
+        self.assertEqual(boundary["errors"], [])
+
+        protocol["collection_status"] = "approved_for_pilot"
+        with (
+            patch.dict(os.environ, _pilot_settings(), clear=True),
+            patch.object(readiness_audit, "load_protocol", return_value=protocol),
+        ):
+            result = readiness_audit.audit()
+        self.assertTrue(result["pilot_ready"])
+        self.assertNotIn(
+            readiness_audit.FORMAL_VIDEO_SCOPE_BLOCKER,
+            result["pilot_missing_requirements"],
+        )
+
+    def test_required_or_contradictory_video_cannot_hide_outside_scope(self) -> None:
+        required_video = _formal_video_disabled_protocol()
+        required_video["collection_status"] = "approved_for_pilot"
+        required_video["data_categories"].append(
+            {
+                "id": "required_full_session_recording",
+                "required": True,
+                "description_zh": "正式保存完整相機錄製內容",
+            }
+        )
+
+        contradictory = load_protocol()
+        contradictory["optional_scopes"][0]["text_zh"] += (
+            " 所有外部受試者也會自動錄製完整含音訊影片。"
+        )
+
+        for name, protocol in (
+            ("required_video", required_video),
+            ("contradictory_scope", contradictory),
+        ):
+            with self.subTest(name=name):
+                with (
+                    patch.dict(os.environ, _pilot_settings(), clear=True),
+                    patch.object(
+                        readiness_audit,
+                        "load_protocol",
+                        return_value=protocol,
+                    ),
+                ):
+                    result = readiness_audit.audit()
+                self.assertFalse(result["dry_run_ready"])
+                self.assertFalse(result["pilot_ready"])
+                self.assertTrue(result["video_scope_boundary"]["errors"])
+
+    def test_external_audio_or_full_session_video_fails_closed(self) -> None:
+        cases = {}
+
+        external = load_protocol()
+        external["optional_scopes"][0]["self_development_only"] = False
+        cases["external_participant"] = external
+
+        audio = load_protocol()
+        audio["optional_scopes"][0]["text_zh"] = audio["optional_scopes"][0][
+            "text_zh"
+        ].replace("無音訊", "包含音訊")
+        cases["audio"] = audio
+
+        full_session = load_protocol()
+        category = next(
+            item
+            for item in full_session["data_categories"]
+            if item["id"] == "optional_self_development_reading_video"
+        )
+        category["description_zh"] = category["description_zh"].replace(
+            "不錄製同意、背景表單或單字回顧畫面",
+            "也錄製同意、背景表單與單字回顧畫面",
+        )
+        cases["full_session"] = full_session
+
+        extra_scope = load_protocol()
+        extra_scope["optional_scopes"].append(
+            {
+                "id": "retain_external_full_session_video",
+                "self_development_only": False,
+                "text_zh": "retain all video",
+            }
+        )
+        cases["extra_scope"] = extra_scope
+
+        bad_comprehension = load_protocol()
+        check = next(
+            item
+            for item in bad_comprehension["comprehension_checks"]
+            if item["id"] == "reading_video_optional_self_only"
+        )
+        check["correct"] = "always_for_every_participant"
+        cases["bad_comprehension"] = bad_comprehension
+
+        for name, protocol in cases.items():
+            with self.subTest(name=name):
+                boundary = readiness_audit.audit_optional_video_scope(
+                    copy.deepcopy(protocol)
+                )
+                self.assertFalse(boundary["dry_run_allowed"])
+                self.assertFalse(boundary["formal_collection_allowed"])
+                self.assertTrue(boundary["errors"])
+                with (
+                    patch.dict(os.environ, {}, clear=True),
+                    patch.object(
+                        readiness_audit,
+                        "load_protocol",
+                        return_value=protocol,
+                    ),
+                ):
+                    result = readiness_audit.audit()
+                self.assertFalse(result["dry_run_ready"])
+                self.assertFalse(result["pilot_ready"])
+
+    def test_formal_configuration_stays_blocked_by_optional_video_scope(self) -> None:
+        protocol = load_protocol()
+        protocol["collection_status"] = "approved_for_pilot"
+        with (
+            patch.dict(os.environ, _pilot_settings(), clear=True),
+            patch.object(readiness_audit, "load_protocol", return_value=protocol),
+        ):
+            result = readiness_audit.audit()
+        self.assertTrue(result["dry_run_ready"])
+        self.assertFalse(result["pilot_ready"])
+        self.assertIn(
+            readiness_audit.FORMAL_VIDEO_SCOPE_BLOCKER,
+            result["pilot_missing_requirements"],
+        )
 
 
 class ParticipantStoreTests(unittest.TestCase):
@@ -169,9 +406,11 @@ class ParticipantWebSurfaceTests(unittest.TestCase):
         self.app = create_app(
             {
                 "TESTING": True,
-                "LEXIGAZE_BLUEPRINTS": ("study", "inspector"),
+                "LEXIGAZE_BLUEPRINTS": ("study", "gaze", "inspector"),
                 "LEXIGAZE_STUDY_ROOT": self.temp_dir.name,
+                "LEXIGAZE_GAZE_ROOT": self.temp_dir.name,
                 "LEXIGAZE_PUBLIC_STUDY_MODE": "1",
+                "LEXIGAZE_RESEARCHER_API_KEY": "researcher-test-key",
                 "LEXIGAZE_ADAPTIVE_SIGNING_KEY": "t" * 48,
             }
         )
@@ -208,6 +447,40 @@ class ParticipantWebSurfaceTests(unittest.TestCase):
         root = self.client.get("/")
         self.assertEqual(root.status_code, 302)
         self.assertTrue(root.headers["Location"].endswith("/study"))
+
+        gaze_health = self.client.get("/api/gaze/health")
+        self.assertEqual(gaze_health.status_code, 200)
+        self.assertEqual(gaze_health.get_json(), {"ok": True})
+        self.assertEqual(gaze_health.headers["Cache-Control"], "no-store")
+        self.assertEqual(gaze_health.headers["Referrer-Policy"], "no-referrer")
+        self.assertFalse(
+            (Path(self.temp_dir.name) / "examples" / "models").exists()
+        )
+
+        researcher_health = self.client.get(
+            "/api/gaze/health",
+            headers={"X-Lexigaze-Researcher-Key": "researcher-test-key"},
+        )
+        self.assertEqual(researcher_health.status_code, 200)
+        self.assertEqual(
+            researcher_health.get_json(),
+            {
+                "ok": True,
+                "backend": "chenghao-gaze",
+                "mode": "http-polling",
+            },
+        )
+
+        for method, path in (
+            ("get", "/api/ping"),
+            ("get", "/api/health"),
+            ("get", "/api/gaze/health/extra"),
+            ("get", "/api/gaze/datasets"),
+            ("post", "/api/gaze/train"),
+            ("delete", "/api/gaze/models/not-a-model"),
+        ):
+            with self.subTest(method=method, path=path):
+                self.assertEqual(getattr(self.client, method)(path).status_code, 403)
         self.assertEqual(self.client.get("/api/sessions").status_code, 403)
         self.assertEqual(self.client.get("/api/inspector/reports").status_code, 403)
         self.assertEqual(
@@ -305,6 +578,9 @@ class ParticipantCalibrationRouteTests(unittest.TestCase):
         ):
             response = self._complete()
         self.assertEqual(response.status_code, 422)
+        payload = response.get_json()
+        self.assertEqual(payload["quality"]["reasons"], ["coverage_failed"])
+        self.assertEqual(payload["session"]["state"], "system_check_passed")
         self.assertFalse(safe_session_dir(self.root, self.gaze_session_id).exists())
         self.assertFalse(train.called)
         status = self.store.get_session(

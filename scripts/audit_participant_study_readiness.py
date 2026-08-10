@@ -14,8 +14,12 @@ if str(ROOT) not in sys.path:
 
 from core.cognitive_inspector.adaptive import validate_item_bank  # noqa: E402
 from core.participant_study.protocol import (  # noqa: E402
+    FORMAL_TRANSIENT_READING_CATEGORY,
+    FORMAL_VIDEO_SCOPE_BLOCKER,
+    SELF_ONLY_READING_VIDEO_CATEGORY_ID,
     activation_status,
     load_protocol,
+    optional_video_scope_boundary as audit_optional_video_scope,
     public_protocol,
 )
 
@@ -45,6 +49,7 @@ def audit() -> dict:
     missing_files = [name for name in REQUIRED_FILES if not (ROOT / name).is_file()]
     contacts = public["research_contacts"]
     governance = public["data_governance"]
+    video_scope = audit_optional_video_scope(protocol)
     engineering_checks = {
         "required_files_present": not missing_files,
         "item_bank_structure_valid": bank["ok"],
@@ -54,7 +59,13 @@ def audit() -> dict:
         == {"font_size": 16, "line_width": 650, "line_height": 1.7},
         "dry_run_available_without_camera_or_storage": activation["dry_run_ready"],
         "direct_identifiers_excluded_by_contract": True,
-        "full_video_collection_disabled": not protocol["optional_scopes"],
+        "full_video_collection_disabled": video_scope[
+            "full_video_collection_disabled"
+        ],
+        "self_only_reading_video_scope_bounded": video_scope["dry_run_allowed"],
+        "formal_optional_video_scopes_disabled": video_scope[
+            "formal_collection_allowed"
+        ],
         "participant_contacts_configured": all(contacts.values()),
         "retention_and_location_configured": bool(governance["location"])
         and bool(governance["retention_days"])
@@ -72,6 +83,7 @@ def audit() -> dict:
             "full_video_collection_disabled",
         )
     )
+    pilot_missing_requirements = list(activation["missing_requirements"])
     return {
         "schema_version": 1,
         "protocol_id": protocol["protocol_id"],
@@ -79,9 +91,14 @@ def audit() -> dict:
         "protocol_digest_sha256": activation["protocol_digest_sha256"],
         "consent_digest_sha256": public["consent_digest_sha256"],
         "dry_run_ready": dry_run_ready,
-        "pilot_ready": dry_run_ready and activation["pilot_ready"],
-        "pilot_missing_requirements": activation["missing_requirements"],
+        "pilot_ready": (
+            dry_run_ready
+            and activation["pilot_ready"]
+            and bool(video_scope["formal_collection_allowed"])
+        ),
+        "pilot_missing_requirements": pilot_missing_requirements,
         "engineering_checks": engineering_checks,
+        "video_scope_boundary": video_scope,
         "missing_files": missing_files,
         "item_bank": bank,
         "automated_test_command": (

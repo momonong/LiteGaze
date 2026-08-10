@@ -1,5 +1,5 @@
 {
-  "duration_seconds": 22.688,
+  "duration_seconds": 23.715,
   "errors": 0,
   "failures": 0,
   "safeguards": {
@@ -15,7 +15,7 @@
   "skipped": 0,
   "status": "passed",
   "supervisor": {
-    "duration_seconds": 23.03,
+    "duration_seconds": 24.025,
     "gpu_after": {
       "available": true,
       "rows": [
@@ -68,6 +68,6 @@
     "scripts.test_webcam_gaze_measurement_ceiling",
     "scripts.test_webcam_gaze_measurement_protocol"
   ],
-  "tests_run": 311,
+  "tests_run": 319,
   "unexpected_successes": 0
 }

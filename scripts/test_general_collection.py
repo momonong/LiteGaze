@@ -374,6 +374,66 @@ class GeneralCollectionRunnerTests(unittest.TestCase):
                 session["data_governance"]["formal_promotion_allowed"]
             )
 
+    def test_unused_invite_can_rotate_without_creating_a_second_pair(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="lexigaze-invite-rotation-") as name:
+            root = Path(name)
+            store = ParticipantStudyStore(
+                root,
+                settings=_unencrypted_self_settings(),
+            )
+            pair = store.create_collection_invite_pairs(1)[0]
+            first_code = pair["visits"][0]["invite_code"]
+            second_code = pair["visits"][1]["invite_code"]
+
+            rotated_visit_two = store.rotate_unused_collection_invite(
+                pair["pair_id"], 2
+            )
+            self.assertNotEqual(rotated_visit_two["invite_code"], second_code)
+            self.assertEqual(rotated_visit_two["code_rotation_count"], 1)
+            with self.assertRaisesRegex(Exception, "invalid or already-used"):
+                store.enroll(_consent_payload(second_code))
+
+            rotated_visit_one = store.rotate_unused_collection_invite(
+                pair["pair_id"], 1
+            )
+            self.assertNotEqual(rotated_visit_one["invite_code"], first_code)
+            with self.assertRaisesRegex(Exception, "invalid or already-used"):
+                store.enroll(_consent_payload(first_code))
+            visit_one = store.enroll(
+                _consent_payload(rotated_visit_one["invite_code"])
+            )
+            with self.assertRaisesRegex(Exception, "used invitation"):
+                store.rotate_unused_collection_invite(pair["pair_id"], 1)
+            registry_path = (
+                root
+                / "data"
+                / "participant_studies"
+                / "lexigaze-reader-pilot"
+                / "rehearsals"
+                / "collection_invites.json"
+            )
+            registry_text = registry_path.read_text(encoding="utf-8")
+            self.assertNotIn(second_code, registry_text)
+            self.assertNotIn(rotated_visit_two["invite_code"], registry_text)
+            self.assertNotIn(first_code, registry_text)
+            self.assertNotIn(rotated_visit_one["invite_code"], registry_text)
+            registry = json.loads(registry_text)
+            self.assertEqual(len(registry["invites"]), 2)
+            rotated_record = next(
+                item
+                for item in registry["invites"]
+                if item["visit_index"] == 2
+            )
+            self.assertEqual(rotated_record["code_rotation_count"], 1)
+            self.assertEqual(len(rotated_record["code_rotation_history"]), 1)
+            first_record = next(
+                item
+                for item in registry["invites"]
+                if item["visit_index"] == 1
+            )
+            self.assertEqual(first_record["code_rotation_count"], 1)
+            self.assertTrue(visit_one["study_session_id"].startswith("ST-"))
+
 
 class GeneralCollectionInputTests(unittest.TestCase):
     def setUp(self) -> None:

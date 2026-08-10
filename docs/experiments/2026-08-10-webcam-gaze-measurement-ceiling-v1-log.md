@@ -253,9 +253,83 @@ frozen as `scored_no_threshold`, but this legacy artifact's per-sample
 predictive uncertainty remains `not_evaluable`. The complete report is
 [`2026-08-10-webcam-gaze-measurement-ceiling-v1.md`](2026-08-10-webcam-gaze-measurement-ceiling-v1.md).
 
+## Capture-readiness preflight and follow-up fixes
+
+After the receipt/uncertainty implementation milestone, a local browser
+preflight was used to reduce avoidable failure modes before asking the user for
+the remaining physical webcam capture. This preflight did not create a new
+measurement result and did not close the matched-contract evidence gate.
+
+The preflight exposed four concrete negative findings:
+
+1. Windows allowed two processes to remain `LISTENING` on the same
+   `127.0.0.1:8098`: a service left from the previous day and the current-branch
+   service. Requests could therefore reach stale code and reported the old data
+   location and raw-frame settings. The researcher must now confirm exactly one
+   listener with `netstat -ano | Select-String ':8098\s+.*LISTENING'`; any stale
+   exact PID is inspected and stopped explicitly, never by broadly terminating
+   Python processes.
+2. The participant-safe `GET /api/gaze/health` request initially returned 403
+   because the public study allowlist omitted that route. The route is now
+   public on the constrained participant surface and returns only `{"ok":true}`
+   without a researcher key. The richer backend response remains researcher
+   only. `GET /api/study/protocol` is the separate check for activation,
+   storage, retention, and self-only scope configuration.
+3. The readiness audit still assumed that every optional video scope meant
+   full video collection. That stale assumption incorrectly rejected the
+   already bounded, explicit, self-only reading-video development scope. The
+   audit now validates that exception's exact consent/category/comprehension
+   boundaries. It still fails closed for formal pilot readiness whenever any
+   optional video scope is present; this change does not authorize external
+   participants or formal promotion.
+4. The existing Visit 2 plaintext invite could not be recovered. This is an
+   intentional one-time-secret property: the registry stores only its hash.
+   Starting the server again with `--create-invite-pairs 1` would create a new
+   participant/pair assignment rather than recover the existing Visit 2. A
+   dedicated command now rotates exactly one lost, unused invite in place,
+   invalidates the previous code, preserves pair/form/schedule assignment, and
+   prints the replacement once. Used invites remain non-rotatable, and the
+   18–72 hour Visit 2 window remains enforced.
+
+Adversarial review then found two additional fail-open risks before delivery.
+First, invitation consumption and rotation used only a process-local lock, so
+two processes could overwrite each other's registry update. All invitation
+registry read-modify-write operations now share an OS-level file lock; both
+consume-first and rotate-first process orderings are covered by a standalone
+two-process regression. Second, the formal-video boundary existed only in the
+readiness CLI while runtime invite/enrollment gates trusted a separate
+activation result. The exact optional-scope, full data-category, and full
+comprehension-check contracts now live in one core helper used by both runtime
+activation and the audit. A self-only video scope or any unreviewed category
+therefore prevents formal invite creation and enrollment, even when every
+other pilot setting is present.
+
+The participant flow was also tightened around these failures:
+
+- server restarts with an existing registry use `--create-invite-pairs 0`;
+- the study page can deliberately clear only the current tab's remembered
+  context before another invite/Visit, after warning the researcher to preserve
+  the withdrawal code and consent receipt; this action does not withdraw,
+  delete, or modify server data;
+- calibration no-face and motion/distance quality failures now produce
+  actionable guidance while preserving the fail-closed server quality gate;
+- low-quality or provenance-invalid gaze messaging distinguishes continuing
+  behavioral reading from stopping before reading when usable gaze is required;
+- participant access tokens remain in authorization headers and are no longer
+  duplicated into browser JSON request bodies;
+- the runbook now freezes the external Python 3.11 interpreter, project
+  site-packages path, isolated code root, main-repository data root, CPU-only
+  `CUDA_VISIBLE_DEVICES=-1`, and offline Hugging Face/Transformers settings.
+
+The remaining step is still a user-assisted physical capture using a single
+current-branch listener, stable viewport/camera geometry, all five motion
+blocks, and receipt-bound start/end validation. Until that fresh capture exists,
+the readiness work is an engineering improvement only: it cannot replace the
+legacy `failed_integrity_gate` result or support a line/word accuracy claim.
+
 ## Verification and compute record
 
-- Focused frontend behavior: three independent Node tests passed.
+- Focused frontend behavior: five independent Node tests passed.
 - Changed frontend syntax: Node `--check` passed.
 - Training-only uncertainty fixtures: 23 tests passed.
 - Single-use prediction receipt fixtures: 9 tests passed.
@@ -271,11 +345,17 @@ predictive uncertainty remains `not_evaluable`. The complete report is
   fixtures added 5, for 26 combined tests.
 - Participant calibration route fixtures: 5 tests passed, including unique
   Visit/capture names and fail-closed training response binding.
-- Complete offline quality gate: 311 tests passed with 0 failures, 0 errors,
-  0 skips, and 0 unexpected successes. Worker time was 22.688 seconds;
-  supervisor time was 23.030 seconds. `artifact_changes=[]`, credentials were
+- Participant/general/frontend and cross-process focused lane: 65 tests passed.
+  The two true child-process invitation-lock tests are intentionally run
+  outside the offline gate, whose safeguard blocks child process creation.
+- Complete offline quality gate: 319 tests passed with 0 failures, 0 errors,
+  0 skips, and 0 unexpected successes. Worker time was 23.715 seconds;
+  supervisor time was 24.025 seconds and measured wall time was 24.306 seconds.
+  `artifact_changes=[]`, credentials were
   cleared, network and child-process probes were blocked, Torch was not
   imported, and `CUDA_VISIBLE_DEVICES=-1` remained in force.
+- The persisted quality-gate JSON SHA-256 is
+  `ad6d6303f5a5c5b5abbb9c7589498cfe574a614fe9171a9849e46f0f39475e1e`.
 - Changed Python modules: `py_compile` passed.
 - Repository patch hygiene: `git diff --check` passed.
 - Deterministic current-data output was reproduced twice:
@@ -287,7 +367,7 @@ predictive uncertainty remains `not_evaluable`. The complete report is
   change imported Torch or launched a model/GPU workload.
 - External GPU snapshots immediately before/after the final gate showed the
   shared RTX 5090 Laptop GPU at 0% utilization and 166/24463 MiB allocated in
-  both cases; temperature moved from 53 C to 54 C. The unchanged ambient
+  both cases; temperature moved from 52 C to 53 C. The unchanged ambient
   allocation was not attributed to this CPU-only work.
 - The persisted machine-readable gate result is
   [`results/2026-08-10-webcam-gaze-measurement-ceiling-v1-quality-gate.json`](results/2026-08-10-webcam-gaze-measurement-ceiling-v1-quality-gate.json),

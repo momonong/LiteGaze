@@ -11,6 +11,7 @@ import secrets
 import shutil
 import threading
 from collections.abc import Mapping, Sequence
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -395,6 +396,49 @@ def _atomic_json(path: Path, payload: Mapping[str, object]) -> None:
     os.replace(temporary, path)
 
 
+@contextmanager
+def _exclusive_registry_lock(registry_path: Path):
+    """Serialize invitation registry read-modify-write across OS processes."""
+
+    lock_path = registry_path.with_suffix(registry_path.suffix + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = lock_path.open("a+b")
+    locked = False
+    try:
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"\0")
+            handle.flush()
+        handle.seek(0)
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            locked = True
+        except OSError as exc:
+            raise StudyStateError(
+                "invitation registry is busy; retry the operation"
+            ) from exc
+        yield
+    finally:
+        if locked:
+            handle.seek(0)
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle.close()
+
+
 def _atomic_bytes(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -561,6 +605,22 @@ class ParticipantStudyStore:
     ) -> dict[str, Any]:
         filename = "collection_invites.json" if mode == "rehearsal" else "invites.json"
         invite_path = self._study_root(mode) / filename
+        with self._lock, _exclusive_registry_lock(invite_path):
+            return self._consume_invite_locked(
+                invite_code,
+                session_id,
+                mode=mode,
+                invite_path=invite_path,
+            )
+
+    def _consume_invite_locked(
+        self,
+        invite_code: str,
+        session_id: str,
+        *,
+        mode: str,
+        invite_path: Path,
+    ) -> dict[str, Any]:
         if not invite_path.exists():
             raise StudyNotReadyError(f"no {mode} invitation registry is available")
         registry = json.loads(invite_path.read_text(encoding="utf-8"))
@@ -619,7 +679,7 @@ class ParticipantStudyStore:
         if not 1 <= count <= 100:
             raise StudyValidationError("invite count must be between 1 and 100")
         path = self._study_root("pilot") / "invites.json"
-        with self._lock:
+        with self._lock, _exclusive_registry_lock(path):
             if path.exists():
                 registry = json.loads(path.read_text(encoding="utf-8"))
             else:
@@ -656,7 +716,7 @@ class ParticipantStudyStore:
         design = validate_general_design(general_protocol, bank)
         path = self._study_root("rehearsal") / "collection_invites.json"
         created: list[dict[str, Any]] = []
-        with self._lock:
+        with self._lock, _exclusive_registry_lock(path):
             if path.exists():
                 registry = json.loads(path.read_text(encoding="utf-8"))
             else:
@@ -729,6 +789,80 @@ class ParticipantStudyStore:
                 existing_pair_ids.add(pair_id)
             _atomic_json(path, registry)
         return created
+
+    def rotate_unused_collection_invite(
+        self,
+        pair_id: str,
+        visit_index: int,
+    ) -> dict[str, Any]:
+        """Replace one lost, unused rehearsal invite without creating a new pair."""
+
+        if not self.activation.get("rehearsal_ready"):
+            raise StudyNotReadyError(
+                "rehearsal invitation rotation is locked until local privacy "
+                "gates pass"
+            )
+        normalized_pair_id = str(pair_id or "").strip().upper()
+        if not re.fullmatch(r"PAIR-[A-F0-9]{16}", normalized_pair_id):
+            raise StudyValidationError("pair_id is invalid")
+        if type(visit_index) is not int or visit_index not in {1, 2}:
+            raise StudyValidationError("visit_index must be 1 or 2")
+
+        path = self._study_root("rehearsal") / "collection_invites.json"
+        with self._lock, _exclusive_registry_lock(path):
+            if not path.exists():
+                raise StudyNotReadyError(
+                    "no rehearsal invitation registry is available"
+                )
+            registry = json.loads(path.read_text(encoding="utf-8"))
+            matches = [
+                item
+                for item in registry.get("invites", [])
+                if str(item.get("pair_id") or "").upper() == normalized_pair_id
+                and type(item.get("visit_index")) is int
+                and item.get("visit_index") == visit_index
+            ]
+            if len(matches) != 1:
+                raise StudyValidationError(
+                    "exactly one matching rehearsal invitation is required"
+                )
+            invite = matches[0]
+            if invite.get("used_at_utc") or invite.get("study_session_id"):
+                raise StudyStateError("a used invitation cannot be rotated")
+            previous_sha256 = str(invite.get("code_sha256") or "")
+            if not re.fullmatch(r"[0-9a-f]{64}", previous_sha256):
+                raise StudyValidationError(
+                    "the existing invitation hash is malformed"
+                )
+            history = invite.get("code_rotation_history", [])
+            if not isinstance(history, list):
+                raise StudyValidationError(
+                    "the invitation rotation history is malformed"
+                )
+
+            rotated_at = _utc_now()
+            code = f"LGR-{secrets.token_hex(6).upper()}"
+            history.append(
+                {
+                    "code_sha256": previous_sha256,
+                    "rotated_at_utc": rotated_at,
+                }
+            )
+            invite["code_rotation_history"] = history
+            invite["code_sha256"] = self._secret_hash(code)
+            invite["code_rotated_at_utc"] = rotated_at
+            invite["code_rotation_count"] = len(history)
+            _atomic_json(path, registry)
+
+        return {
+            "pair_id": normalized_pair_id,
+            "participant_id": str(invite.get("participant_id") or ""),
+            "visit_index": visit_index,
+            "form_id": str(invite.get("form_id") or ""),
+            "invite_code": code,
+            "rotated_at_utc": rotated_at,
+            "code_rotation_count": len(history),
+        }
 
     def enforce_expired_calibration_retention(
         self,

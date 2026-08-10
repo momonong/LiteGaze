@@ -95,6 +95,7 @@ const state = {
   recordedBlobs: [],
   timelineTargets: [],
   recordingStartTime: 0,
+  noFaceWarningShown: false,
 };
 
 const renameTarget = { type: "", id: "" };
@@ -184,7 +185,10 @@ async function postJson(url, body, signal) {
   });
   const data = await res.json();
   if (!res.ok || data.ok === false) {
-    throw new Error(data.error || `HTTP ${res.status}`);
+    const error = new Error(data.error || `HTTP ${res.status}`);
+    error.status = res.status;
+    error.payload = data;
+    throw error;
   }
   return data;
 }
@@ -453,7 +457,14 @@ async function saveSample(point, pointIndex, repeatIndex, captureContext, settle
       throw new Error(data.error || `sample endpoint returned HTTP ${res.status}`);
     }
     if (data.face_detected === false) {
-      log(`[!] 點 ${pointIndex + 1}: 偵測不到臉部，已跳過此幀（請確保臉部在鏡頭範圍內）`);
+      const feedback = globalThis.LexiGazeCalibrationFeedback;
+      const guidance = feedback?.noFacePrompt(pointIndex)
+        || `點 ${pointIndex + 1} 偵測不到完整臉部；請把臉移回預覽中央並改善光線。`;
+      log(`[!] ${guidance}`);
+      if (studyMode && !state.noFaceWarningShown) {
+        state.noFaceWarningShown = true;
+        window.alert(guidance);
+      }
     }
   } catch (err) {
     // A rejected label contract must stop collection. Continuing would only
@@ -468,6 +479,7 @@ async function saveSample(point, pointIndex, repeatIndex, captureContext, settle
 async function collect() {
   await createSession();
   state.collecting = true;
+  state.noFaceWarningShown = false;
   els.calibrationBtn.disabled = true;
   els.phase.textContent = "收集中";
 
@@ -620,8 +632,13 @@ async function collect() {
       }
     }
   } catch (err) {
-    log(`收集失敗: ${err.message}`);
+    const feedback = globalThis.LexiGazeCalibrationFeedback;
+    const failureMessage = studyMode && err?.payload?.quality && feedback
+      ? feedback.buildFailureMessage(err.payload)
+      : err.message;
+    log(`收集失敗: ${failureMessage}`);
     els.phase.textContent = "收集失敗";
+    if (studyMode && err?.payload?.quality) window.alert(failureMessage);
     if (recordVideo && state.mediaRecorder && state.mediaRecorder.state !== "inactive") {
       state.mediaRecorder.stop();
     }

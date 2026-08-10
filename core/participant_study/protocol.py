@@ -12,6 +12,85 @@ from typing import Any
 
 PROTOCOL_PATH = Path(__file__).with_name("protocol_v1.json")
 
+SELF_ONLY_READING_VIDEO_SCOPE_ID = "retain_reading_video_self_development"
+SELF_ONLY_READING_VIDEO_CATEGORY_ID = "optional_self_development_reading_video"
+FORMAL_VIDEO_SCOPE_BLOCKER = "optional_video_scope_present_in_formal_protocol"
+FROZEN_SELF_ONLY_READING_VIDEO_SCOPE = {
+    "id": SELF_ONLY_READING_VIDEO_SCOPE_ID,
+    "self_development_only": True,
+    "text_zh": (
+        "我另行同意保存每篇文章閱讀期間的無音訊 webcam 影片，作為我本人的 "
+        "development data；我了解它存於未加密 D 槽、不設自動刪除期限、不得作為"
+        "正式或 confirmation 證據。"
+    ),
+}
+FROZEN_TEMPORARY_CALIBRATION_CATEGORY = {
+    "id": "temporary_calibration_images",
+    "required": True,
+    "description_zh": (
+        "校正時擷取的臉部影格與處理後影像；只用於校正與品質檢查，正式研究最長"
+        "保存時間由啟動設定揭露。"
+    ),
+}
+FROZEN_TRANSIENT_READING_CATEGORY = {
+    "id": "transient_reading_frames",
+    "required": True,
+    "description_zh": (
+        "閱讀時逐次送出的視線推論影格只在記憶體中處理，不把這些請求影格逐張寫入"
+        "研究儲存空間；系統保留衍生摘要。另行同意的 self-only 無聲閱讀影片屬於"
+        "下一個獨立資料類別。"
+    ),
+}
+FORMAL_TRANSIENT_READING_CATEGORY = {
+    "id": "transient_reading_frames",
+    "required": True,
+    "description_zh": (
+        "閱讀時逐次送出的視線推論影格只在記憶體中處理，不把這些請求影格逐張寫入"
+        "研究儲存空間；系統保留衍生摘要。"
+    ),
+}
+FROZEN_SELF_ONLY_READING_VIDEO_CATEGORY = {
+    "id": SELF_ONLY_READING_VIDEO_CATEGORY_ID,
+    "required": False,
+    "description_zh": (
+        "只有研究者本人在未加密 self-only development 模式另行勾選時，才保存"
+        "每篇文章閱讀期間的無音訊 webcam 影片；不錄製同意、背景表單或單字回顧畫面。"
+    ),
+}
+FROZEN_RAW_VIDEO_CHECK = {
+    "id": "raw_video_not_collected",
+    "question_zh": "v1 會錄製或保存完整校正影片嗎？",
+    "options": {
+        "not_collected": "不會；未來若要收集必須另行同意與審查",
+        "collected": "會，而且會無限期保存",
+    },
+    "correct": "not_collected",
+}
+FROZEN_SELF_ONLY_READING_VIDEO_CHECK = {
+    "id": "reading_video_optional_self_only",
+    "question_zh": "什麼情況下系統才會保存閱讀期間的 webcam 影片？",
+    "options": {
+        "explicit_self_development_scope": (
+            "只有研究者本人使用 self-only development 模式並另行勾選時"
+        ),
+        "always_for_every_participant": "所有受試者都會自動保存",
+    },
+    "correct": "explicit_self_development_scope",
+}
+MEDIA_MARKERS = ("video", "audio", "webcam", "影片", "影格", "音訊")
+SELF_ONLY_DATA_CATEGORIES_SHA256 = (
+    "375f8a25c028fec857ad74fb3a0884e2a8162b548549688735d2bc1571064567"
+)
+SELF_ONLY_COMPREHENSION_CHECKS_SHA256 = (
+    "8a0b59d08a55b0a095a841d00ea9a9f9666fa2e349eafd003f41c2a2c599eca2"
+)
+FORMAL_DATA_CATEGORIES_SHA256 = (
+    "9026a44f2f5c6cfa74f32d399e135ceaac03e4fcd802caf06a95a963075bc898"
+)
+FORMAL_COMPREHENSION_CHECKS_SHA256 = (
+    "cdee2bcca3aa7043dad549a49ffc0a760c6366f6f383aaca3ff68403940f9b4f"
+)
+
 
 def _canonical_json(payload: object) -> bytes:
     return json.dumps(
@@ -20,6 +99,143 @@ def _canonical_json(payload: object) -> bytes:
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
+
+
+def _canonical_sha256(value: object) -> str:
+    return hashlib.sha256(_canonical_json(value)).hexdigest()
+
+
+def _objects_by_id(
+    value: object, label: str, errors: list[str]
+) -> dict[str, dict[str, Any]]:
+    if not isinstance(value, list):
+        errors.append(f"{label}_invalid")
+        return {}
+    indexed: dict[str, dict[str, Any]] = {}
+    for item in value:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+            errors.append(f"{label}_item_invalid")
+            continue
+        item_id = item["id"]
+        if item_id in indexed:
+            errors.append(f"{label}_duplicate_id")
+            continue
+        indexed[item_id] = item
+    return indexed
+
+
+def _contains_media_marker(value: object) -> bool:
+    if isinstance(value, dict):
+        text = " ".join(str(item) for item in value.values())
+    else:
+        text = str(value or "")
+    lowered = text.casefold()
+    return any(marker.casefold() in lowered for marker in MEDIA_MARKERS)
+
+
+def optional_video_scope_boundary(
+    protocol: Mapping[str, object],
+) -> dict[str, object]:
+    """Accept only no-video formal or the exact frozen self-only exception."""
+
+    errors: list[str] = []
+    optional_scopes = protocol.get("optional_scopes")
+    if optional_scopes == []:
+        mode = "formal_video_disabled"
+    elif optional_scopes == [FROZEN_SELF_ONLY_READING_VIDEO_SCOPE]:
+        mode = "self_only_reading_video"
+    else:
+        mode = "invalid"
+        errors.append("optional_scopes_invalid")
+
+    categories = _objects_by_id(
+        protocol.get("data_categories"), "data_categories", errors
+    )
+    expected_categories_sha256 = (
+        SELF_ONLY_DATA_CATEGORIES_SHA256
+        if mode == "self_only_reading_video"
+        else FORMAL_DATA_CATEGORIES_SHA256
+    )
+    if _canonical_sha256(protocol.get("data_categories")) != (
+        expected_categories_sha256
+    ):
+        errors.append("data_categories_not_frozen_for_video_mode")
+    expected_transient = (
+        FROZEN_TRANSIENT_READING_CATEGORY
+        if mode == "self_only_reading_video"
+        else FORMAL_TRANSIENT_READING_CATEGORY
+    )
+    if categories.get("temporary_calibration_images") != (
+        FROZEN_TEMPORARY_CALIBRATION_CATEGORY
+    ):
+        errors.append("temporary_calibration_image_boundary_changed")
+    if categories.get("transient_reading_frames") != expected_transient:
+        errors.append("transient_reading_frame_boundary_changed")
+
+    expected_media_category_ids = {
+        "temporary_calibration_images",
+        "transient_reading_frames",
+    }
+    optional_category = categories.get(SELF_ONLY_READING_VIDEO_CATEGORY_ID)
+    if mode == "self_only_reading_video":
+        expected_media_category_ids.add(SELF_ONLY_READING_VIDEO_CATEGORY_ID)
+        if optional_category != FROZEN_SELF_ONLY_READING_VIDEO_CATEGORY:
+            errors.append("optional_reading_video_category_changed")
+    elif optional_category is not None:
+        errors.append("formal_protocol_retains_optional_reading_video_category")
+    actual_media_category_ids = {
+        item_id
+        for item_id, item in categories.items()
+        if _contains_media_marker(item)
+    }
+    if actual_media_category_ids != expected_media_category_ids:
+        errors.append("unexpected_media_data_category")
+
+    checks = _objects_by_id(
+        protocol.get("comprehension_checks"), "comprehension_checks", errors
+    )
+    expected_checks_sha256 = (
+        SELF_ONLY_COMPREHENSION_CHECKS_SHA256
+        if mode == "self_only_reading_video"
+        else FORMAL_COMPREHENSION_CHECKS_SHA256
+    )
+    if _canonical_sha256(protocol.get("comprehension_checks")) != (
+        expected_checks_sha256
+    ):
+        errors.append("comprehension_checks_not_frozen_for_video_mode")
+    if checks.get("raw_video_not_collected") != FROZEN_RAW_VIDEO_CHECK:
+        errors.append("full_calibration_video_comprehension_changed")
+    optional_check = checks.get("reading_video_optional_self_only")
+    if mode == "self_only_reading_video":
+        if optional_check != FROZEN_SELF_ONLY_READING_VIDEO_CHECK:
+            errors.append("self_only_reading_video_comprehension_changed")
+    elif optional_check is not None:
+        errors.append("formal_protocol_retains_self_only_video_comprehension")
+    expected_media_check_ids = {"raw_video_not_collected"}
+    if mode == "self_only_reading_video":
+        expected_media_check_ids.add("reading_video_optional_self_only")
+    actual_media_check_ids = {
+        item_id
+        for item_id, item in checks.items()
+        if _contains_media_marker(item)
+    }
+    if actual_media_check_ids != expected_media_check_ids:
+        errors.append("unexpected_media_comprehension_check")
+
+    bounded = not errors
+    return {
+        "status": (
+            "bounded_self_only_development_reading_video"
+            if bounded and mode == "self_only_reading_video"
+            else "video_collection_disabled"
+            if bounded and mode == "formal_video_disabled"
+            else "unsafe_or_unrecognized_optional_video_scope"
+        ),
+        "dry_run_allowed": bounded,
+        "formal_collection_allowed": bounded and mode == "formal_video_disabled",
+        "full_video_collection_disabled": bounded,
+        "errors": errors,
+    }
 
 
 def _truthy(value: object) -> bool:
@@ -69,6 +285,7 @@ def activation_status(
     protocol: Mapping[str, object] | None = None,
 ) -> dict[str, Any]:
     active_protocol = dict(protocol or load_protocol())
+    video_scope = optional_video_scope_boundary(active_protocol)
     mode = _setting(settings, "LEXIGAZE_STUDY_MODE", "dry_run").lower()
     ethics_status = _setting(settings, "LEXIGAZE_ETHICS_STATUS").lower()
     base_url = _setting(settings, "LEXIGAZE_PUBLIC_BASE_URL")
@@ -93,6 +310,10 @@ def activation_status(
     require(
         active_protocol.get("collection_status") == "approved_for_pilot",
         "protocol_not_approved_for_pilot",
+    )
+    require(
+        video_scope["formal_collection_allowed"] is True,
+        FORMAL_VIDEO_SCOPE_BLOCKER,
     )
     require(mode == "pilot", "study_mode_not_pilot")
     require(

@@ -142,6 +142,7 @@ def create_app(config: Mapping[str, object] | None = None):
             "/favicon.ico",
         }
         public_api_paths = {
+            "/api/gaze/health",
             "/api/gaze/models",
             "/api/gaze/session",
             "/api/gaze/sample",

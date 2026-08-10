@@ -3,6 +3,7 @@ const STORAGE_KEY = "lexigaze.participantStudy.v1";
 const state = {
   protocol: null,
   context: null,
+  sessionState: null,
   withdrawalCode: null,
   receiptText: null,
 };
@@ -52,6 +53,7 @@ function saveContext(context) {
 
 function clearContext() {
   state.context = null;
+  state.sessionState = null;
   state.withdrawalCode = null;
   state.receiptText = null;
   sessionStorage.removeItem(STORAGE_KEY);
@@ -64,6 +66,42 @@ function restoreContext() {
   } catch (_) {
     sessionStorage.removeItem(STORAGE_KEY);
   }
+}
+
+function showConsentInviteForm() {
+  $("consentForm").reset();
+  $("workflowPanel").classList.add("hidden");
+  $("consentPanel").classList.remove("hidden");
+  $("receiptBox").classList.add("hidden");
+  $("withdrawalCode").textContent = "WD-—";
+  $("withdrawSessionId").value = "";
+  $("withdrawCodeInput").value = "";
+  $("withdrawResult").textContent = "";
+  $("withdrawResult").classList.add("hidden");
+  $("systemCheckResults").replaceChildren();
+  document.querySelectorAll(".step").forEach((node, index) => {
+    node.classList.remove("done");
+    node.classList.toggle("active", index === 0);
+  });
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function startAnotherInvite() {
+  const previousSessionId = state.context?.study_session_id || "";
+  const warning = state.sessionState === "completed"
+    ? "開始另一個邀請前，請先確認你已保存撤回碼與同意憑證。繼續只會清除此分頁記住的 session，不會撤回或刪除伺服器資料。確定已保存並繼續嗎？"
+    : "目前的 Visit 尚未完成。請先保存撤回碼與同意憑證；繼續只會清除此分頁記住的 session，不會撤回或刪除伺服器資料，且清除後將無法從這個分頁續接。確定要輸入另一組邀請碼嗎？";
+  if (!window.confirm(warning)) return;
+  if (previousSessionId) {
+    sessionStorage.removeItem(`lexigaze.generalCollectionDraft.${previousSessionId}`);
+    sessionStorage.removeItem(`lexigaze.generalCollectionPractice.${previousSessionId}`);
+  }
+  clearContext();
+  showConsentInviteForm();
+  showAlert(
+    "此分頁已清除先前 session 的瀏覽器連結；伺服器資料沒有被撤回或刪除。請重新閱讀同意內容並輸入新的邀請碼。",
+    "info",
+  );
 }
 
 function renderProtocol(protocol) {
@@ -168,16 +206,16 @@ function sessionStep(stateName) {
 }
 
 function renderSession(session) {
+  state.sessionState = session.state;
   $("consentPanel").classList.add("hidden");
   $("workflowPanel").classList.remove("hidden");
   $("participantId").textContent = session.participant_id;
   $("sessionState").textContent = session.state;
   $("withdrawSessionId").value = session.study_session_id;
+  $("receiptBox").classList.toggle("hidden", !state.withdrawalCode);
   if (state.withdrawalCode) {
     $("withdrawalCode").textContent = state.withdrawalCode;
     $("withdrawCodeInput").value = state.withdrawalCode;
-  } else {
-    $("receiptBox").classList.add("hidden");
   }
 
   const step = sessionStep(session.state);
@@ -328,7 +366,6 @@ async function withdraw() {
   if (!window.confirm("確定要停止流程並刪除仍可定位的資料嗎？此動作無法復原。")) return;
   try {
     const payload = { study_session_id: sessionId, withdrawal_code: code };
-    if (state.context?.study_session_id === sessionId) payload.access_token = state.context.access_token;
     const result = await api("/api/study/withdraw", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -384,6 +421,7 @@ $("downloadReceiptBtn").addEventListener("click", () => {
     downloadText(state.receiptText, `${state.context.participant_id}_consent_receipt.txt`);
   }
 });
+$("startAnotherInviteBtn").addEventListener("click", startAnotherInvite);
 $("withdrawBtn").addEventListener("click", withdraw);
 
 init();

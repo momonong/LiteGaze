@@ -555,8 +555,8 @@ function renderProvisionalGeometryQuality() {
     ui.geometryQualityNotice.classList.add("degraded");
     const integrityReasons = Array.isArray(integrity.reasons) ? integrity.reasons : [];
     ui.geometryQualityNotice.textContent = integrityReasons.includes("prediction_receipts_unavailable")
-      ? "Server-issued prediction receipts 無法驗證；client 預測座標未被採信，本次 gaze 已降級為 behavioral-only，但仍可完成閱讀與作答。"
-      : "閱讀 viewport 或 reading segment 已中斷；本次 gaze 已永久降級為 behavioral-only，但仍可完成閱讀與 word-review。";
+      ? "Server-issued prediction receipts 無法驗證；client 預測座標未被採信，本次 gaze 已降級為 behavioral-only。你可以繼續完成閱讀與作答；若本次必須取得 gaze，請先不要開始閱讀並停止流程。這個 session 不支援重新校準或自助重試，請聯絡研究者評估後續。"
+      : "閱讀 viewport 或 reading segment 已中斷；本次 gaze 已永久降級為 behavioral-only。你可以繼續完成閱讀與 word-review；若本次必須取得 gaze，請停止流程並聯絡研究者，勿在這個 session 自行重做。";
     ui.geometryQualityNotice.classList.remove("hidden");
     return;
   }
@@ -576,7 +576,7 @@ function renderProvisionalGeometryQuality() {
     ui.geometryQualityNotice.textContent = "閱讀前 sensor-only 暫定結果：幾何達到 rehearsal 的 word-level candidate 描述帶。最終品質仍需閱讀後驗證，這不是正式通過門檻。";
   } else if (mode === "passage_level_only") {
     ui.geometryQualityNotice.classList.add("coarse");
-    ui.geometryQualityNotice.textContent = "閱讀前 sensor-only 暫定結果：眼動只建議用於 passage-level 描述，不應解讀為精確逐字注視。你仍可繼續閱讀；若需要逐字 gaze，建議先重新校準。";
+    ui.geometryQualityNotice.textContent = "閱讀前 sensor-only 暫定結果：眼動只建議用於 passage-level 描述，不應解讀為精確逐字注視。你可以繼續保留 behavioral word-review；若本次必須取得逐字 gaze，請先不要開始閱讀並停止流程。這個 session 不支援重新校準或自助重試，請聯絡研究者評估後續。";
   } else {
     ui.geometryQualityNotice.classList.add("degraded");
     const blockers = [];
@@ -594,9 +594,9 @@ function renderProvisionalGeometryQuality() {
       blockers.push("缺少可驗證的 calibration fit-target provenance，target independence 無法證明。");
     }
     if (blockers.length) {
-      ui.geometryQualityNotice.textContent = `閱讀前檢查：${blockers.join(" ")}Gaze 應停用，但本次仍可繼續收集 behavioral word-review；若要使用 gaze，請重新校準後再驗證。`;
+      ui.geometryQualityNotice.textContent = `閱讀前檢查：${blockers.join(" ")}Gaze 應停用，但本次仍可繼續收集 behavioral word-review；若本次必須取得 gaze，請先不要開始閱讀並停止流程。這個 session 不支援重新校準或自助重試，請聯絡研究者評估後續。`;
     } else {
-      ui.geometryQualityNotice.textContent = "閱讀前 sensor-only 暫定結果：幾何品質不足。本次仍可繼續收集 behavioral word-review，但不應使用逐字 gaze；若要使用 gaze，建議重新校準。";
+      ui.geometryQualityNotice.textContent = "閱讀前 sensor-only 暫定結果：幾何品質不足。本次仍可繼續收集 behavioral word-review，但不應使用逐字 gaze；若本次必須取得 gaze，請先不要開始閱讀並停止流程。這個 session 不支援重新校準或自助重試，請聯絡研究者評估後續。";
     }
   }
   ui.geometryQualityNotice.classList.remove("hidden");
