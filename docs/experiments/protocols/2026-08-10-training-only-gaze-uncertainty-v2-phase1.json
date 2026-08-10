@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "canonical_sha256": "a6f622277291ac6484c69606da7197ebfde625f4e1a3e60686ca7241380b42c3",
+  "protocol": {
+    "protocol_id": "training-only-gaze-uncertainty-v2-phase1",
+    "protocol_version": "2026-08-10.v1",
+    "frozen_date": "2026-08-10",
+    "branch": "experiment/webcam-gaze-measurement-ceiling-v1",
+    "status": "frozen_before_fresh_matched_contract_capture",
+    "objective": "Produce leakage-resistant per-sample sensor-only uncertainty rankings and descriptive fixed-grid coverage-risk evidence without selecting an abstention threshold.",
+    "definition_file": "core/gaze_core/uncertainty_v2_definition.json",
+    "definition_sha256": "75a24c436e9a89024462268812ecc9be149a1958b3911e5cd71c3974b235a180",
+    "claim_boundary": {
+      "output_status": "scored_no_threshold",
+      "calibrated_probability_or_interval_claimed": false,
+      "conformal_coverage_claimed": false,
+      "hard_abstention_authorized": false,
+      "quality_band_authorized": false,
+      "raw_mapping_or_sensor_acceptance_may_change": false,
+      "within_capture_training_only_ranking_only": true,
+      "fresh_matched_contract_capture_required_before_threshold_selection": true,
+      "cross_participant_session_device_or_natural_reading_generalization_claimed": false
+    },
+    "data_boundary": {
+      "required_motion_blocks": 5,
+      "required_targets_per_block": 13,
+      "required_total_rows": 65,
+      "effective_independent_motion_clusters": 5,
+      "one_row_per_motion_block_target_pair": true,
+      "incomplete_or_duplicate_grid_action": "fail_closed",
+      "limitation": "Sixty-five rows contain only five held-out motion clusters from one matched capture; row-level sample size must not be reported as 65 independent validation units."
+    },
+    "leakage_controls": {
+      "outer_split": "leave_one_complete_motion_block_out",
+      "outer_training_only_family_and_hyperparameter_selection": true,
+      "score_uses_target_or_residual": false,
+      "same_oof_residuals_used_to_fit_and_evaluate_error_calibrator": false,
+      "error_calibrator_in_phase1": false,
+      "whole_pipeline_block_jackknife_members_refit_and_reselect": true,
+      "jackknife_member_order_and_fit_partition_hashes_persisted": true,
+      "outer_fold_selected_stages_and_score_state_persisted": true,
+      "train_holdout_sample_id_intersection_required": 0
+    },
+    "evidence": {
+      "coverage_grid": [1.0, 0.8, 0.6, 0.4, 0.2],
+      "threshold": null,
+      "threshold_status": "not_selected",
+      "raw_oof_rows_retained": true,
+      "hypothetical_would_abstain_membership_retained": true,
+      "deterministic_negative_control_retained_but_never_selected": true,
+      "zero_coverage_motion_blocks_listed_explicitly": true,
+      "all_block_macro_and_worst_metrics_unavailable_when_any_block_has_zero_coverage": true
+    },
+    "viewport_policy": {
+      "model_and_disagreement_state_space": "signed_normalized_screen_coordinates",
+      "runtime_pixel_covariance_transform": "diag(viewport_width/2, viewport_height/2) times normalized_covariance times diag(viewport_width/2, viewport_height/2)",
+      "portable_error_unit": "fraction_of_viewport_diagonal",
+      "existing_capture_and_viewport_contract_gates_remain_authoritative": true
+    },
+    "runtime_observation_contract": {
+      "shared_validator": "core.gaze_core.uncertainty.normalize_uncertainty_observation",
+      "schema_version": 1,
+      "available_status": "scored_no_threshold",
+      "unavailable_status_prefix": "unavailable_",
+      "score_and_percentiles_must_be_finite_within_zero_one": true,
+      "score_must_equal_maximum_component_percentile": true,
+      "raw_components_must_be_finite_non_negative": true,
+      "boolean_numeric_values_allowed": false,
+      "definition_sha_must_equal_frozen_definition": true,
+      "covariance_must_be_finite_symmetric_psd_2x2": true,
+      "covariance_symmetry_and_psd_tolerance": 1e-09,
+      "disagreement_value_must_match_normalized_covariance_trace": true,
+      "scored_observation_requires_positive_finite_viewport": true,
+      "pixel_covariance_must_match_viewport_transform": true,
+      "unavailable_status_is_allowlisted_and_reason_is_sanitized_to_240_chars": true,
+      "abstention": {"status": "not_selected", "threshold": null},
+      "confidence_accepted_or_quality_band_fields_allowed": false
+    },
+    "statistical_limits": {
+      "jackknife_disagreement_is_not_a_posterior_covariance": true,
+      "jackknife_plus_or_conformal_guarantee_claimed": false,
+      "motion_block_exchangeability_established": false,
+      "fresh_confirmation_axes": ["participant", "session", "device", "natural_reading_context"]
+    },
+    "primary_sources": [
+      {
+        "topic": "model_selection_bias_and_nested_validation",
+        "citation": "Cawley and Talbot, JMLR 2010",
+        "url": "https://jmlr.org/papers/v11/cawley10a.html"
+      },
+      {
+        "topic": "calibration_requires_held_out_data",
+        "citation": "Marx et al., PMLR 2022",
+        "url": "https://proceedings.mlr.press/v162/marx22a.html"
+      },
+      {
+        "topic": "jackknife_plus_exchangeability_assumption",
+        "citation": "Barber et al., 2019",
+        "url": "https://arxiv.org/abs/1905.02928"
+      }
+    ]
+  }
+}

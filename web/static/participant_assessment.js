@@ -49,7 +49,6 @@ function studyBody(extra = {}) {
   return {
     ...extra,
     study_session_id: state.context.study_session_id,
-    study_access_token: state.context.access_token,
   };
 }
 

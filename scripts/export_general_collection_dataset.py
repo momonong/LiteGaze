@@ -7,9 +7,10 @@ import csv
 import hashlib
 import json
 import math
+import re
 import sys
 from collections import Counter, defaultdict
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,12 @@ from core.gaze_core.capture_contract import (
     compare_capture_contracts,
     normalize_capture_contract,
 )
+from core.gaze_core.uncertainty_contract import (
+    RUNTIME_OBSERVATION_SCHEMA_VERSION,
+    canonical_json_bytes as uncertainty_canonical_json_bytes,
+    normalize_uncertainty_observation,
+    unavailable_uncertainty,
+)
 from core.participant_study.general_collection import (
     canonical_sha256,
     classify_gaze_quality,
@@ -29,9 +36,22 @@ from core.participant_study.general_collection import (
     load_general_bank,
     load_general_protocol,
     summarize_validation_samples,
+    validation_target_definitions,
     validate_general_design,
 )
 from core.participant_study.protocol import load_protocol
+
+
+PREDICTION_RECEIPT_SCHEMA_VERSION = 1
+SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
+READING_TELEMETRY_EVIDENCE_STATUS = "client_roundtrip_unverified"
+SUCCESS_CONTRADICTORY_UNCERTAINTY_STATUSES = frozenset(
+    {
+        "unavailable_capture_failure",
+        "unavailable_prediction_failure",
+        "unavailable_sensor_failure",
+    }
+)
 
 
 def _sha256(path: Path) -> str:
@@ -90,9 +110,760 @@ def _normalized_viewport(payload: object) -> dict[str, int]:
     return normalized
 
 
-def _add_reason(audit: dict[str, Any], reason: str) -> None:
+def _add_reason(
+    audit: dict[str, Any],
+    reason: str,
+    *,
+    scope: str = "validation",
+) -> None:
     if reason not in audit["reasons"]:
         audit["reasons"].append(reason)
+    scoped_key = f"{scope}_reasons"
+    if scoped_key in audit and reason not in audit[scoped_key]:
+        audit[scoped_key].append(reason)
+
+
+def _valid_sha256(value: object) -> bool:
+    return isinstance(value, str) and SHA256_PATTERN.fullmatch(value) is not None
+
+
+def _finite_receipt_number(value: object) -> float:
+    if isinstance(value, bool):
+        raise ValueError("outcome_invalid")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("outcome_invalid") from exc
+    if not math.isfinite(number):
+        raise ValueError("outcome_invalid")
+    return number
+
+
+def _normalized_receipt_uncertainty(
+    prediction: Mapping[str, object],
+    *,
+    prediction_success: bool,
+    viewport: Mapping[str, int],
+) -> dict[str, Any]:
+    """Revalidate nested receipt uncertainty without requiring it for geometry."""
+
+    schema_version = prediction.get("uncertainty_schema_version")
+    raw_observation = prediction.get("uncertainty")
+    if schema_version is None and raw_observation is None:
+        return unavailable_uncertainty(
+            (
+                "unavailable_receipt_missing"
+                if prediction_success
+                else "unavailable_sensor_failure"
+            ),
+            "legacy prediction receipt did not contain runtime uncertainty evidence",
+        )
+    if (
+        type(schema_version) is not int
+        or schema_version != RUNTIME_OBSERVATION_SCHEMA_VERSION
+    ):
+        raise ValueError("uncertainty_schema_mismatch")
+    try:
+        normalized = normalize_uncertainty_observation(
+            raw_observation,  # type: ignore[arg-type]
+            viewport=(viewport["width_px"], viewport["height_px"]),
+        )
+    except (OSError, TypeError, ValueError) as exc:
+        raise ValueError("uncertainty_observation_invalid") from exc
+    if (
+        not prediction_success
+        and normalized.get("status") != "unavailable_sensor_failure"
+    ):
+        raise ValueError("uncertainty_outcome_contradiction")
+    if (
+        prediction_success
+        and normalized.get("status")
+        in SUCCESS_CONTRADICTORY_UNCERTAINTY_STATUSES
+    ):
+        raise ValueError("uncertainty_outcome_contradiction")
+    return normalized
+
+
+def _receipt_uncertainty_observation(
+    *,
+    issued_record_sha256: str,
+    phase: str,
+    receipt_ordinal: int,
+    target_id: str,
+    target_repeat_index: int,
+    prediction_success: bool,
+    uncertainty: Mapping[str, object],
+) -> dict[str, Any]:
+    return {
+        "schema_version": RUNTIME_OBSERVATION_SCHEMA_VERSION,
+        "receipt_record_sha256": issued_record_sha256,
+        "phase": phase,
+        "receipt_ordinal": receipt_ordinal,
+        "target_id": target_id,
+        "target_repeat_index": target_repeat_index,
+        "prediction_success": prediction_success,
+        "uncertainty": json.loads(
+            uncertainty_canonical_json_bytes(uncertainty).decode("utf-8")
+        ),
+    }
+
+
+def _receipt_uncertainty_summary(
+    observations: Sequence[Mapping[str, object]],
+    *,
+    status: str,
+) -> dict[str, Any]:
+    normalized = [
+        json.loads(
+            uncertainty_canonical_json_bytes(observation).decode("utf-8")
+        )
+        for observation in observations
+    ]
+    scored_count = sum(
+        dict(observation.get("uncertainty") or {}).get("status")
+        == "scored_no_threshold"
+        for observation in normalized
+    )
+    return {
+        "schema_version": RUNTIME_OBSERVATION_SCHEMA_VERSION,
+        "status": status,
+        "count": len(normalized),
+        "scored_count": scored_count,
+        "unavailable_count": len(normalized) - scored_count,
+        "observation_sha256s": [
+            canonical_sha256(observation) for observation in normalized
+        ],
+        "observations_sha256": canonical_sha256(normalized),
+    }
+
+
+def _uncertainty_export_fields(
+    observation: Mapping[str, object],
+) -> dict[str, Any]:
+    uncertainty = dict(observation.get("uncertainty") or {})
+    status = str(uncertainty.get("status") or "")
+    scored = status == "scored_no_threshold"
+    sensor_failure = status == "unavailable_sensor_failure"
+    components = dict(uncertainty.get("components") or {}) if scored else {}
+
+    def component(name: str, field: str) -> object:
+        return dict(components.get(name) or {}).get(field) if scored else None
+
+    abstention = dict(uncertainty.get("abstention") or {}) if scored else {}
+    return {
+        "uncertainty_observation_sha256": canonical_sha256(observation),
+        "uncertainty_observation_json": _json_cell(observation),
+        "uncertainty_schema_version": uncertainty.get("schema_version"),
+        "uncertainty_status": status,
+        "uncertainty_evidence_status": (
+            "verified_scored_no_threshold" if scored else "not_evaluable"
+        ),
+        "uncertainty_evidence_eligible": scored,
+        "uncertainty_coverage_risk_status": (
+            "conditional_input_eligible_no_threshold"
+            if scored
+            else (
+                "excluded_sensor_failure_reported_in_capture_coverage"
+                if sensor_failure
+                else "not_evaluable"
+            )
+        ),
+        "uncertainty_definition_sha256": uncertainty.get("definition_sha256"),
+        "uncertainty_score": uncertainty.get("score"),
+        "uncertainty_ood_value": component("ood", "value"),
+        "uncertainty_ood_percentile": component("ood", "percentile"),
+        "uncertainty_leverage_value": component("leverage", "value"),
+        "uncertainty_leverage_percentile": component(
+            "leverage", "percentile"
+        ),
+        "uncertainty_disagreement_value": component("disagreement", "value"),
+        "uncertainty_disagreement_percentile": component(
+            "disagreement", "percentile"
+        ),
+        "uncertainty_jackknife_disagreement_covariance_norm": (
+            _json_cell(uncertainty.get("jackknife_disagreement_covariance_norm"))
+            if scored
+            else ""
+        ),
+        "uncertainty_jackknife_disagreement_covariance_px": (
+            _json_cell(uncertainty.get("jackknife_disagreement_covariance_px"))
+            if scored
+            else ""
+        ),
+        "uncertainty_abstention_status": abstention.get("status"),
+        "uncertainty_abstention_threshold_json": (
+            _json_cell(abstention.get("threshold")) if scored else ""
+        ),
+        "uncertainty_reason": uncertainty.get("reason"),
+    }
+
+
+def _expected_receipt_target(
+    target: Mapping[str, object],
+    viewport: Mapping[str, int],
+) -> dict[str, object]:
+    return {
+        "target_id": target["target_id"],
+        "target_x_viewport_fraction": float(
+            target["target_x_viewport_fraction"]
+        ),
+        "target_y_viewport_fraction": float(
+            target["target_y_viewport_fraction"]
+        ),
+        "target_x_norm": float(target["target_x_norm"]),
+        "target_y_norm": float(target["target_y_norm"]),
+        "target_x_px": float(
+            math.floor(
+                float(target["target_x_viewport_fraction"])
+                * viewport["width_px"]
+                + 0.5
+            )
+        ),
+        "target_y_px": float(
+            math.floor(
+                float(target["target_y_viewport_fraction"])
+                * viewport["height_px"]
+                + 0.5
+            )
+        ),
+    }
+
+
+def _receipt_outcome_sample(
+    issued: Mapping[str, object],
+    *,
+    expected_target: Mapping[str, object],
+    viewport: Mapping[str, int],
+    issued_record_sha256: str,
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    prediction = issued.get("prediction")
+    if not isinstance(prediction, Mapping):
+        raise ValueError("outcome_invalid")
+    success = prediction.get("success")
+    if not isinstance(success, bool):
+        raise ValueError("outcome_invalid")
+    sample: dict[str, Any] = {
+        "target_id": expected_target["target_id"],
+        "target_x_px": expected_target["target_x_px"],
+        "target_y_px": expected_target["target_y_px"],
+        "target_x_norm": expected_target["target_x_norm"],
+        "target_y_norm": expected_target["target_y_norm"],
+        "prediction_success": success,
+    }
+    if success:
+        raw_px = prediction.get("screen_xy_px")
+        raw_norm = prediction.get("screen_xy_norm")
+        if (
+            not isinstance(raw_px, Sequence)
+            or isinstance(raw_px, (str, bytes))
+            or len(raw_px) != 2
+            or not isinstance(raw_norm, Sequence)
+            or isinstance(raw_norm, (str, bytes))
+            or len(raw_norm) != 2
+        ):
+            raise ValueError("outcome_invalid")
+        predicted_x = _finite_receipt_number(raw_px[0])
+        predicted_y = _finite_receipt_number(raw_px[1])
+        normalized_x = _finite_receipt_number(raw_norm[0])
+        normalized_y = _finite_receipt_number(raw_norm[1])
+        if (
+            not 0.0 <= predicted_x <= viewport["width_px"]
+            or not 0.0 <= predicted_y <= viewport["height_px"]
+            or not -1.0 <= normalized_x <= 1.0
+            or not -1.0 <= normalized_y <= 1.0
+        ):
+            raise ValueError("outcome_viewport_mismatch")
+        expected_x = ((normalized_x + 1.0) * 0.5) * viewport["width_px"]
+        expected_y = ((normalized_y + 1.0) * 0.5) * viewport["height_px"]
+        if not math.isclose(
+            predicted_x, expected_x, rel_tol=0.0, abs_tol=1e-6
+        ) or not math.isclose(
+            predicted_y, expected_y, rel_tol=0.0, abs_tol=1e-6
+        ):
+            raise ValueError("outcome_coordinate_transform_mismatch")
+        http_status = prediction.get("http_status")
+        if (
+            isinstance(http_status, bool)
+            or not isinstance(http_status, int)
+            or not 200 <= http_status < 300
+            or prediction.get("failure_stage") is not None
+            or prediction.get("failure_code") is not None
+            or prediction.get("error") is not None
+        ):
+            raise ValueError("outcome_invalid")
+        sample["predicted_x_px"] = predicted_x
+        sample["predicted_y_px"] = predicted_y
+        sample["spatial_error_px"] = math.hypot(
+            predicted_x - float(expected_target["target_x_px"]),
+            predicted_y - float(expected_target["target_y_px"]),
+        )
+        return sample, None
+
+    http_status = prediction.get("http_status")
+    if (
+        prediction.get("failure_stage") != "attributable_sensor_failure"
+        or prediction.get("failure_code") != "no_face_detected"
+        or isinstance(http_status, bool)
+        or http_status != 400
+        or prediction.get("screen_xy_px") is not None
+        or prediction.get("screen_xy_norm") is not None
+    ):
+        raise ValueError("failure_outcome_invalid")
+    sample["predicted_x_px"] = None
+    sample["predicted_y_px"] = None
+    sample["spatial_error_px"] = None
+    return sample, {
+        "receipt_record_sha256": issued_record_sha256,
+        "failure_stage": "attributable_sensor_failure",
+        "failure_code": "no_face_detected",
+        "http_status": 400,
+    }
+
+
+def _audit_prediction_receipts(
+    session: Mapping[str, object],
+    collection: Mapping[str, object],
+    *,
+    measurement_contract: Mapping[str, object] | None,
+    contract_sha256: str | None,
+    assessment_viewport: Mapping[str, int] | None,
+    calibration_capture_contract: Mapping[str, object] | None,
+    audit: dict[str, Any],
+) -> dict[str, Any]:
+    """Verify stored receipt evidence without accepting any client round trip."""
+
+    result: dict[str, Any] = {
+        "schema_version": None,
+        "eligible": False,
+        "status": "unavailable",
+        "record_count": 0,
+        "phases": {
+            phase: {
+                "eligible": False,
+                "bundle": None,
+                "bundle_sha256": None,
+                "receipt_record_sha256s": [],
+                "reconstructed_samples": [],
+                "reconstructed_failures": [],
+                "capture_contract": None,
+                "capture_contract_warnings": [],
+                "uncertainty_observations": [],
+                "uncertainty_summary": None,
+                "uncertainty_evidence_eligible": False,
+                "uncertainty_evidence_status": "not_evaluable",
+                "uncertainty_reasons": [],
+                "uncertainty_successful_prediction_count": 0,
+                "uncertainty_no_face_count": 0,
+                "uncertainty_capture_coverage_fraction": 0.0,
+                "uncertainty_conditional_scored_fraction": None,
+                "uncertainty_coverage_risk_evaluable": False,
+            }
+            for phase in ("start", "end")
+        },
+    }
+    if (
+        measurement_contract is None
+        or not contract_sha256
+        or assessment_viewport is None
+    ):
+        _add_reason(audit, "prediction_receipt_prerequisites_unavailable")
+        return result
+
+    registry = collection.get("prediction_receipts")
+    if not isinstance(registry, Mapping):
+        _add_reason(audit, "prediction_receipt_registry_unavailable")
+        return result
+    schema_version = registry.get("schema_version")
+    result["schema_version"] = schema_version
+    if (
+        isinstance(schema_version, bool)
+        or schema_version != PREDICTION_RECEIPT_SCHEMA_VERSION
+    ):
+        _add_reason(audit, "prediction_receipt_registry_schema_mismatch")
+        return result
+    raw_records = registry.get("records")
+    if not isinstance(raw_records, Mapping):
+        _add_reason(audit, "prediction_receipt_registry_records_invalid")
+        return result
+    result["record_count"] = len(raw_records)
+
+    registry_ok = True
+    records: dict[str, Mapping[str, object]] = {}
+    by_record_sha256: dict[str, list[tuple[str, Mapping[str, object]]]] = defaultdict(
+        list
+    )
+    for raw_key, raw_record in raw_records.items():
+        registry_key = str(raw_key)
+        if not _valid_sha256(registry_key) or not isinstance(raw_record, Mapping):
+            _add_reason(audit, "prediction_receipt_registry_record_invalid")
+            registry_ok = False
+            continue
+        record = dict(raw_record)
+        issued = record.get("issued")
+        issued_record_sha256 = record.get("issued_record_sha256")
+        if "token" in record or (
+            isinstance(issued, Mapping) and "token" in issued
+        ):
+            _add_reason(audit, "prediction_receipt_raw_token_persisted")
+            registry_ok = False
+        if not isinstance(issued, Mapping) or not _valid_sha256(
+            issued_record_sha256
+        ):
+            _add_reason(audit, "prediction_receipt_registry_record_invalid")
+            registry_ok = False
+            continue
+        try:
+            calculated_record_sha256 = canonical_sha256(issued)
+        except (TypeError, ValueError):
+            calculated_record_sha256 = None
+        if calculated_record_sha256 != issued_record_sha256:
+            _add_reason(audit, "prediction_receipt_registry_record_hash_mismatch")
+            registry_ok = False
+        if issued.get("receipt_id_sha256") != registry_key:
+            _add_reason(audit, "prediction_receipt_registry_identity_mismatch")
+            registry_ok = False
+        records[registry_key] = record
+        by_record_sha256[str(issued_record_sha256)].append((registry_key, record))
+
+    linked_data = dict(session.get("linked_data") or {})
+    frozen_artifact_sha256 = collection.get("model_artifact_sha256")
+    expected_common = {
+        "study_session_id": session.get("study_session_id"),
+        "authorization_fingerprint_sha256": session.get("access_token_sha256"),
+        "assessment_id": collection.get("assessment_id"),
+        "model_name": linked_data.get("model_name"),
+        "model_artifact_sha256": frozen_artifact_sha256,
+        "capture_session_id": linked_data.get("gaze_session_id"),
+        "viewport": dict(assessment_viewport),
+        "measurement_contract_sha256": contract_sha256,
+    }
+    if not _valid_sha256(expected_common["authorization_fingerprint_sha256"]):
+        _add_reason(audit, "prediction_receipt_authorization_binding_unavailable")
+        registry_ok = False
+    if not _valid_sha256(frozen_artifact_sha256):
+        _add_reason(audit, "prediction_receipt_model_artifact_binding_unavailable")
+        registry_ok = False
+    if not expected_common["model_name"]:
+        _add_reason(audit, "prediction_receipt_model_binding_unavailable")
+        registry_ok = False
+    if linked_data.get("assessment_id") != expected_common["assessment_id"]:
+        _add_reason(audit, "prediction_receipt_assessment_linkage_mismatch")
+        registry_ok = False
+    for field in ("study_session_id", "assessment_id", "capture_session_id"):
+        value = expected_common[field]
+        if not isinstance(value, str) or not value.strip():
+            _add_reason(audit, f"prediction_receipt_{field}_binding_unavailable")
+            registry_ok = False
+
+    targets = validation_target_definitions(measurement_contract)
+    validation_map = dict(collection.get("validations") or {})
+    used_registry_keys: set[str] = set()
+    used_record_sha256s: set[str] = set()
+    for phase in ("start", "end"):
+        phase_result = result["phases"][phase]
+        phase_ok = registry_ok
+        summary = validation_map.get(phase)
+        if not isinstance(summary, Mapping):
+            _add_reason(audit, f"{phase}_prediction_receipt_summary_unavailable")
+            continue
+        if (
+            summary.get("prediction_receipt_status") != "verified"
+            or summary.get("prediction_receipts_verified") is not True
+        ):
+            _add_reason(audit, f"{phase}_prediction_receipt_status_unverified")
+            phase_ok = False
+        bundle = summary.get("prediction_receipt_bundle")
+        if not isinstance(bundle, Mapping):
+            _add_reason(audit, f"{phase}_prediction_receipt_bundle_unavailable")
+            continue
+        record_sha256s = bundle.get("receipt_record_sha256s")
+        bundle_count = bundle.get("count")
+        if (
+            bundle.get("schema_version") != PREDICTION_RECEIPT_SCHEMA_VERSION
+            or bundle.get("status") != "verified"
+            or bundle.get("phase") != phase
+            or isinstance(bundle_count, bool)
+            or bundle_count != len(targets) * 3
+            or not isinstance(record_sha256s, list)
+            or len(record_sha256s) != len(targets) * 3
+            or any(not _valid_sha256(value) for value in record_sha256s)
+            or len(set(record_sha256s)) != len(record_sha256s)
+        ):
+            _add_reason(audit, f"{phase}_prediction_receipt_bundle_invalid")
+            continue
+        bundle_core = {
+            "schema_version": PREDICTION_RECEIPT_SCHEMA_VERSION,
+            "status": "verified",
+            "phase": phase,
+            "count": len(record_sha256s),
+            "receipt_record_sha256s": record_sha256s,
+        }
+        expected_bundle = {
+            **bundle_core,
+            "bundle_sha256": canonical_sha256(bundle_core),
+        }
+        if not _canonical_equal(bundle, expected_bundle):
+            _add_reason(audit, f"{phase}_prediction_receipt_bundle_hash_mismatch")
+            phase_ok = False
+        phase_result["bundle_sha256"] = expected_bundle["bundle_sha256"]
+        phase_result["bundle"] = expected_bundle
+        phase_result["receipt_record_sha256s"] = list(record_sha256s)
+
+        reconstructed_samples: list[dict[str, Any]] = []
+        reconstructed_failures: list[dict[str, Any]] = []
+        uncertainty_observations: list[dict[str, Any]] = []
+        uncertainty_reasons: list[str] = []
+        phase_capture: dict[str, Any] | None = None
+        phase_capture_warnings: list[str] = []
+        for ordinal, issued_record_sha256 in enumerate(record_sha256s):
+            if issued_record_sha256 in used_record_sha256s:
+                _add_reason(audit, "prediction_receipt_record_reused_across_phases")
+                phase_ok = False
+            used_record_sha256s.add(issued_record_sha256)
+            matches = by_record_sha256.get(issued_record_sha256, [])
+            if len(matches) != 1:
+                _add_reason(
+                    audit,
+                    f"{phase}_prediction_receipt_registry_record_missing_or_duplicated",
+                )
+                phase_ok = False
+                continue
+            registry_key, record = matches[0]
+            used_registry_keys.add(registry_key)
+            issued = record.get("issued")
+            if not isinstance(issued, Mapping):
+                _add_reason(audit, f"{phase}_prediction_receipt_record_invalid")
+                phase_ok = False
+                continue
+            consumed_at = record.get("consumed_at_utc")
+            if (
+                not isinstance(consumed_at, str)
+                or not consumed_at.strip()
+                or record.get("consumed_validation_phase") != phase
+            ):
+                _add_reason(audit, f"{phase}_prediction_receipt_consumption_mismatch")
+                phase_ok = False
+            if issued.get("schema_version") != PREDICTION_RECEIPT_SCHEMA_VERSION:
+                _add_reason(audit, f"{phase}_prediction_receipt_schema_mismatch")
+                phase_ok = False
+            issued_at = issued.get("issued_at_utc")
+            if not isinstance(issued_at, str) or not issued_at.strip():
+                _add_reason(audit, f"{phase}_prediction_receipt_issue_time_invalid")
+                phase_ok = False
+            for field, expected in expected_common.items():
+                if not _canonical_equal(issued.get(field), expected):
+                    _add_reason(
+                        audit,
+                        f"{phase}_prediction_receipt_{field}_binding_mismatch",
+                    )
+                    phase_ok = False
+            if issued.get("phase") != phase:
+                _add_reason(audit, f"{phase}_prediction_receipt_phase_binding_mismatch")
+                phase_ok = False
+            target = targets[ordinal // 3]
+            expected_target = _expected_receipt_target(target, assessment_viewport)
+            if (
+                issued.get("receipt_ordinal") != ordinal
+                or issued.get("target_repeat_index") != ordinal % 3
+                or not _canonical_equal(issued.get("target"), expected_target)
+            ):
+                _add_reason(audit, f"{phase}_prediction_receipt_target_sequence_mismatch")
+                phase_ok = False
+            capture_check = issued.get("capture_contract_check")
+            if not isinstance(capture_check, Mapping) or capture_check.get(
+                "compatible"
+            ) is not True:
+                _add_reason(audit, f"{phase}_prediction_receipt_capture_check_failed")
+                phase_ok = False
+            try:
+                normalized_capture = normalize_capture_contract(
+                    issued.get("capture_contract")  # type: ignore[arg-type]
+                )
+            except (TypeError, ValueError):
+                _add_reason(audit, f"{phase}_prediction_receipt_capture_invalid")
+                phase_ok = False
+                normalized_capture = None
+            if normalized_capture is not None:
+                if phase_capture is None:
+                    phase_capture = normalized_capture
+                else:
+                    try:
+                        within_phase_check = compare_capture_contracts(
+                            phase_capture,
+                            normalized_capture,
+                        )
+                    except (TypeError, ValueError):
+                        within_phase_check = None
+                    if (
+                        within_phase_check is None
+                        or within_phase_check.get("compatible") is not True
+                    ):
+                        _add_reason(
+                            audit,
+                            f"{phase}_prediction_receipt_capture_changed_within_phase",
+                        )
+                        phase_ok = False
+                    else:
+                        phase_capture_warnings.extend(
+                            str(value)
+                            for value in within_phase_check.get("warnings", [])
+                        )
+                try:
+                    calibration_check = compare_capture_contracts(
+                        calibration_capture_contract,
+                        normalized_capture,
+                    )
+                except (TypeError, ValueError):
+                    calibration_check = None
+                if (
+                    calibration_check is None
+                    or calibration_check.get("compatible") is not True
+                ):
+                    _add_reason(
+                        audit,
+                        f"{phase}_prediction_receipt_calibration_capture_incompatible",
+                    )
+                    phase_ok = False
+                else:
+                    phase_capture_warnings.extend(
+                        str(value)
+                        for value in calibration_check.get("warnings", [])
+                    )
+            try:
+                sample, failure = _receipt_outcome_sample(
+                    issued,
+                    expected_target=expected_target,
+                    viewport=assessment_viewport,
+                    issued_record_sha256=issued_record_sha256,
+                )
+            except ValueError as exc:
+                _add_reason(audit, f"{phase}_prediction_receipt_{exc}")
+                phase_ok = False
+                continue
+            reconstructed_samples.append(sample)
+            if failure is not None:
+                reconstructed_failures.append(failure)
+            prediction = issued.get("prediction")
+            try:
+                uncertainty = _normalized_receipt_uncertainty(
+                    prediction,  # type: ignore[arg-type]
+                    prediction_success=sample["prediction_success"],
+                    viewport=assessment_viewport,
+                )
+            except (TypeError, ValueError) as exc:
+                reason = f"{phase}_prediction_receipt_{exc}"
+                _add_reason(audit, reason)
+                uncertainty_reasons.append(str(exc))
+                phase_ok = False
+            else:
+                uncertainty_observations.append(
+                    _receipt_uncertainty_observation(
+                        issued_record_sha256=issued_record_sha256,
+                        phase=phase,
+                        receipt_ordinal=ordinal,
+                        target_id=str(expected_target["target_id"]),
+                        target_repeat_index=ordinal % 3,
+                        prediction_success=sample["prediction_success"],
+                        uncertainty=uncertainty,
+                    )
+                )
+                uncertainty_status = str(uncertainty.get("status") or "")
+                if uncertainty_status != "scored_no_threshold":
+                    uncertainty_reasons.append(uncertainty_status or "unavailable")
+
+        phase_result["capture_contract"] = phase_capture
+        phase_result["capture_contract_warnings"] = sorted(
+            set(phase_capture_warnings)
+        )
+        phase_result["reconstructed_samples"] = reconstructed_samples
+        phase_result["reconstructed_failures"] = reconstructed_failures
+        phase_result["uncertainty_observations"] = uncertainty_observations
+        expected_uncertainty_summary = _receipt_uncertainty_summary(
+            uncertainty_observations,
+            status="verified",
+        )
+        phase_result["uncertainty_summary"] = expected_uncertainty_summary
+        phase_result["uncertainty_reasons"] = sorted(set(uncertainty_reasons))
+        successful_prediction_count = sum(
+            sample.get("prediction_success") is True
+            for sample in reconstructed_samples
+        )
+        no_face_count = len(reconstructed_failures)
+        expected_observation_count = len(targets) * 3
+        phase_result["uncertainty_successful_prediction_count"] = (
+            successful_prediction_count
+        )
+        phase_result["uncertainty_no_face_count"] = no_face_count
+        phase_result["uncertainty_capture_coverage_fraction"] = (
+            expected_uncertainty_summary["scored_count"]
+            / expected_observation_count
+        )
+        phase_result["uncertainty_conditional_scored_fraction"] = (
+            expected_uncertainty_summary["scored_count"]
+            / successful_prediction_count
+            if successful_prediction_count > 0
+            else None
+        )
+        phase_result["uncertainty_evidence_eligible"] = (
+            len(uncertainty_observations) == expected_observation_count
+            and len(reconstructed_samples) == expected_observation_count
+            and expected_uncertainty_summary["scored_count"]
+            == successful_prediction_count
+            and expected_uncertainty_summary["unavailable_count"]
+            == no_face_count
+        )
+        phase_result["uncertainty_coverage_risk_evaluable"] = bool(
+            phase_result["uncertainty_evidence_eligible"]
+            and successful_prediction_count > 0
+        )
+        phase_result["uncertainty_evidence_status"] = (
+            "verified_scored_no_threshold"
+            if phase_result["uncertainty_evidence_eligible"]
+            else "not_evaluable"
+        )
+        if phase_capture is None or not _canonical_equal(
+            summary.get("capture_contract"), phase_capture
+        ):
+            _add_reason(audit, f"{phase}_prediction_receipt_capture_binding_mismatch")
+            phase_ok = False
+        if not _canonical_equal(summary.get("samples"), reconstructed_samples):
+            _add_reason(audit, f"{phase}_prediction_receipt_outcome_sample_mismatch")
+            phase_ok = False
+        if not _canonical_equal(
+            summary.get("prediction_failures"), reconstructed_failures
+        ):
+            _add_reason(audit, f"{phase}_prediction_receipt_failure_summary_mismatch")
+            phase_ok = False
+        if summary.get("model_artifact_sha256") != frozen_artifact_sha256:
+            _add_reason(audit, f"{phase}_prediction_receipt_model_artifact_mismatch")
+            phase_ok = False
+        if not _canonical_equal(
+            summary.get("uncertainty_observations"), uncertainty_observations
+        ):
+            _add_reason(
+                audit,
+                f"{phase}_prediction_receipt_uncertainty_observations_mismatch",
+            )
+            phase_ok = False
+        if not _canonical_equal(
+            summary.get("uncertainty_summary"), expected_uncertainty_summary
+        ):
+            _add_reason(
+                audit,
+                f"{phase}_prediction_receipt_uncertainty_summary_mismatch",
+            )
+            phase_ok = False
+        phase_result["eligible"] = phase_ok
+
+    if set(records) != used_registry_keys or len(records) != len(targets) * 6:
+        _add_reason(audit, "prediction_receipt_registry_contains_unbound_records")
+        for phase in ("start", "end"):
+            result["phases"][phase]["eligible"] = False
+    result["eligible"] = all(
+        result["phases"][phase]["eligible"] for phase in ("start", "end")
+    )
+    result["status"] = "verified" if result["eligible"] else "unavailable"
+    return result
 
 
 def _audit_session_gaze(
@@ -126,15 +897,41 @@ def _audit_session_gaze(
         "assessment_viewport": None,
         "validation_integrity_status": "unavailable",
         "validation_payload_sha256": {"start": None, "end": None},
+        "prediction_receipt_registry_schema_version": None,
+        "prediction_receipt_status": "unavailable",
+        "prediction_receipt_eligible": False,
+        "prediction_receipt_record_count": 0,
+        "prediction_receipt_bundle_sha256": {"start": None, "end": None},
+        "prediction_receipt_record_sha256s": {"start": [], "end": []},
+        "prediction_receipt_capture_warnings": {"start": [], "end": []},
+        "prediction_receipt_uncertainty_observations": {"start": [], "end": []},
+        "prediction_receipt_uncertainty_summary": {"start": None, "end": None},
+        "uncertainty_evidence_eligible": False,
+        "uncertainty_evidence_status": "not_evaluable",
+        "uncertainty_reasons": [],
+        "uncertainty_successful_prediction_count": {"start": 0, "end": 0},
+        "uncertainty_no_face_count": {"start": 0, "end": 0},
+        "uncertainty_capture_coverage_fraction": {"start": 0.0, "end": 0.0},
+        "uncertainty_conditional_scored_fraction": {"start": None, "end": None},
+        "uncertainty_coverage_risk_evaluable": False,
         "capture_contract_eligible": False,
         "target_independence_eligible": False,
         "gaze_integrity_eligible": False,
+        "validation_geometry_contract_eligible": False,
         "geometry_contract_eligible": False,
+        "validation_gaze_export_eligible": False,
+        "reading_gaze_export_eligible": False,
+        "reading_telemetry_evidence_status": READING_TELEMETRY_EVIDENCE_STATUS,
+        "recomputed_validation_quality": {},
         "recomputed_quality": {},
         "source_telemetry_sample_count": 0,
         "source_validation_sample_count": 0,
-        "pair_gaze_comparison_status": "not_evaluated",
+        "pair_validation_gaze_comparison_status": "not_evaluated",
+        "pair_validation_gaze_comparable": False,
+        "pair_gaze_comparison_status": "reading_telemetry_unverified",
         "pair_gaze_comparable": False,
+        "validation_reasons": [],
+        "reading_reasons": [],
         "reasons": [],
     }
 
@@ -226,8 +1023,72 @@ def _audit_session_gaze(
     independence_checks: list[bool] = []
     validations = collection.get("validations")
     validation_map = dict(validations) if isinstance(validations, Mapping) else {}
+    receipt_audit = _audit_prediction_receipts(
+        session,
+        collection,
+        measurement_contract=measurement_contract,
+        contract_sha256=audit["contract_sha256"],
+        assessment_viewport=assessment_viewport,
+        calibration_capture_contract=calibration.get("capture_contract"),
+        audit=audit,
+    )
+    audit["prediction_receipt_registry_schema_version"] = receipt_audit[
+        "schema_version"
+    ]
+    audit["prediction_receipt_status"] = receipt_audit["status"]
+    audit["prediction_receipt_eligible"] = receipt_audit["eligible"]
+    audit["prediction_receipt_record_count"] = receipt_audit["record_count"]
     for phase in ("start", "end"):
-        phase_ok = True
+        audit["prediction_receipt_bundle_sha256"][phase] = receipt_audit["phases"][
+            phase
+        ]["bundle_sha256"]
+        audit["prediction_receipt_record_sha256s"][phase] = receipt_audit["phases"][
+            phase
+        ]["receipt_record_sha256s"]
+        audit["prediction_receipt_capture_warnings"][phase] = receipt_audit[
+            "phases"
+        ][phase]["capture_contract_warnings"]
+        audit["prediction_receipt_uncertainty_observations"][phase] = (
+            receipt_audit["phases"][phase]["uncertainty_observations"]
+        )
+        audit["prediction_receipt_uncertainty_summary"][phase] = receipt_audit[
+            "phases"
+        ][phase]["uncertainty_summary"]
+        audit["uncertainty_reasons"].extend(
+            f"{phase}:{reason}"
+            for reason in receipt_audit["phases"][phase]["uncertainty_reasons"]
+        )
+        for field in (
+            "uncertainty_successful_prediction_count",
+            "uncertainty_no_face_count",
+            "uncertainty_capture_coverage_fraction",
+            "uncertainty_conditional_scored_fraction",
+        ):
+            audit[field][phase] = receipt_audit["phases"][phase][field]
+    audit["uncertainty_reasons"] = sorted(set(audit["uncertainty_reasons"]))
+    audit["uncertainty_evidence_eligible"] = all(
+        receipt_audit["phases"][phase]["uncertainty_evidence_eligible"]
+        for phase in ("start", "end")
+    )
+    audit["uncertainty_evidence_status"] = (
+        "verified_scored_no_threshold"
+        if audit["uncertainty_evidence_eligible"]
+        else "not_evaluable"
+    )
+    audit["uncertainty_coverage_risk_evaluable"] = all(
+        receipt_audit["phases"][phase]["uncertainty_coverage_risk_evaluable"]
+        for phase in ("start", "end")
+    )
+    if (
+        not audit["uncertainty_evidence_eligible"]
+        and not audit["uncertainty_reasons"]
+    ):
+        audit["uncertainty_reasons"] = [
+            "prediction_receipt_uncertainty_unavailable"
+        ]
+    for phase in ("start", "end"):
+        receipt_phase = receipt_audit["phases"][phase]
+        phase_ok = receipt_phase["eligible"] is True
         summary_raw = validation_map.get(phase)
         if not isinstance(summary_raw, Mapping):
             _add_reason(audit, f"{phase}_validation_unavailable")
@@ -252,6 +1113,7 @@ def _audit_session_gaze(
                     viewport_width_px=assessment_viewport["width_px"],
                     viewport_height_px=assessment_viewport["height_px"],
                     measurement_contract=measurement_contract,
+                    prediction_receipt_status="verified",
                 )
             except (TypeError, ValueError):
                 _add_reason(audit, f"{phase}_validation_samples_invalid")
@@ -309,11 +1171,22 @@ def _audit_session_gaze(
             and assessment_viewport is not None
             and audit["contract_sha256"]
             and recomputed is not None
+            and receipt_phase["bundle"] is not None
         ):
             expected_payload_sha256 = canonical_sha256(
                 {
                     "samples": recomputed["samples"],
                     "capture_contract": normalized_capture,
+                    "prediction_receipt_bundle": receipt_phase["bundle"],
+                    "uncertainty_observations": receipt_phase[
+                        "uncertainty_observations"
+                    ],
+                    "uncertainty_summary": receipt_phase["uncertainty_summary"],
+                    "prediction_receipt_status": "verified",
+                    "prediction_receipts_verified": True,
+                    "model_artifact_sha256": collection.get(
+                        "model_artifact_sha256"
+                    ),
                     "gaze_measurement_contract_sha256": audit["contract_sha256"],
                     "assessment_viewport": assessment_viewport,
                 }
@@ -403,25 +1276,41 @@ def _audit_session_gaze(
             gaze_integrity.get("eligible") is True and not integrity_reasons
         )
         if not audit["gaze_integrity_eligible"]:
-            _add_reason(audit, "gaze_integrity_ineligible")
+            _add_reason(audit, "gaze_integrity_ineligible", scope="reading")
     else:
-        _add_reason(audit, "gaze_integrity_unavailable")
+        _add_reason(audit, "gaze_integrity_unavailable", scope="reading")
 
-    required_flags = {
+    validation_flags = {
+        "prediction_receipt_eligible": audit["prediction_receipt_eligible"],
         "capture_contract_eligible": audit["capture_contract_eligible"],
         "target_independence_eligible": audit["target_independence_eligible"],
+    }
+    audit["validation_geometry_contract_eligible"] = all(
+        validation_flags.values()
+    )
+    required_flags = {
+        **validation_flags,
         "gaze_integrity_eligible": audit["gaze_integrity_eligible"],
     }
     for field, recomputed_value in required_flags.items():
         if final_quality.get(field) is not recomputed_value:
-            _add_reason(audit, f"stored_{field}_mismatch")
+            _add_reason(audit, f"stored_{field}_mismatch", scope="reading")
     audit["geometry_contract_eligible"] = all(required_flags.values())
     if final_quality.get("geometry_contract_eligible") is not audit[
         "geometry_contract_eligible"
     ]:
-        _add_reason(audit, "stored_geometry_contract_eligible_mismatch")
+        _add_reason(
+            audit,
+            "stored_geometry_contract_eligible_mismatch",
+            scope="reading",
+        )
     if not audit["geometry_contract_eligible"]:
-        _add_reason(audit, "geometry_contract_ineligible")
+        _add_reason(audit, "geometry_contract_ineligible", scope="reading")
+    _add_reason(
+        audit,
+        "reading_prediction_receipts_unavailable",
+        scope="reading",
+    )
 
     telemetry_root = session_path.parent / "collection" / "telemetry"
     telemetry_batch_count = 0
@@ -433,11 +1322,14 @@ def _audit_session_gaze(
         try:
             batch = json.loads(batch_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
-            _add_reason(audit, "telemetry_batch_unreadable")
+            _add_reason(audit, "telemetry_batch_unreadable", scope="reading")
+            continue
+        if not isinstance(batch, Mapping):
+            _add_reason(audit, "telemetry_batch_invalid", scope="reading")
             continue
         samples = batch.get("samples")
         if not isinstance(samples, list):
-            _add_reason(audit, "telemetry_samples_unavailable")
+            _add_reason(audit, "telemetry_samples_unavailable", scope="reading")
             continue
         telemetry_batch_count += 1
         telemetry_attempt_count += len(samples)
@@ -447,20 +1339,30 @@ def _audit_session_gaze(
             isinstance(sample, Mapping) and forbidden & set(sample)
             for sample in samples
         ):
-            _add_reason(audit, "telemetry_raw_media_prohibited")
+            _add_reason(audit, "telemetry_raw_media_prohibited", scope="reading")
         try:
             telemetry_viewport = _normalized_viewport(batch.get("viewport"))
         except ValueError:
-            _add_reason(audit, "telemetry_viewport_unavailable_or_invalid")
+            _add_reason(
+                audit,
+                "telemetry_viewport_unavailable_or_invalid",
+                scope="reading",
+            )
         else:
             if assessment_viewport is None or telemetry_viewport != assessment_viewport:
-                _add_reason(audit, "telemetry_viewport_mismatch")
+                _add_reason(audit, "telemetry_viewport_mismatch", scope="reading")
         if str(batch.get("study_session_id") or "") != session_id:
-            _add_reason(audit, "telemetry_session_binding_mismatch")
+            _add_reason(
+                audit, "telemetry_session_binding_mismatch", scope="reading"
+            )
         if batch.get("visit_index") != assignment.get("visit_index"):
-            _add_reason(audit, "telemetry_visit_binding_mismatch")
+            _add_reason(audit, "telemetry_visit_binding_mismatch", scope="reading")
         if batch.get("capture_session_id") != linked_data.get("gaze_session_id"):
-            _add_reason(audit, "telemetry_capture_session_binding_mismatch")
+            _add_reason(
+                audit,
+                "telemetry_capture_session_binding_mismatch",
+                scope="reading",
+            )
         normalized_payload = {
             "batch_id": batch.get("batch_id"),
             "passage_id": batch.get("passage_id"),
@@ -475,11 +1377,11 @@ def _audit_session_gaze(
             expected_telemetry_sha256 is None
             or batch.get("payload_sha256") != expected_telemetry_sha256
         ):
-            _add_reason(audit, "telemetry_payload_hash_mismatch")
+            _add_reason(audit, "telemetry_payload_hash_mismatch", scope="reading")
 
         for sample in samples:
             if not isinstance(sample, Mapping):
-                _add_reason(audit, "telemetry_sample_invalid")
+                _add_reason(audit, "telemetry_sample_invalid", scope="reading")
                 continue
             if sample.get("prediction_success") is not True:
                 continue
@@ -498,7 +1400,9 @@ def _audit_session_gaze(
                 if not all(math.isfinite(value) for value in normalized_bbox):
                     raise ValueError
             except (TypeError, ValueError):
-                _add_reason(audit, "telemetry_success_geometry_invalid")
+                _add_reason(
+                    audit, "telemetry_success_geometry_invalid", scope="reading"
+                )
                 continue
             successful_poses.append(normalized_pose)
             successful_face_scales.append(
@@ -509,7 +1413,9 @@ def _audit_session_gaze(
     if session.get("state") == "completed" and final_quality and (
         telemetry_batch_count == 0 or telemetry_attempt_count == 0
     ):
-        _add_reason(audit, "completed_gaze_session_has_no_telemetry")
+        _add_reason(
+            audit, "completed_gaze_session_has_no_telemetry", scope="reading"
+        )
 
     head_pose_min = [
         min((pose[index] for pose in successful_poses), default=None)
@@ -532,11 +1438,13 @@ def _audit_session_gaze(
     }
     stored_telemetry_stats = collection.get("telemetry_stats")
     if not isinstance(stored_telemetry_stats, Mapping):
-        _add_reason(audit, "stored_telemetry_stats_unavailable")
+        _add_reason(audit, "stored_telemetry_stats_unavailable", scope="reading")
     else:
         for field, expected in recomputed_telemetry_stats.items():
             if not _metric_equal(stored_telemetry_stats.get(field), expected):
-                _add_reason(audit, f"stored_telemetry_{field}_mismatch")
+                _add_reason(
+                    audit, f"stored_telemetry_{field}_mismatch", scope="reading"
+                )
 
     reading_elapsed_ms = 0.0
     round_file_count = 0
@@ -549,7 +1457,9 @@ def _audit_session_gaze(
             if not math.isfinite(elapsed_ms) or elapsed_ms < 0:
                 raise ValueError
         except (OSError, json.JSONDecodeError, TypeError, ValueError):
-            _add_reason(audit, "round_timing_unavailable_or_invalid")
+            _add_reason(
+                audit, "round_timing_unavailable_or_invalid", scope="reading"
+            )
             continue
         reading_elapsed_ms += elapsed_ms
         round_file_count += 1
@@ -568,9 +1478,9 @@ def _audit_session_gaze(
             or not _metric_equal(stored_reading_elapsed_ms, reading_elapsed_ms)
             or len(stored_rounds) != round_file_count
         ):
-            _add_reason(audit, "round_timing_binding_mismatch")
+            _add_reason(audit, "round_timing_binding_mismatch", scope="reading")
     else:
-        _add_reason(audit, "stored_round_timing_unavailable")
+        _add_reason(audit, "stored_round_timing_unavailable", scope="reading")
 
     validation_summaries = [
         recomputed_validations[phase]
@@ -600,10 +1510,35 @@ def _audit_session_gaze(
         "reading_active_reentered_without_segment_contract"
         not in set(integrity_reasons if isinstance(gaze_integrity, Mapping) else [])
     )
+    validation_success_fractions = [
+        float(summary["prediction_success_fraction"])
+        for summary in validation_summaries
+    ]
+    audit["recomputed_validation_quality"] = {
+        "median_spatial_error_px": max(medians) if medians else None,
+        "p90_spatial_error_px": max(p90_values) if p90_values else None,
+        "precision_rms_px": max(precision_values) if precision_values else None,
+        "prediction_success_fraction": (
+            min(validation_success_fractions)
+            if validation_success_fractions
+            else None
+        ),
+        "drift_change_px": (
+            float(recomputed_validations["end"]["median_spatial_error_px"])
+            - float(recomputed_validations["start"]["median_spatial_error_px"])
+            if len(recomputed_validations) == 2
+            and recomputed_validations["end"].get("median_spatial_error_px")
+            is not None
+            and recomputed_validations["start"].get("median_spatial_error_px")
+            is not None
+            else None
+        ),
+    }
     recomputed_quality: dict[str, Any] = {
         "median_spatial_error_px": max(medians) if medians else None,
         "p90_spatial_error_px": max(p90_values) if p90_values else None,
         "precision_rms_px": max(precision_values) if precision_values else None,
+        "prediction_receipt_status": audit["prediction_receipt_status"],
         "prediction_success_fraction": (
             telemetry_success_count / telemetry_attempt_count
             if telemetry_attempt_count
@@ -652,7 +1587,7 @@ def _audit_session_gaze(
             recomputed_band = classify_gaze_quality(recomputed_quality)
         except (TypeError, ValueError):
             recomputed_band = "behavioral_only"
-            _add_reason(audit, "recomputed_gaze_quality_invalid")
+            _add_reason(audit, "recomputed_gaze_quality_invalid", scope="reading")
     audit["recomputed_quality"] = {
         **recomputed_quality,
         "gaze_quality_band": recomputed_band,
@@ -660,34 +1595,69 @@ def _audit_session_gaze(
 
     stored_collection_metrics = collection.get("gaze_quality_metrics")
     if not isinstance(stored_collection_metrics, Mapping):
-        _add_reason(audit, "stored_collection_gaze_quality_metrics_unavailable")
+        _add_reason(
+            audit,
+            "stored_collection_gaze_quality_metrics_unavailable",
+            scope="reading",
+        )
     else:
         for field, expected in recomputed_quality.items():
             if not _metric_equal(stored_collection_metrics.get(field), expected):
-                _add_reason(audit, f"stored_collection_{field}_mismatch")
+                _add_reason(
+                    audit, f"stored_collection_{field}_mismatch", scope="reading"
+                )
     if collection.get("gaze_quality_band") != recomputed_band:
-        _add_reason(audit, "stored_collection_gaze_quality_band_mismatch")
+        _add_reason(
+            audit,
+            "stored_collection_gaze_quality_band_mismatch",
+            scope="reading",
+        )
     for field, expected in recomputed_quality.items():
         if not _metric_equal(final_quality.get(field), expected):
-            _add_reason(audit, f"stored_final_{field}_mismatch")
+            _add_reason(audit, f"stored_final_{field}_mismatch", scope="reading")
     if final_quality.get("gaze_quality_band") != recomputed_band:
-        _add_reason(audit, "stored_final_gaze_quality_band_mismatch")
+        _add_reason(
+            audit, "stored_final_gaze_quality_band_mismatch", scope="reading"
+        )
 
+    audit["validation_reasons"].sort()
+    audit["reading_reasons"].sort()
     audit["reasons"].sort()
-    audit["base_eligible"] = not audit["reasons"]
-    audit["eligible"] = audit["base_eligible"]
+    audit["validation_gaze_export_eligible"] = (
+        not audit["validation_reasons"]
+        and audit["validation_integrity_status"] == "passed"
+        and audit["validation_geometry_contract_eligible"]
+    )
+    audit["uncertainty_evidence_eligible"] = bool(
+        audit["uncertainty_evidence_eligible"]
+        and audit["validation_gaze_export_eligible"]
+    )
+    audit["uncertainty_evidence_status"] = (
+        "verified_scored_no_threshold"
+        if audit["uncertainty_evidence_eligible"]
+        else "not_evaluable"
+    )
+    audit["uncertainty_coverage_risk_evaluable"] = bool(
+        audit["uncertainty_coverage_risk_evaluable"]
+        and audit["validation_gaze_export_eligible"]
+    )
+    audit["reading_gaze_export_eligible"] = False
+    audit["base_eligible"] = audit["validation_gaze_export_eligible"]
+    # A generic session-wide gaze claim remains false until reading predictions
+    # have their own server-issued, single-use receipt contract.
+    audit["eligible"] = False
     return audit
 
 
 def _apply_pair_gaze_policy(audits: list[dict[str, Any]]) -> dict[str, str]:
-    """Allow Visit 1/2 comparison only under one identical frozen contract."""
+    """Compare receipt-verified fixed-target validation only, never reading gaze."""
 
     by_pair: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for audit in audits:
         if audit["pair_id"]:
             by_pair[audit["pair_id"]].append(audit)
         else:
-            audit["pair_gaze_comparison_status"] = "pair_id_unavailable"
+            audit["pair_validation_gaze_comparison_status"] = "pair_id_unavailable"
 
     pair_status: dict[str, str] = {}
     for pair_id, pair_audits in sorted(by_pair.items()):
@@ -709,14 +1679,18 @@ def _apply_pair_gaze_policy(audits: list[dict[str, Any]]) -> dict[str, str]:
             else:
                 status = "comparable_same_measurement_contract"
                 for audit in pair_audits:
-                    audit["pair_gaze_comparable"] = True
+                    audit["pair_validation_gaze_comparable"] = True
         pair_status[pair_id] = status
         for audit in pair_audits:
-            audit["pair_gaze_comparison_status"] = status
+            audit["pair_validation_gaze_comparison_status"] = status
 
     for audit in audits:
+        audit["validation_reasons"].sort()
+        audit["reading_reasons"].sort()
         audit["reasons"].sort()
-        audit["eligible"] = audit["base_eligible"]
+        audit["validation_gaze_export_eligible"] = audit["base_eligible"]
+        audit["reading_gaze_export_eligible"] = False
+        audit["eligible"] = False
     return pair_status
 
 
@@ -754,7 +1728,10 @@ def export_bundle(
     passage_rows: list[dict[str, Any]] = []
     review_rows: list[dict[str, Any]] = []
     layout_rows: list[dict[str, Any]] = []
+    # This table remains eligible-only. It is intentionally empty until reading
+    # predictions have their own server-issued receipt contract.
     telemetry_rows: list[dict[str, Any]] = []
+    unverified_telemetry_rows: list[dict[str, Any]] = []
     validation_rows: list[dict[str, Any]] = []
     reading_video_rows: list[dict[str, Any]] = []
     excluded: list[dict[str, str]] = []
@@ -826,9 +1803,18 @@ def export_bundle(
             dict(session.get("quality") or {}).get("general_system_check") or {}
         )
         device = dict(system_check.get("device", {}))
-        gaze_eligible = bool(audit["eligible"])
-        recomputed_quality = dict(audit.get("recomputed_quality") or {})
+        validation_gaze_eligible = bool(audit["validation_gaze_export_eligible"])
+        reading_gaze_eligible = bool(audit["reading_gaze_export_eligible"])
+        validation_quality = dict(
+            audit.get("recomputed_validation_quality") or {}
+        )
         assessment_viewport = dict(audit.get("assessment_viewport") or {})
+        uncertainty_summaries = {
+            phase: dict(
+                audit["prediction_receipt_uncertainty_summary"].get(phase) or {}
+            )
+            for phase in ("start", "end")
+        }
         session_rows.append(
             {
                 "participant_id": participant_id,
@@ -865,6 +1851,82 @@ def export_bundle(
                 "assessment_viewport_width": assessment_viewport.get("width_px"),
                 "assessment_viewport_height": assessment_viewport.get("height_px"),
                 "validation_integrity_status": audit["validation_integrity_status"],
+                "prediction_receipt_registry_schema_version": audit[
+                    "prediction_receipt_registry_schema_version"
+                ],
+                "prediction_receipt_status": audit["prediction_receipt_status"],
+                "prediction_receipt_eligible": audit[
+                    "prediction_receipt_eligible"
+                ],
+                "prediction_receipt_record_count": audit[
+                    "prediction_receipt_record_count"
+                ],
+                "start_prediction_receipt_bundle_sha256": audit[
+                    "prediction_receipt_bundle_sha256"
+                ]["start"],
+                "end_prediction_receipt_bundle_sha256": audit[
+                    "prediction_receipt_bundle_sha256"
+                ]["end"],
+                "start_prediction_receipt_capture_warnings": _json_cell(
+                    audit["prediction_receipt_capture_warnings"]["start"]
+                ),
+                "end_prediction_receipt_capture_warnings": _json_cell(
+                    audit["prediction_receipt_capture_warnings"]["end"]
+                ),
+                "start_uncertainty_observations_sha256": uncertainty_summaries[
+                    "start"
+                ].get("observations_sha256"),
+                "end_uncertainty_observations_sha256": uncertainty_summaries[
+                    "end"
+                ].get("observations_sha256"),
+                "start_uncertainty_scored_count": uncertainty_summaries[
+                    "start"
+                ].get("scored_count"),
+                "end_uncertainty_scored_count": uncertainty_summaries["end"].get(
+                    "scored_count"
+                ),
+                "start_uncertainty_unavailable_count": uncertainty_summaries[
+                    "start"
+                ].get("unavailable_count"),
+                "end_uncertainty_unavailable_count": uncertainty_summaries["end"].get(
+                    "unavailable_count"
+                ),
+                "start_uncertainty_successful_prediction_count": audit[
+                    "uncertainty_successful_prediction_count"
+                ]["start"],
+                "end_uncertainty_successful_prediction_count": audit[
+                    "uncertainty_successful_prediction_count"
+                ]["end"],
+                "start_uncertainty_no_face_count": audit[
+                    "uncertainty_no_face_count"
+                ]["start"],
+                "end_uncertainty_no_face_count": audit[
+                    "uncertainty_no_face_count"
+                ]["end"],
+                "start_uncertainty_capture_coverage_fraction": audit[
+                    "uncertainty_capture_coverage_fraction"
+                ]["start"],
+                "end_uncertainty_capture_coverage_fraction": audit[
+                    "uncertainty_capture_coverage_fraction"
+                ]["end"],
+                "start_uncertainty_conditional_scored_fraction": audit[
+                    "uncertainty_conditional_scored_fraction"
+                ]["start"],
+                "end_uncertainty_conditional_scored_fraction": audit[
+                    "uncertainty_conditional_scored_fraction"
+                ]["end"],
+                "uncertainty_evidence_status": audit[
+                    "uncertainty_evidence_status"
+                ],
+                "uncertainty_evidence_eligible": audit[
+                    "uncertainty_evidence_eligible"
+                ],
+                "uncertainty_reasons": _json_cell(audit["uncertainty_reasons"]),
+                "uncertainty_abstention_threshold_selected": False,
+                "uncertainty_coverage_risk_evaluable": audit[
+                    "uncertainty_coverage_risk_evaluable"
+                ],
+                "uncertainty_risk_population": "successful_predictions_only",
                 "capture_contract_eligible": audit["capture_contract_eligible"],
                 "target_independence_eligible": audit[
                     "target_independence_eligible"
@@ -873,67 +1935,77 @@ def export_bundle(
                 "geometry_contract_eligible": audit[
                     "geometry_contract_eligible"
                 ],
-                "gaze_export_status": "eligible" if gaze_eligible else "excluded",
-                "gaze_export_eligible": gaze_eligible,
+                "validation_geometry_contract_eligible": audit[
+                    "validation_geometry_contract_eligible"
+                ],
+                "validation_gaze_export_status": (
+                    "eligible" if validation_gaze_eligible else "excluded"
+                ),
+                "validation_gaze_export_eligible": validation_gaze_eligible,
+                "validation_gaze_exclusion_reasons": _json_cell(
+                    audit["validation_reasons"]
+                ),
+                "reading_gaze_export_status": READING_TELEMETRY_EVIDENCE_STATUS,
+                "reading_gaze_export_eligible": reading_gaze_eligible,
+                "reading_gaze_exclusion_reasons": _json_cell(
+                    audit["reading_reasons"]
+                ),
+                "gaze_export_status": (
+                    "validation_only"
+                    if validation_gaze_eligible
+                    else "behavioral_only"
+                ),
+                "gaze_export_eligible": False,
                 "gaze_exclusion_reasons": _json_cell(audit["reasons"]),
                 "pair_gaze_comparison_status": audit[
                     "pair_gaze_comparison_status"
                 ],
                 "pair_gaze_comparable": audit["pair_gaze_comparable"],
+                "pair_validation_gaze_comparison_status": audit[
+                    "pair_validation_gaze_comparison_status"
+                ],
+                "pair_validation_gaze_comparable": audit[
+                    "pair_validation_gaze_comparable"
+                ],
                 "start_validation_payload_sha256": audit[
                     "validation_payload_sha256"
                 ]["start"],
                 "end_validation_payload_sha256": audit[
                     "validation_payload_sha256"
                 ]["end"],
-                "gaze_quality_band": (
-                    recomputed_quality.get("gaze_quality_band")
-                    if gaze_eligible
-                    else "unavailable"
-                ),
+                "gaze_quality_band": "unavailable",
                 "median_spatial_error_px": (
-                    recomputed_quality.get("median_spatial_error_px")
-                    if gaze_eligible
+                    validation_quality.get("median_spatial_error_px")
+                    if validation_gaze_eligible
                     else None
                 ),
                 "p90_spatial_error_px": (
-                    recomputed_quality.get("p90_spatial_error_px")
-                    if gaze_eligible
+                    validation_quality.get("p90_spatial_error_px")
+                    if validation_gaze_eligible
                     else None
                 ),
                 "precision_rms_px": (
-                    recomputed_quality.get("precision_rms_px")
-                    if gaze_eligible
+                    validation_quality.get("precision_rms_px")
+                    if validation_gaze_eligible
                     else None
                 ),
-                "prediction_success_fraction": (
-                    recomputed_quality.get("prediction_success_fraction")
-                    if gaze_eligible
+                "validation_prediction_success_fraction": (
+                    validation_quality.get("prediction_success_fraction")
+                    if validation_gaze_eligible
                     else None
                 ),
-                "effective_sampling_hz": (
-                    recomputed_quality.get("effective_sampling_hz")
-                    if gaze_eligible
-                    else None
-                ),
-                "head_pose_range": (
-                    _json_cell(recomputed_quality.get("head_pose_range"))
-                    if gaze_eligible
-                    else None
-                ),
-                "face_scale_range": (
-                    recomputed_quality.get("face_scale_range")
-                    if gaze_eligible
-                    else None
-                ),
+                "prediction_success_fraction": None,
+                "effective_sampling_hz": None,
+                "head_pose_range": None,
+                "face_scale_range": None,
                 "drift_change_px": (
-                    recomputed_quality.get("drift_change_px")
-                    if gaze_eligible
+                    validation_quality.get("drift_change_px")
+                    if validation_gaze_eligible
                     else None
                 ),
             }
         )
-        if not gaze_eligible:
+        if not reading_gaze_eligible or not validation_gaze_eligible:
             gaze_excluded_rows.append(
                 {
                     "participant_id": participant_id,
@@ -943,9 +2015,33 @@ def export_bundle(
                     "gaze_measurement_contract_id": audit["contract_id"],
                     "gaze_measurement_contract_version": audit["contract_version"],
                     "gaze_measurement_contract_sha256": audit["contract_sha256"],
+                    "prediction_receipt_status": audit[
+                        "prediction_receipt_status"
+                    ],
+                    "uncertainty_evidence_status": audit[
+                        "uncertainty_evidence_status"
+                    ],
+                    "uncertainty_evidence_eligible": audit[
+                        "uncertainty_evidence_eligible"
+                    ],
+                    "uncertainty_reasons": _json_cell(audit["uncertainty_reasons"]),
+                    "validation_gaze_export_eligible": validation_gaze_eligible,
+                    "reading_gaze_export_eligible": reading_gaze_eligible,
+                    "reading_telemetry_evidence_status": (
+                        READING_TELEMETRY_EVIDENCE_STATUS
+                    ),
                     "pair_gaze_comparison_status": audit[
                         "pair_gaze_comparison_status"
                     ],
+                    "pair_validation_gaze_comparison_status": audit[
+                        "pair_validation_gaze_comparison_status"
+                    ],
+                    "validation_exclusion_reasons": _json_cell(
+                        audit["validation_reasons"]
+                    ),
+                    "reading_exclusion_reasons": _json_cell(
+                        audit["reading_reasons"]
+                    ),
                     "exclusion_reasons": _json_cell(audit["reasons"]),
                     "source_telemetry_sample_count": audit[
                         "source_telemetry_sample_count"
@@ -954,6 +2050,9 @@ def export_bundle(
                         "source_validation_sample_count"
                     ],
                     "behavioral_fields_retained": True,
+                    "receipt_verified_validation_fields_retained": (
+                        validation_gaze_eligible
+                    ),
                 }
             )
 
@@ -998,61 +2097,84 @@ def export_bundle(
             for layout in observation.get("word_layout", []):
                 layout_rows.append({**base, **layout})
 
-        if gaze_eligible:
-            telemetry_root = session_path.parent / "collection" / "telemetry"
-            for batch_path in sorted(telemetry_root.glob("*/*.json")):
+        telemetry_root = session_path.parent / "collection" / "telemetry"
+        for batch_path in sorted(telemetry_root.glob("*/*.json")):
+            try:
                 batch = json.loads(batch_path.read_text(encoding="utf-8"))
-                for sample_index, sample in enumerate(batch.get("samples", [])):
-                    telemetry_rows.append(
-                        {
-                            "participant_id": participant_id,
-                            "study_session_id": session_id,
-                            "visit_index": assignment.get("visit_index"),
-                            "capture_session_id": batch.get("capture_session_id"),
-                            "gaze_measurement_contract_id": audit["contract_id"],
-                            "gaze_measurement_contract_version": audit[
-                                "contract_version"
-                            ],
-                            "gaze_measurement_contract_sha256": audit[
-                                "contract_sha256"
-                            ],
-                            "pair_gaze_comparison_status": audit[
-                                "pair_gaze_comparison_status"
-                            ],
-                            "pair_gaze_comparable": audit[
-                                "pair_gaze_comparable"
-                            ],
-                            "assessment_viewport_width": assessment_viewport.get(
-                                "width_px"
-                            ),
-                            "assessment_viewport_height": assessment_viewport.get(
-                                "height_px"
-                            ),
-                            "passage_id": batch.get("passage_id"),
-                            "batch_id": batch.get("batch_id"),
-                            "sample_index": sample_index,
-                            "monotonic_elapsed_ms": sample.get(
-                                "monotonic_elapsed_ms"
-                            ),
-                            "prediction_success": sample.get("prediction_success"),
-                            "coarse_failure_code": sample.get("coarse_failure_code"),
-                            "screen_xy_norm": _json_cell(sample.get("screen_xy_norm")),
-                            "screen_xy_px": _json_cell(sample.get("screen_xy_px")),
-                            "gaze_pitch_yaw": _json_cell(sample.get("gaze_pitch_yaw")),
-                            "head_pose_pitch_yaw": _json_cell(
-                                sample.get("head_pose_pitch_yaw")
-                            ),
-                            "normalized_face_bbox": _json_cell(
-                                sample.get("normalized_face_bbox")
-                            ),
-                            "nearest_word_index": sample.get("nearest_word_index"),
-                            "viewport": _json_cell(batch.get("viewport")),
-                        }
-                    )
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(batch, Mapping) or not isinstance(
+                batch.get("samples"), list
+            ):
+                continue
+            for sample_index, sample in enumerate(batch["samples"]):
+                if not isinstance(sample, Mapping):
+                    continue
+                unverified_telemetry_rows.append(
+                    {
+                        "participant_id": participant_id,
+                        "study_session_id": session_id,
+                        "visit_index": assignment.get("visit_index"),
+                        "capture_session_id": batch.get("capture_session_id"),
+                        "gaze_measurement_contract_id": audit["contract_id"],
+                        "gaze_measurement_contract_version": audit[
+                            "contract_version"
+                        ],
+                        "gaze_measurement_contract_sha256": audit[
+                            "contract_sha256"
+                        ],
+                        "evidence_status": READING_TELEMETRY_EVIDENCE_STATUS,
+                        "prediction_receipt_bound": False,
+                        "reading_gaze_export_eligible": False,
+                        "formal_evidence_eligible": False,
+                        "pair_gaze_comparison_status": audit[
+                            "pair_gaze_comparison_status"
+                        ],
+                        "pair_gaze_comparable": False,
+                        "assessment_viewport_width": assessment_viewport.get(
+                            "width_px"
+                        ),
+                        "assessment_viewport_height": assessment_viewport.get(
+                            "height_px"
+                        ),
+                        "passage_id": batch.get("passage_id"),
+                        "batch_id": batch.get("batch_id"),
+                        "batch_payload_sha256": batch.get("payload_sha256"),
+                        "sample_index": sample_index,
+                        "monotonic_elapsed_ms": sample.get("monotonic_elapsed_ms"),
+                        "prediction_success": sample.get("prediction_success"),
+                        "coarse_failure_code": sample.get("coarse_failure_code"),
+                        "screen_xy_norm": _json_cell(sample.get("screen_xy_norm")),
+                        "screen_xy_px": _json_cell(sample.get("screen_xy_px")),
+                        "gaze_pitch_yaw": _json_cell(sample.get("gaze_pitch_yaw")),
+                        "head_pose_pitch_yaw": _json_cell(
+                            sample.get("head_pose_pitch_yaw")
+                        ),
+                        "normalized_face_bbox": _json_cell(
+                            sample.get("normalized_face_bbox")
+                        ),
+                        "nearest_word_index": sample.get("nearest_word_index"),
+                        "viewport": _json_cell(batch.get("viewport")),
+                    }
+                )
+
+        if validation_gaze_eligible:
             validations_for_export = dict(collection.get("validations") or {})
             for phase in ("start", "end"):
                 summary = dict(validations_for_export[phase])
+                receipt_record_sha256s = audit[
+                    "prediction_receipt_record_sha256s"
+                ][phase]
+                uncertainty_observations = audit[
+                    "prediction_receipt_uncertainty_observations"
+                ][phase]
+                uncertainty_summary = dict(
+                    audit["prediction_receipt_uncertainty_summary"][phase] or {}
+                )
                 for sample_index, sample in enumerate(summary.get("samples", [])):
+                    uncertainty_fields = _uncertainty_export_fields(
+                        uncertainty_observations[sample_index]
+                    )
                     validation_rows.append(
                         {
                             "participant_id": participant_id,
@@ -1071,11 +2193,32 @@ def export_bundle(
                             "validation_payload_sha256": audit[
                                 "validation_payload_sha256"
                             ][phase],
+                            "prediction_receipt_status": "verified",
+                            "prediction_receipt_bundle_sha256": audit[
+                                "prediction_receipt_bundle_sha256"
+                            ][phase],
+                            "prediction_receipt_record_sha256": (
+                                receipt_record_sha256s[sample_index]
+                            ),
+                            "uncertainty_phase_observations_sha256": (
+                                uncertainty_summary.get("observations_sha256")
+                            ),
+                            "evidence_status": (
+                                "receipt_verified_fixed_target_validation"
+                            ),
+                            "validation_gaze_export_eligible": True,
+                            "formal_evidence_eligible": False,
                             "pair_gaze_comparison_status": audit[
                                 "pair_gaze_comparison_status"
                             ],
                             "pair_gaze_comparable": audit[
                                 "pair_gaze_comparable"
+                            ],
+                            "pair_validation_gaze_comparison_status": audit[
+                                "pair_validation_gaze_comparison_status"
+                            ],
+                            "pair_validation_gaze_comparable": audit[
+                                "pair_validation_gaze_comparable"
                             ],
                             "assessment_viewport_width": assessment_viewport.get(
                                 "width_px"
@@ -1085,6 +2228,7 @@ def export_bundle(
                             ),
                             "phase": phase,
                             "sample_index": sample_index,
+                            **uncertainty_fields,
                             **sample,
                         }
                     )
@@ -1147,14 +2291,45 @@ def export_bundle(
                 "gaze_measurement_contract_id", "gaze_measurement_contract_version",
                 "gaze_measurement_contract_sha256", "gaze_contract_snapshot_valid",
                 "assessment_viewport_width", "assessment_viewport_height",
-                "validation_integrity_status", "capture_contract_eligible",
+                "validation_integrity_status",
+                "prediction_receipt_registry_schema_version",
+                "prediction_receipt_status", "prediction_receipt_eligible",
+                "prediction_receipt_record_count",
+                "start_prediction_receipt_bundle_sha256",
+                "end_prediction_receipt_bundle_sha256",
+                "start_prediction_receipt_capture_warnings",
+                "end_prediction_receipt_capture_warnings",
+                "start_uncertainty_observations_sha256",
+                "end_uncertainty_observations_sha256",
+                "start_uncertainty_scored_count", "end_uncertainty_scored_count",
+                "start_uncertainty_unavailable_count",
+                "end_uncertainty_unavailable_count",
+                "start_uncertainty_successful_prediction_count",
+                "end_uncertainty_successful_prediction_count",
+                "start_uncertainty_no_face_count", "end_uncertainty_no_face_count",
+                "start_uncertainty_capture_coverage_fraction",
+                "end_uncertainty_capture_coverage_fraction",
+                "start_uncertainty_conditional_scored_fraction",
+                "end_uncertainty_conditional_scored_fraction",
+                "uncertainty_evidence_status", "uncertainty_evidence_eligible",
+                "uncertainty_reasons",
+                "uncertainty_abstention_threshold_selected",
+                "uncertainty_coverage_risk_evaluable",
+                "uncertainty_risk_population",
+                "capture_contract_eligible",
                 "target_independence_eligible", "gaze_integrity_eligible",
-                "geometry_contract_eligible", "gaze_export_status",
-                "gaze_export_eligible", "gaze_exclusion_reasons",
+                "validation_geometry_contract_eligible", "geometry_contract_eligible",
+                "validation_gaze_export_status", "validation_gaze_export_eligible",
+                "validation_gaze_exclusion_reasons", "reading_gaze_export_status",
+                "reading_gaze_export_eligible", "reading_gaze_exclusion_reasons",
+                "gaze_export_status", "gaze_export_eligible", "gaze_exclusion_reasons",
                 "pair_gaze_comparison_status", "pair_gaze_comparable",
+                "pair_validation_gaze_comparison_status",
+                "pair_validation_gaze_comparable",
                 "start_validation_payload_sha256", "end_validation_payload_sha256",
                 "gaze_quality_band", "median_spatial_error_px", "p90_spatial_error_px",
-                "precision_rms_px", "prediction_success_fraction", "effective_sampling_hz",
+                "precision_rms_px", "validation_prediction_success_fraction",
+                "prediction_success_fraction", "effective_sampling_hz",
                 "head_pose_range", "face_scale_range", "drift_change_px",
             ],
             session_rows,
@@ -1188,22 +2363,61 @@ def export_bundle(
             [
                 "participant_id", "study_session_id", "visit_index", "capture_session_id",
                 "gaze_measurement_contract_id", "gaze_measurement_contract_version",
-                "gaze_measurement_contract_sha256", "pair_gaze_comparison_status",
+                "gaze_measurement_contract_sha256", "evidence_status",
+                "prediction_receipt_bound", "reading_gaze_export_eligible",
+                "formal_evidence_eligible", "pair_gaze_comparison_status",
                 "pair_gaze_comparable", "assessment_viewport_width",
                 "assessment_viewport_height",
-                "passage_id", "batch_id", "sample_index", "monotonic_elapsed_ms",
+                "passage_id", "batch_id", "batch_payload_sha256", "sample_index",
+                "monotonic_elapsed_ms",
                 "prediction_success", "coarse_failure_code", "screen_xy_norm", "screen_xy_px",
                 "gaze_pitch_yaw", "head_pose_pitch_yaw", "normalized_face_bbox",
                 "nearest_word_index", "viewport",
             ],
             telemetry_rows,
         ),
+        "reading_telemetry_unverified.csv": (
+            [
+                "participant_id", "study_session_id", "visit_index", "capture_session_id",
+                "gaze_measurement_contract_id", "gaze_measurement_contract_version",
+                "gaze_measurement_contract_sha256", "evidence_status",
+                "prediction_receipt_bound", "reading_gaze_export_eligible",
+                "formal_evidence_eligible", "pair_gaze_comparison_status",
+                "pair_gaze_comparable", "assessment_viewport_width",
+                "assessment_viewport_height", "passage_id", "batch_id",
+                "batch_payload_sha256", "sample_index", "monotonic_elapsed_ms",
+                "prediction_success", "coarse_failure_code", "screen_xy_norm",
+                "screen_xy_px", "gaze_pitch_yaw", "head_pose_pitch_yaw",
+                "normalized_face_bbox", "nearest_word_index", "viewport",
+            ],
+            unverified_telemetry_rows,
+        ),
         "validation_samples.csv": (
             [
                 "participant_id", "study_session_id", "visit_index", "capture_session_id",
                 "gaze_measurement_contract_id", "gaze_measurement_contract_version",
                 "gaze_measurement_contract_sha256", "validation_payload_sha256",
+                "prediction_receipt_status", "prediction_receipt_bundle_sha256",
+                "prediction_receipt_record_sha256",
+                "uncertainty_phase_observations_sha256",
+                "uncertainty_observation_sha256", "uncertainty_observation_json",
+                "uncertainty_schema_version", "uncertainty_status",
+                "uncertainty_evidence_status", "uncertainty_evidence_eligible",
+                "uncertainty_coverage_risk_status",
+                "uncertainty_definition_sha256", "uncertainty_score",
+                "uncertainty_ood_value", "uncertainty_ood_percentile",
+                "uncertainty_leverage_value", "uncertainty_leverage_percentile",
+                "uncertainty_disagreement_value",
+                "uncertainty_disagreement_percentile",
+                "uncertainty_jackknife_disagreement_covariance_norm",
+                "uncertainty_jackknife_disagreement_covariance_px",
+                "uncertainty_abstention_status",
+                "uncertainty_abstention_threshold_json", "uncertainty_reason",
+                "evidence_status",
+                "validation_gaze_export_eligible", "formal_evidence_eligible",
                 "pair_gaze_comparison_status", "pair_gaze_comparable",
+                "pair_validation_gaze_comparison_status",
+                "pair_validation_gaze_comparable",
                 "assessment_viewport_width", "assessment_viewport_height", "phase",
                 "sample_index", "target_id", "target_x_px", "target_y_px",
                 "target_x_norm", "target_y_norm", "prediction_success",
@@ -1228,9 +2442,15 @@ def export_bundle(
             [
                 "participant_id", "study_session_id", "pair_id", "visit_index",
                 "gaze_measurement_contract_id", "gaze_measurement_contract_version",
-                "gaze_measurement_contract_sha256", "pair_gaze_comparison_status",
-                "exclusion_reasons", "source_telemetry_sample_count",
-                "source_validation_sample_count", "behavioral_fields_retained",
+                "gaze_measurement_contract_sha256", "prediction_receipt_status",
+                "uncertainty_evidence_status", "uncertainty_evidence_eligible",
+                "uncertainty_reasons",
+                "validation_gaze_export_eligible", "reading_gaze_export_eligible",
+                "reading_telemetry_evidence_status", "pair_gaze_comparison_status",
+                "pair_validation_gaze_comparison_status", "validation_exclusion_reasons",
+                "reading_exclusion_reasons", "exclusion_reasons",
+                "source_telemetry_sample_count", "source_validation_sample_count",
+                "behavioral_fields_retained", "receipt_verified_validation_fields_retained",
             ],
             gaze_excluded_rows,
         ),
@@ -1245,12 +2465,33 @@ def export_bundle(
         for filename, (_, rows) in tables.items()
     }
     all_audits = [record[-1] for record in session_records]
-    eligible_audits = [audit for audit in all_audits if audit["eligible"]]
+    validation_eligible_audits = [
+        audit for audit in all_audits if audit["validation_gaze_export_eligible"]
+    ]
+    uncertainty_eligible_audits = [
+        audit for audit in all_audits if audit["uncertainty_evidence_eligible"]
+    ]
+    uncertainty_definition_sha256s = sorted(
+        {
+            str(row["uncertainty_definition_sha256"])
+            for row in validation_rows
+            if row.get("uncertainty_evidence_eligible")
+            and row.get("uncertainty_definition_sha256")
+        }
+    )
     gaze_exclusion_reason_counts = Counter(
         reason
         for audit in all_audits
-        if not audit["eligible"]
         for reason in audit["reasons"]
+    )
+    validation_exclusion_reason_counts = Counter(
+        reason
+        for audit in all_audits
+        if not audit["validation_gaze_export_eligible"]
+        for reason in audit["validation_reasons"]
+    )
+    reading_exclusion_reason_counts = Counter(
+        reason for audit in all_audits for reason in audit["reading_reasons"]
     )
     eligible_contract_counts = Counter(
         (
@@ -1258,7 +2499,7 @@ def export_bundle(
             str(audit["contract_version"]),
             str(audit["contract_sha256"]),
         )
-        for audit in eligible_audits
+        for audit in validation_eligible_audits
     )
     pair_status_counts = Counter(pair_status.values())
     manifest = {
@@ -1278,25 +2519,85 @@ def export_bundle(
         "session_count": len(session_rows),
         "files": files,
         "gaze_provenance": {
-            "policy": "eligible_only_gaze_tables_behavioral_rows_retained",
-            "session_gaze_eligible_count": len(eligible_audits),
-            "session_gaze_excluded_count": len(all_audits) - len(eligible_audits),
+            "policy": (
+                "receipt_verified_fixed_target_validation_separated_from_"
+                "client_roundtrip_reading_telemetry"
+            ),
+            "session_gaze_eligible_count": 0,
+            "session_gaze_excluded_count": len(all_audits),
+            "validation_gaze_eligible_count": len(validation_eligible_audits),
+            "validation_gaze_excluded_count": (
+                len(all_audits) - len(validation_eligible_audits)
+            ),
+            "reading_gaze_eligible_count": 0,
+            "reading_gaze_unverified_session_count": len(all_audits),
             "gaze_tables_contain_only_eligible_sessions": True,
+            "eligible_reading_gaze_table_row_count": len(telemetry_rows),
+            "client_roundtrip_unverified_reading_row_count": len(
+                unverified_telemetry_rows
+            ),
+            "unverified_reading_telemetry_separate_from_eligible_gaze": True,
             "legacy_or_unavailable_gaze_mixed_with_eligible": False,
             "validation_payload_hash_required": True,
             "validation_payload_hash_scope": (
-                "stored_payload_integrity_not_client_prediction_authenticity"
+                "server_receipt_outcomes_capture_bundle_uncertainty_model_"
+                "measurement_viewport"
             ),
             "prediction_values_tamper_resistant": False,
-            "server_issued_prediction_receipts_required_before_formal_promotion": True,
+            "prediction_tamper_resistance_scope": (
+                "receipt_hashes_detect_integrity_drift_but_are_not_keyed_signatures"
+            ),
+            "client_posted_validation_prediction_values_trusted": False,
+            "server_issued_validation_prediction_receipts_required": True,
+            "validation_prediction_receipt_registry_verified_before_export": True,
+            "receipt_uncertainty_schema_version": (
+                RUNTIME_OBSERVATION_SCHEMA_VERSION
+            ),
+            "receipt_uncertainty_observations_bound_to_validation_payload": True,
+            "uncertainty_geometry_eligibility_independent_of_availability": True,
+            "uncertainty_evidence_eligible_session_count": len(
+                uncertainty_eligible_audits
+            ),
+            "uncertainty_evidence_not_evaluable_session_count": (
+                len(all_audits) - len(uncertainty_eligible_audits)
+            ),
+            "uncertainty_coverage_risk_evaluable_session_count": sum(
+                bool(audit["uncertainty_coverage_risk_evaluable"])
+                for audit in all_audits
+            ),
+            "uncertainty_scored_validation_row_count": sum(
+                bool(row.get("uncertainty_evidence_eligible"))
+                for row in validation_rows
+            ),
+            "uncertainty_unavailable_validation_row_count": sum(
+                not bool(row.get("uncertainty_evidence_eligible"))
+                for row in validation_rows
+            ),
+            "uncertainty_no_face_validation_row_count": sum(
+                row.get("uncertainty_status") == "unavailable_sensor_failure"
+                for row in validation_rows
+            ),
+            "uncertainty_capture_coverage_definition": (
+                "scored_successful_predictions_divided_by_all_fixed_target_attempts"
+            ),
+            "uncertainty_risk_population": "successful_predictions_only",
+            "uncertainty_definition_sha256s": uncertainty_definition_sha256s,
+            "uncertainty_abstention_threshold_selected": False,
+            "uncertainty_threshold_may_be_selected_from_this_export": False,
+            "raw_prediction_receipt_tokens_exported": False,
+            "authorization_fingerprints_exported": False,
+            "reading_prediction_receipts_available": False,
+            "reading_prediction_receipts_required_before_gaze_eligibility": True,
+            "reading_telemetry_evidence_status": READING_TELEMETRY_EVIDENCE_STATUS,
             "frozen_measurement_contract_snapshot_required": True,
             "assessment_viewport_binding_required": True,
             "capture_contract_eligibility_required": True,
             "target_independence_eligibility_required": True,
-            "nonempty_telemetry_required_for_completed_gaze_session": True,
+            "nonempty_telemetry_required_for_reading_diagnostics": True,
             "stored_telemetry_stats_must_match_raw_batches": True,
-            "final_gaze_quality_metrics_recomputed_before_export": True,
-            "pair_comparison_requires_same_contract_sha256": True,
+            "final_gaze_quality_metrics_recomputed_for_diagnostics_only": True,
+            "pair_validation_comparison_requires_same_contract_sha256": True,
+            "pair_reading_gaze_comparison_allowed": False,
             "eligible_measurement_contracts": [
                 {
                     "contract_id": contract_id,
@@ -1310,17 +2611,25 @@ def export_bundle(
                     contract_sha256,
                 ), count in sorted(eligible_contract_counts.items())
             ],
-            "pair_comparison_status_counts": dict(sorted(pair_status_counts.items())),
-            "pair_comparable_count": pair_status_counts.get(
+            "pair_validation_comparison_status_counts": dict(
+                sorted(pair_status_counts.items())
+            ),
+            "pair_validation_comparable_count": pair_status_counts.get(
                 "comparable_same_measurement_contract",
                 0,
             ),
-            "pair_not_comparable_count": len(pair_status) - pair_status_counts.get(
-                "comparable_same_measurement_contract",
-                0,
+            "pair_validation_not_comparable_count": (
+                len(pair_status)
+                - pair_status_counts.get("comparable_same_measurement_contract", 0)
             ),
             "exclusion_reason_counts": dict(
                 sorted(gaze_exclusion_reason_counts.items())
+            ),
+            "validation_exclusion_reason_counts": dict(
+                sorted(validation_exclusion_reason_counts.items())
+            ),
+            "reading_exclusion_reason_counts": dict(
+                sorted(reading_exclusion_reason_counts.items())
             ),
         },
         "split_policy": {

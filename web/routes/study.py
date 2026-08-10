@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from core.gaze_core.capture_contract import load_participant_gaze_measurement_contract
-from core.gaze_core.model_registry import delete_model
+from core.gaze_core.model_registry import (
+    delete_model,
+    model_artifact_sha256,
+)
 from core.gaze_core.sample_store import delete_dataset, purge_session_images
 from core.gaze_core.training import train_placeholder
 from core.participant_study import (
@@ -30,11 +34,43 @@ ROOT = Path(__file__).resolve().parents[2]
 study_bp = Blueprint("study", __name__)
 
 
+def _participant_model_name(
+    participant: dict,
+    gaze_session_id: str,
+) -> str:
+    """Return a visit- and capture-specific model name.
+
+    Visit 1 and Visit 2 deliberately share a participant identifier.  Reusing
+    the older participant-only filename would let a later calibration overwrite
+    (or, on failure, delete) the exact artifact bound to an earlier visit.
+    """
+
+    assignment = dict(participant.get("collection_assignment") or {})
+    visit_value = assignment.get("visit_index")
+    visit_label = (
+        f"visit{int(visit_value)}"
+        if isinstance(visit_value, int) and not isinstance(visit_value, bool)
+        else "unpaired"
+    )
+    capture_digest = hashlib.sha256(
+        gaze_session_id.encode("utf-8")
+    ).hexdigest()[:12]
+    return (
+        f"{str(participant['participant_id']).lower()}_"
+        f"{str(participant['mode']).lower()}_{visit_label}_"
+        f"{capture_digest}_general_v1"
+    )
+
+
 def _store() -> ParticipantStudyStore:
     root = Path(current_app.config.get("LEXIGAZE_STUDY_ROOT") or ROOT)
     store = ParticipantStudyStore(root, settings=current_app.config)
     store.enforce_expired_calibration_retention()
     return store
+
+
+def _gaze_root() -> Path:
+    return Path(current_app.config.get("LEXIGAZE_GAZE_ROOT") or ROOT).resolve()
 
 
 def _access_token(body: dict | None = None) -> str:
@@ -255,14 +291,47 @@ def start_participant_general_collection(session_id: str):
 
 @study_bp.post("/api/study/sessions/<session_id>/general/validation")
 def participant_general_validation(session_id: str):
-    body = request.get_json(force=True) or {}
+    body = request.get_json(force=True)
+    if not isinstance(body, dict):
+        return jsonify(
+            {"ok": False, "error": "request JSON body must be an object"}
+        ), 400
     try:
-        session = _store().record_general_validation(
+        store = _store()
+        access_token = _access_token(body)
+        receipt_tokens = body.get("prediction_receipts") or []
+        forbidden_receipt_fields = set(body) - {
+            "phase",
+            "prediction_receipts",
+            "access_token",
+        }
+        if receipt_tokens and forbidden_receipt_fields:
+            raise StudyValidationError(
+                "receipt validation accepts only phase and prediction receipt tokens"
+            )
+        artifact_sha256 = None
+        if receipt_tokens:
+            public_session = store.get_session(session_id, access_token)
+            model_name = str(
+                dict(public_session.get("linked_data") or {}).get("model_name") or ""
+            )
+            try:
+                artifact_sha256 = model_artifact_sha256(_gaze_root(), model_name)
+            except FileNotFoundError as exc:
+                raise StudyStateError(str(exc)) from exc
+        session = store.record_general_validation(
             session_id,
-            _access_token(body),
+            access_token,
             phase=str(body.get("phase") or ""),
-            samples=body.get("samples", []),
-            capture_contract=body.get("capture_contract"),
+            prediction_receipts=receipt_tokens,
+            model_artifact_sha256=artifact_sha256,
+            samples=body.get("samples") if "samples" in body else None,
+            capture_contract=(
+                body.get("capture_contract") if "capture_contract" in body else None
+            ),
+            client_prediction_payload_present=bool(
+                {"samples", "capture_contract"} & set(body)
+            ),
         )
         return jsonify({"ok": True, "session": session})
     except (
@@ -473,10 +542,7 @@ def complete_participant_calibration(session_id: str):
                 }
             ), 422
 
-        model_name = (
-            f"{participant['participant_id'].lower()}_"
-            f"{participant['mode']}_general_v1"
-        )
+        model_name = _participant_model_name(participant, gaze_session_id)
         try:
             training, training_status = train_placeholder(
                 gaze_root,
@@ -507,6 +573,39 @@ def complete_participant_calibration(session_id: str):
                 {
                     "ok": False,
                     "error": "personalization failed; temporary data was removed",
+                    "quality": quality,
+                    "session": session,
+                }
+            ), 422
+        if not isinstance(training, dict) or training.get("model_name") != model_name:
+            quality["reasons"].append("personalization_model_binding_mismatch")
+            quality["training"] = {
+                "ok": False,
+                "device": (
+                    training.get("training_device")
+                    if isinstance(training, dict)
+                    else None
+                ),
+                "expected_model_name": model_name,
+                "reported_model_name": (
+                    training.get("model_name")
+                    if isinstance(training, dict)
+                    else None
+                ),
+            }
+            session = _failed_calibration(
+                store,
+                session_id,
+                access_token,
+                gaze_root,
+                gaze_session_id,
+                quality,
+                model_name=model_name,
+            )
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": "personalization model binding failed; temporary data was removed",
                     "quality": quality,
                     "session": session,
                 }

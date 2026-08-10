@@ -14,16 +14,19 @@ from .capture_contract import (
     normalize_capture_contract,
     validate_transport_frame,
 )
-from .calibration_regression import (
-    face_geometry_from_bbox,
-    motion_conditioned_features,
-    standardized_design,
-)
+from .calibration_regression import face_geometry_from_bbox
 from .model_registry import model_path
+from .stage_pipeline import apply_stage_chain
 from .torch_runtime import (
     cuda_runtime_available,
     enable_process_wide_cuda_tf32,
     restore_matmul_precision,
+)
+from .uncertainty import (
+    normalize_uncertainty_observation,
+    score_samples,
+    unavailable_uncertainty,
+    uncertainty_status_for_model,
 )
 
 # Thread-safe caching structures
@@ -103,7 +106,11 @@ def predict(root: Path, payload: dict) -> tuple[dict, int]:
     if model_name != "before":
         calibration_file = model_path(root, model_name)
         if not calibration_file.exists():
-            return {"ok": False, "error": f"model {model_name} not found"}, 404
+            return {
+                "ok": False,
+                "error": f"model {model_name} not found",
+                "failure_stage": "model_hard_error",
+            }, 404
         try:
             with calibration_file.open("r", encoding="utf-8") as handle:
                 cal_data = json.load(handle)
@@ -111,6 +118,7 @@ def predict(root: Path, payload: dict) -> tuple[dict, int]:
             return {
                 "ok": False,
                 "error": f"failed to read model {model_name}: {exc}",
+                "failure_stage": "model_hard_error",
             }, 500
 
         observed_contract = payload.get("capture_contract")
@@ -122,6 +130,7 @@ def predict(root: Path, payload: dict) -> tuple[dict, int]:
                     "recalibration or a contract-aware capture client is required"
                 ),
                 "failure_code": "capture_contract_mismatch",
+                "failure_stage": "capture_hard_error",
                 "capture_contract_check": {
                     "status": "mismatch",
                     "compatible": False,
@@ -139,7 +148,11 @@ def predict(root: Path, payload: dict) -> tuple[dict, int]:
                     normalized_observed_contract,
                 )
             except ValueError as exc:
-                return {"ok": False, "error": str(exc)}, 400
+                return {
+                    "ok": False,
+                    "error": str(exc),
+                    "failure_stage": "capture_hard_error",
+                }, 400
             if capture_contract_check["compatible"] is False:
                 return {
                     "ok": False,
@@ -148,13 +161,18 @@ def predict(root: Path, payload: dict) -> tuple[dict, int]:
                         "recalibration is recommended before gaze use"
                     ),
                     "failure_code": "capture_contract_mismatch",
+                    "failure_stage": "capture_hard_error",
                     "capture_contract_check": capture_contract_check,
                 }, 409
 
     # 2. Decode the incoming webcam frame
     image_data = payload.get("image_data", "")
     if not isinstance(image_data, str) or not image_data:
-        return {"ok": False, "error": "missing image_data"}, 400
+        return {
+            "ok": False,
+            "error": "missing image_data",
+            "failure_stage": "capture_hard_error",
+        }, 400
 
     if "," in image_data:
         image_data = image_data.split(",", 1)[1]
@@ -162,13 +180,21 @@ def predict(root: Path, payload: dict) -> tuple[dict, int]:
     try:
         raw = base64.b64decode(image_data, validate=True)
         if not raw or len(raw) > MAX_INFERENCE_IMAGE_BYTES:
-            return {"ok": False, "error": "image payload size is invalid"}, 413
+            return {
+                "ok": False,
+                "error": "image payload size is invalid",
+                "failure_stage": "capture_hard_error",
+            }, 413
         np_arr = np.frombuffer(raw, dtype=np.uint8)
         img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
         if img is None:
             raise ValueError("cannot decode image")
     except (binascii.Error, TypeError, ValueError) as exc:
-        return {"ok": False, "error": f"failed to decode image: {exc}"}, 400
+        return {
+            "ok": False,
+            "error": f"failed to decode image: {exc}",
+            "failure_stage": "capture_hard_error",
+        }, 400
 
     if normalized_observed_contract is not None:
         try:
@@ -191,6 +217,7 @@ def predict(root: Path, payload: dict) -> tuple[dict, int]:
                 "ok": False,
                 "error": str(exc),
                 "failure_code": "capture_contract_mismatch",
+                "failure_stage": "capture_hard_error",
                 "capture_contract_check": capture_contract_check,
             }, 409
 
@@ -206,7 +233,18 @@ def predict(root: Path, payload: dict) -> tuple[dict, int]:
             processed = preprocessor.process(img)
         except ValueError as ve:
             if "no face detected" in str(ve):
-                return {"ok": False, "error": "no face detected in frame"}, 400
+                return {
+                    "ok": False,
+                    "error": "no face detected in frame",
+                    "failure_code": "no_face_detected",
+                    "failure_stage": "attributable_sensor_failure",
+                    "capture_contract_check": capture_contract_check,
+                    "model_name": model_name,
+                    "uncertainty": unavailable_uncertainty(
+                        "unavailable_sensor_failure",
+                        "no face was detected, so no sensor observation was scored",
+                    ),
+                }, 400
             raise
 
         # Feed image tensor to neural network
@@ -219,6 +257,10 @@ def predict(root: Path, payload: dict) -> tuple[dict, int]:
             gaze = gaze.squeeze(0).cpu().tolist()  # [pitch, yaw]
 
         # 4. Map raw gaze angles to screen coordinates
+        uncertainty = unavailable_uncertainty(
+            "unavailable_frozen_baseline",
+            "the frozen uncalibrated baseline has no uncertainty_v2 state",
+        )
         if model_name == "before":
             pitch, yaw = gaze[0], gaze[1]
             scale_x = 4.5
@@ -238,51 +280,89 @@ def predict(root: Path, payload: dict) -> tuple[dict, int]:
                     }
                 ]
 
-            p_curr, y_curr = gaze[0], gaze[1]
-            for stage_meta in stages:
-                W_stage = np.array(stage_meta["W"])
-                calibrator_type = stage_meta.get(
-                    "calibrator_type",
-                    "gaze_polynomial",
+            gaze_rows = np.asarray([gaze], dtype=np.float64)
+            production_requires_motion = any(
+                stage.get("calibrator_type") == "motion_conditioned_ridge_v1"
+                for stage in stages
+            )
+            head_rows = None
+            face_rows = None
+            if production_requires_motion:
+                head_rows = np.asarray(
+                    [processed.head_pose_pitch_yaw], dtype=np.float64
                 )
+                face_rows = np.asarray(
+                    [face_geometry_from_bbox(processed.face_bbox)],
+                    dtype=np.float64,
+                )
+            pred_xy = apply_stage_chain(
+                gaze_rows,
+                stages,
+                head_pitch_yaw=head_rows,
+                face_geometry=face_rows,
+                clamp=True,
+            )[0].astype(float).tolist()
 
-                if calibrator_type == "motion_conditioned_ridge_v1":
-                    face_geometry = np.array(
-                        [face_geometry_from_bbox(processed.face_bbox)]
+            uncertainty = uncertainty_status_for_model(cal_data)
+            if uncertainty["status"] == "scored_no_threshold":
+                if viewport_width <= 0 or viewport_height <= 0:
+                    uncertainty = unavailable_uncertainty(
+                        "unavailable_viewport_missing",
+                        (
+                            "positive viewport dimensions are required to report "
+                            "uncertainty covariance in pixels"
+                        ),
                     )
-                    motion_features = motion_conditioned_features(
-                        np.array([gaze]),
-                        np.array([processed.head_pose_pitch_yaw]),
-                        face_geometry,
-                    )
-                    feat = standardized_design(
-                        motion_features,
-                        np.array(stage_meta["feature_mean"]),
-                        np.array(stage_meta["feature_scale"]),
-                    )[0]
                 else:
-                    deg = stage_meta.get("poly_degree", 2)
-                    if deg == 1:
-                        feat = np.array([y_curr, p_curr, 1.0])
-                    else:
-                        feat = np.array(
-                            [
-                                y_curr,
-                                p_curr,
-                                y_curr * y_curr,
-                                p_curr * p_curr,
-                                y_curr * p_curr,
-                                1.0,
-                            ]
+                    try:
+                        score_head_rows = np.asarray(
+                            [processed.head_pose_pitch_yaw], dtype=np.float64
                         )
-
-                pred = feat @ W_stage
-                y_curr = float(pred[0])
-                p_curr = float(pred[1])
-
-            pred_x = max(-1.0, min(1.0, y_curr))
-            pred_y = max(-1.0, min(1.0, p_curr))
-            pred_xy = [pred_x, pred_y]
+                        score_face_rows = np.asarray(
+                            [face_geometry_from_bbox(processed.face_bbox)],
+                            dtype=np.float64,
+                        )
+                        scored = score_samples(
+                            gaze_rows,
+                            stages,
+                            cal_data["uncertainty_v2"]["final_score_state"],
+                            [[viewport_width, viewport_height]],
+                            head_pitch_yaw=score_head_rows,
+                            face_geometry=score_face_rows,
+                        )
+                        uncertainty = normalize_uncertainty_observation({
+                            "schema_version": 1,
+                            "status": scored["status"],
+                            "definition_sha256": scored["definition_sha256"],
+                            "score": float(scored["uncertainty_score"][0]),
+                            "components": {
+                                name: {
+                                    "value": float(values[0]),
+                                    "percentile": float(
+                                        scored["component_percentiles"][name][0]
+                                    ),
+                                }
+                                for name, values in scored["components"].items()
+                            },
+                            "jackknife_disagreement_covariance_norm": scored[
+                                "jackknife_disagreement_covariance_norm"
+                            ][0].astype(float).tolist(),
+                            "jackknife_disagreement_covariance_px": scored[
+                                "jackknife_disagreement_covariance_px"
+                            ][0].astype(float).tolist(),
+                            "abstention": {
+                                "status": scored["abstention_status"],
+                                "threshold": None,
+                            },
+                        }, viewport=(viewport_width, viewport_height))
+                    except Exception:
+                        uncertainty = unavailable_uncertainty(
+                            "unavailable_invalid_state",
+                            (
+                                "stored uncertainty state did not satisfy the "
+                                "frozen runtime contract"
+                            ),
+                        )
 
         # Map standardized [-1, 1] coordinates back to viewport pixels if viewport dimensions are provided
         if viewport_width > 0 and viewport_height > 0:
@@ -291,6 +371,19 @@ def predict(root: Path, payload: dict) -> tuple[dict, int]:
             screen_xy_px = [pixel_x, pixel_y]
         else:
             screen_xy_px = [0.0, 0.0]
+
+        try:
+            uncertainty = normalize_uncertainty_observation(
+                uncertainty,
+                viewport=(viewport_width, viewport_height)
+                if viewport_width > 0 and viewport_height > 0
+                else None,
+            )
+        except Exception:
+            uncertainty = unavailable_uncertainty(
+                "unavailable_invalid_observation",
+                "runtime uncertainty observation failed its stable contract",
+            )
 
         return {
             "ok": True,
@@ -302,7 +395,15 @@ def predict(root: Path, payload: dict) -> tuple[dict, int]:
             "capture_contract_check": capture_contract_check,
             "model_name": model_name,
             "source": "unigaze",
+            "uncertainty": uncertainty,
         }, 200
 
     except Exception as exc:
-        return {"ok": False, "error": f"prediction pipeline failed: {exc}"}, 500
+        return {
+            "ok": False,
+            "error": f"prediction pipeline failed: {exc}",
+            "failure_code": "prediction_pipeline_failed",
+            "failure_stage": "inference_hard_error",
+            "capture_contract_check": capture_contract_check,
+            "model_name": model_name,
+        }, 500

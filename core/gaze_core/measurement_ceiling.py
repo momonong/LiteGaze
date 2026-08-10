@@ -16,6 +16,13 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from .uncertainty_contract import (
+    canonical_json_bytes as _uncertainty_canonical_json_bytes,
+    canonical_sha256 as _uncertainty_canonical_sha256,
+    normalize_uncertainty_observation,
+    verified_definition,
+)
+
 
 SCHEMA_VERSION = 1
 ANALYSIS_ID = "webcam-gaze-measurement-ceiling-v1"
@@ -26,6 +33,10 @@ MAX_CROSS_PHASE_CAMERA_ASPECT_RATIO_DIFFERENCE = 0.02
 SIGNED_COORDINATE_MIN = -1.0
 SIGNED_COORDINATE_MAX = 1.0
 COORDINATE_ABS_TOLERANCE = 1e-12
+REPEATABILITY_PROXY_COVERAGE_LEVELS = (0.2, 0.4, 0.6, 0.8, 1.0)
+UNCERTAINTY_V2_COVERAGE_LEVELS = (1.0, 0.8, 0.6, 0.4, 0.2)
+FIXED_TARGET_CLUSTER_COUNT = 5
+FIXED_TARGET_REPEATS_PER_PHASE = 3
 
 
 class MeasurementCeilingError(ValueError):
@@ -356,6 +367,1254 @@ def _phase_metrics(
             "confusion": confusion,
         },
         "targets": target_metrics,
+    }
+
+
+def _average_ranks(values: Sequence[float]) -> list[float]:
+    order = sorted(range(len(values)), key=lambda index: (values[index], index))
+    ranks = [0.0] * len(values)
+    position = 0
+    while position < len(order):
+        end = position + 1
+        while end < len(order) and math.isclose(
+            values[order[end]],
+            values[order[position]],
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        ):
+            end += 1
+        average_rank = (position + 1 + end) / 2.0
+        for ordered_index in order[position:end]:
+            ranks[ordered_index] = average_rank
+        position = end
+    return ranks
+
+
+def _spearman(values_x: Sequence[float], values_y: Sequence[float]) -> float | None:
+    if len(values_x) != len(values_y) or len(values_x) < 2:
+        return None
+    ranks_x = _average_ranks(values_x)
+    ranks_y = _average_ranks(values_y)
+    mean_x = statistics.fmean(ranks_x)
+    mean_y = statistics.fmean(ranks_y)
+    centered_x = [value - mean_x for value in ranks_x]
+    centered_y = [value - mean_y for value in ranks_y]
+    denominator = math.sqrt(
+        sum(value * value for value in centered_x)
+        * sum(value * value for value in centered_y)
+    )
+    if denominator == 0.0:
+        return None
+    return sum(
+        value_x * value_y
+        for value_x, value_y in zip(centered_x, centered_y, strict=True)
+    ) / denominator
+
+
+def _temporal_repeatability_proxy(
+    start_records: Sequence[Mapping[str, Any]],
+    end_records: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Rank end risk with a score computed only from repeated start predictions.
+
+    This is a target-cluster repeatability diagnostic, not predictive model
+    uncertainty and not a deployable per-sample abstention score.
+    """
+
+    start_by_target: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    end_by_target: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    for record in start_records:
+        start_by_target[str(record["target_id"])].append(record)
+    for record in end_records:
+        end_by_target[str(record["target_id"])].append(record)
+    if set(start_by_target) != set(end_by_target):
+        return {
+            "status": "not_evaluable",
+            "claim_boundary": "proxy_not_predictive_uncertainty",
+            "reason": "start and end validation target sets differ",
+        }
+    if len(start_by_target) != 5:
+        return {
+            "status": "not_evaluable",
+            "claim_boundary": "proxy_not_predictive_uncertainty",
+            "reason": "fixed coverage grid requires exactly five target clusters",
+            "observed_target_cluster_count": len(start_by_target),
+        }
+
+    targets: dict[str, dict[str, Any]] = {}
+    for target_id in sorted(start_by_target):
+        start_target = start_by_target[target_id]
+        end_target = end_by_target[target_id]
+        if len(start_target) < 2 or not end_target:
+            return {
+                "status": "not_evaluable",
+                "claim_boundary": "proxy_not_predictive_uncertainty",
+                "reason": (
+                    "every target needs at least two successful start predictions "
+                    "and one successful end prediction"
+                ),
+            }
+        centroid_x = statistics.fmean(
+            float(record["predicted_x_px"]) for record in start_target
+        )
+        centroid_y = statistics.fmean(
+            float(record["predicted_y_px"]) for record in start_target
+        )
+        squared_distances = [
+            (float(record["predicted_x_px"]) - centroid_x) ** 2
+            + (float(record["predicted_y_px"]) - centroid_y) ** 2
+            for record in start_target
+        ]
+        end_errors = [float(record["spatial_error_px"]) for record in end_target]
+        targets[target_id] = {
+            "start_successful_repeat_count": len(start_target),
+            "start_repeatability_rms_px": math.sqrt(
+                statistics.fmean(squared_distances)
+            ),
+            "end_successful_sample_count": len(end_target),
+            "end_mean_spatial_error_px": statistics.fmean(end_errors),
+            "end_median_spatial_error_px": statistics.median(end_errors),
+        }
+
+    ordered_target_ids = sorted(
+        targets,
+        key=lambda target_id: (
+            targets[target_id]["start_repeatability_rms_px"],
+            target_id,
+        ),
+    )
+    curve: list[dict[str, Any]] = []
+    target_count = len(ordered_target_ids)
+    for requested_coverage in REPEATABILITY_PROXY_COVERAGE_LEVELS:
+        retained_count = max(1, math.ceil(target_count * requested_coverage))
+        retained = ordered_target_ids[:retained_count]
+        curve.append(
+            {
+                "requested_coverage": requested_coverage,
+                "achieved_coverage": retained_count / target_count,
+                "retained_target_cluster_count": retained_count,
+                "retained_target_ids": retained,
+                "end_target_macro_mean_spatial_error_px": statistics.fmean(
+                    targets[target_id]["end_mean_spatial_error_px"]
+                    for target_id in retained
+                ),
+                "end_target_macro_median_spatial_error_px": statistics.median(
+                    targets[target_id]["end_median_spatial_error_px"]
+                    for target_id in retained
+                ),
+            }
+        )
+    proxy_values = [
+        targets[target_id]["start_repeatability_rms_px"]
+        for target_id in sorted(targets)
+    ]
+    end_risks = [
+        targets[target_id]["end_mean_spatial_error_px"]
+        for target_id in sorted(targets)
+    ]
+    spearman = _spearman(proxy_values, end_risks)
+    lowest_risk = float(curve[0]["end_target_macro_mean_spatial_error_px"])
+    full_risk = float(curve[-1]["end_target_macro_mean_spatial_error_px"])
+    improves = lowest_risk < full_risk
+    return {
+        "status": "evaluable_descriptive_proxy",
+        "claim_boundary": "proxy_not_predictive_uncertainty",
+        "score_fit_phase": "start_validation_predictions_only",
+        "risk_evaluation_phase": "end_validation_target_errors_only",
+        "selection_unit": "evaluation_target_id_cluster",
+        "score_definition": (
+            "root_mean_squared_radial_distance_from_start_prediction_centroid_px"
+        ),
+        "score_uses_target_error_or_end_data": False,
+        "fixed_requested_coverages": list(REPEATABILITY_PROXY_COVERAGE_LEVELS),
+        "threshold_selection_authorized": False,
+        "quality_band_change_authorized": False,
+        "per_sample_abstention_authorized": False,
+        "target_cluster_count": target_count,
+        "ordered_target_ids_low_to_high_proxy": ordered_target_ids,
+        "targets": targets,
+        "coverage_risk_curve": curve,
+        "association": {
+            "metric": "spearman_start_proxy_vs_end_target_mean_error",
+            "value": spearman,
+            "expected_direction_if_proxy_were_useful": "positive",
+        },
+        "negative_result": {
+            "lowest_coverage_end_mean_error_px": lowest_risk,
+            "full_coverage_end_mean_error_px": full_risk,
+            "lowest_coverage_minus_full_coverage_px": lowest_risk - full_risk,
+            "lowest_coverage_improves_over_full": improves,
+            "conclusion": (
+                "available_start_repeatability_proxy_reduces_end_risk"
+                if improves and spearman is not None and spearman > 0.0
+                else "available_start_repeatability_proxy_does_not_rank_end_risk"
+            ),
+        },
+    }
+
+
+def _lower_hex_sha256(value: Any, *, field: str) -> str:
+    digest = str(value or "").strip()
+    if len(digest) != 64 or any(
+        character not in "0123456789abcdef" for character in digest
+    ):
+        raise MeasurementCeilingError(f"{field} must be a lowercase SHA-256")
+    return digest
+
+
+def _uncertainty_model_binding(model: Mapping[str, Any]) -> dict[str, Any]:
+    """Verify that runtime scores are bound to the frozen training-only v2."""
+
+    try:
+        definition, definition_sha256 = verified_definition()
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        return {
+            "status": "failed_integrity",
+            "reason": f"frozen uncertainty definition could not be verified: {exc}",
+        }
+    try:
+        frozen_grid = [
+            float(value)
+            for value in dict(definition.get("coverage_risk") or {}).get(
+                "coverage_grid", []
+            )
+        ]
+    except (TypeError, ValueError) as exc:
+        return {
+            "status": "failed_integrity",
+            "reason": f"frozen uncertainty coverage grid is invalid: {exc}",
+            "frozen_definition_sha256": definition_sha256,
+        }
+    if frozen_grid != list(UNCERTAINTY_V2_COVERAGE_LEVELS):
+        return {
+            "status": "failed_integrity",
+            "reason": "frozen uncertainty coverage grid changed",
+            "frozen_definition_sha256": definition_sha256,
+        }
+    bundle = model.get("uncertainty_v2")
+    if not isinstance(bundle, Mapping):
+        return {
+            "status": "unavailable",
+            "reason": "model artifact has no uncertainty_v2 bundle",
+            "frozen_definition_sha256": definition_sha256,
+            "coverage_grid": frozen_grid,
+        }
+    state = bundle.get("final_score_state")
+    oof = bundle.get("oof_evidence")
+    abstention = bundle.get("abstention_policy")
+    state_without_hash: dict[str, Any] = dict(state) if isinstance(state, Mapping) else {}
+    stored_state_sha256 = state_without_hash.pop("state_sha256", None)
+    try:
+        calculated_state_sha256 = _uncertainty_canonical_sha256(
+            state_without_hash
+        )
+    except (OverflowError, TypeError, ValueError) as exc:
+        return {
+            "status": "failed_integrity",
+            "reason": (
+                "model uncertainty v2 final score state is not canonical JSON: "
+                f"{exc}"
+            ),
+            "frozen_definition_sha256": definition_sha256,
+            "model_definition_sha256": bundle.get("definition_sha256"),
+            "coverage_grid": frozen_grid,
+        }
+    checks = {
+        "bundle_schema_version_is_v2": bundle.get("schema_version") == 2,
+        "bundle_status_is_score_only": bundle.get("status")
+        == "scored_no_threshold",
+        "bundle_definition_matches_frozen": bundle.get("definition_sha256")
+        == definition_sha256,
+        "bundle_threshold_is_unselected": bundle.get("threshold") is None,
+        "bundle_abstention_is_unselected": isinstance(abstention, Mapping)
+        and abstention.get("status") == "not_selected"
+        and abstention.get("threshold") is None
+        and abstention.get("quality_band") is None,
+        "final_score_state_present": isinstance(state, Mapping),
+        "final_score_state_status_is_score_only": isinstance(state, Mapping)
+        and state.get("status") == "scored_no_threshold",
+        "final_score_state_definition_matches_frozen": isinstance(state, Mapping)
+        and state.get("definition_sha256") == definition_sha256,
+        "final_score_state_uses_all_training_blocks": isinstance(state, Mapping)
+        and state.get("fit_scope") == "all_training_motion_blocks",
+        "final_score_state_threshold_is_unselected": isinstance(state, Mapping)
+        and state.get("threshold") is None
+        and state.get("abstention_status") == "not_selected",
+        "final_score_state_hash_is_valid": isinstance(stored_state_sha256, str)
+        and stored_state_sha256
+        == calculated_state_sha256,
+        "oof_evidence_present": isinstance(oof, Mapping),
+        "oof_definition_matches_frozen": isinstance(oof, Mapping)
+        and oof.get("definition_sha256") == definition_sha256,
+        "oof_coverage_grid_matches_frozen": isinstance(oof, Mapping)
+        and oof.get("coverage_grid") == frozen_grid,
+        "oof_threshold_is_unselected": isinstance(oof, Mapping)
+        and oof.get("threshold_selected") is False
+        and oof.get("threshold") is None,
+        "fresh_matched_contract_capture_required": isinstance(oof, Mapping)
+        and oof.get("fresh_matched_contract_capture_required") is True,
+    }
+    failed = sorted(name for name, passed in checks.items() if not passed)
+    return {
+        "status": "passed" if not failed else "failed_integrity",
+        "reason": (
+            "model uncertainty v2 is bound to the frozen definition"
+            if not failed
+            else "model uncertainty v2 binding failed: " + ", ".join(failed)
+        ),
+        "frozen_definition_sha256": definition_sha256,
+        "model_definition_sha256": bundle.get("definition_sha256"),
+        "final_score_state_sha256": stored_state_sha256,
+        "coverage_grid": frozen_grid,
+        "checks": checks,
+    }
+
+
+def _receipt_phase_rows(
+    validation: Mapping[str, Any],
+    *,
+    phase: str,
+    collection: Mapping[str, Any],
+    model_artifact_file_sha256: str,
+    viewport_width: float,
+    viewport_height: float,
+) -> dict[str, Any]:
+    """Verify one server receipt summary and recover only bound score/error rows."""
+
+    try:
+        if validation.get("prediction_receipt_status") != "verified" or (
+            validation.get("prediction_receipts_verified") is not True
+        ):
+            return {
+                "status": "not_evaluable_receipts_unavailable",
+                "integrity_status": "not_applicable",
+                "reason": f"{phase} validation has no verified prediction receipts",
+            }
+        samples = validation.get("samples")
+        observations = validation.get("uncertainty_observations")
+        summary = validation.get("uncertainty_summary")
+        bundle = validation.get("prediction_receipt_bundle")
+        capture_contract = validation.get("capture_contract")
+        if not isinstance(samples, list) or not isinstance(observations, list):
+            raise MeasurementCeilingError(
+                f"{phase} receipt samples and uncertainty observations must be arrays"
+            )
+        expected_count = FIXED_TARGET_CLUSTER_COUNT * FIXED_TARGET_REPEATS_PER_PHASE
+        if len(samples) != expected_count or len(observations) != expected_count:
+            raise MeasurementCeilingError(
+                f"{phase} receipt evidence must contain exactly {expected_count} rows"
+            )
+        if not isinstance(summary, Mapping) or not isinstance(bundle, Mapping):
+            raise MeasurementCeilingError(
+                f"{phase} receipt bundle or uncertainty summary is unavailable"
+            )
+        if not isinstance(capture_contract, Mapping):
+            raise MeasurementCeilingError(
+                f"{phase} verified receipt capture contract is unavailable"
+            )
+
+        model_sha256 = _lower_hex_sha256(
+            validation.get("model_artifact_sha256"),
+            field=f"{phase}.model_artifact_sha256",
+        )
+        if model_sha256 != model_artifact_file_sha256:
+            raise MeasurementCeilingError(
+                f"{phase} receipt model artifact SHA-256 does not match input model"
+            )
+        if collection.get("model_artifact_sha256") != model_sha256:
+            raise MeasurementCeilingError(
+                f"{phase} receipt model artifact does not match the frozen assessment"
+            )
+        assessment_viewport = validation.get("assessment_viewport")
+        expected_viewport = {
+            "width_px": int(viewport_width),
+            "height_px": int(viewport_height),
+        }
+        if assessment_viewport != expected_viewport or (
+            collection.get("assessment_viewport") != expected_viewport
+        ):
+            raise MeasurementCeilingError(
+                f"{phase} receipt viewport does not match the frozen assessment"
+            )
+
+        measurement_sha256 = _lower_hex_sha256(
+            validation.get("gaze_measurement_contract_sha256"),
+            field=f"{phase}.gaze_measurement_contract_sha256",
+        )
+        measurement_snapshot = collection.get("gaze_measurement_contract")
+        if not isinstance(measurement_snapshot, Mapping) or not isinstance(
+            measurement_snapshot.get("contract"), Mapping
+        ):
+            raise MeasurementCeilingError(
+                f"{phase} frozen gaze measurement contract is unavailable"
+            )
+        measurement_contract = measurement_snapshot["contract"]
+        if (
+            measurement_snapshot.get("sha256") != measurement_sha256
+            or _uncertainty_canonical_sha256(measurement_contract)
+            != measurement_sha256
+            or measurement_snapshot.get("contract_id")
+            != measurement_contract.get("contract_id")
+            or measurement_snapshot.get("contract_version")
+            != measurement_contract.get("contract_version")
+        ):
+            raise MeasurementCeilingError(
+                f"{phase} gaze measurement contract hash mismatch"
+            )
+        target_independence_contract = measurement_contract.get(
+            "target_independence"
+        )
+        raw_frozen_targets = (
+            target_independence_contract.get("selected_validation_targets")
+            if isinstance(target_independence_contract, Mapping)
+            else None
+        )
+        if not isinstance(raw_frozen_targets, list) or len(raw_frozen_targets) != (
+            FIXED_TARGET_CLUSTER_COUNT
+        ):
+            raise MeasurementCeilingError(
+                f"{phase} frozen five-target validation contract is unavailable"
+            )
+        frozen_targets: list[dict[str, Any]] = []
+        for target_index, raw_target in enumerate(raw_frozen_targets):
+            if not isinstance(raw_target, Mapping):
+                raise MeasurementCeilingError(
+                    f"{phase} frozen target {target_index} is invalid"
+                )
+            target_id = str(raw_target.get("target_id") or "").strip()
+            fraction_x = _finite(
+                raw_target.get("target_x_viewport_fraction"),
+                field=f"{phase}.frozen_target_x_viewport_fraction",
+            )
+            fraction_y = _finite(
+                raw_target.get("target_y_viewport_fraction"),
+                field=f"{phase}.frozen_target_y_viewport_fraction",
+            )
+            target_x_norm = _signed_normalized(
+                raw_target.get("target_x_norm"),
+                field=f"{phase}.frozen_target_x_norm",
+            )
+            target_y_norm = _signed_normalized(
+                raw_target.get("target_y_norm"),
+                field=f"{phase}.frozen_target_y_norm",
+            )
+            if (
+                not target_id
+                or not 0.0 <= fraction_x <= 1.0
+                or not 0.0 <= fraction_y <= 1.0
+                or not math.isclose(
+                    target_x_norm, 2.0 * fraction_x - 1.0, abs_tol=1e-9
+                )
+                or not math.isclose(
+                    target_y_norm, 2.0 * fraction_y - 1.0, abs_tol=1e-9
+                )
+            ):
+                raise MeasurementCeilingError(
+                    f"{phase} frozen target {target_index} coordinates are invalid"
+                )
+            frozen_targets.append(
+                {
+                    "target_id": target_id,
+                    "target_x_norm": target_x_norm,
+                    "target_y_norm": target_y_norm,
+                    "target_x_px": float(
+                        math.floor(fraction_x * viewport_width + 0.5)
+                    ),
+                    "target_y_px": float(
+                        math.floor(fraction_y * viewport_height + 0.5)
+                    ),
+                }
+            )
+        if len({target["target_id"] for target in frozen_targets}) != (
+            FIXED_TARGET_CLUSTER_COUNT
+        ):
+            raise MeasurementCeilingError(
+                f"{phase} frozen validation target IDs are not unique"
+            )
+        if validation.get("samples_sha256") != _uncertainty_canonical_sha256(
+            samples
+        ):
+            raise MeasurementCeilingError(f"{phase} validation sample hash mismatch")
+
+        record_sha256s = bundle.get("receipt_record_sha256s")
+        if (
+            type(bundle.get("schema_version")) is not int
+            or bundle.get("schema_version") != 1
+            or bundle.get("status") != "verified"
+            or bundle.get("phase") != phase
+            or type(bundle.get("count")) is not int
+            or bundle.get("count") != expected_count
+            or not isinstance(record_sha256s, list)
+            or len(record_sha256s) != expected_count
+            or len(set(record_sha256s)) != expected_count
+        ):
+            raise MeasurementCeilingError(f"{phase} prediction receipt bundle is invalid")
+        normalized_record_sha256s = [
+            _lower_hex_sha256(value, field=f"{phase}.receipt_record_sha256")
+            for value in record_sha256s
+        ]
+        bundle_core = {
+            "schema_version": 1,
+            "status": "verified",
+            "phase": phase,
+            "count": expected_count,
+            "receipt_record_sha256s": normalized_record_sha256s,
+        }
+        if bundle.get("bundle_sha256") != _uncertainty_canonical_sha256(
+            bundle_core
+        ):
+            raise MeasurementCeilingError(f"{phase} prediction receipt bundle hash mismatch")
+
+        observation_hashes = [
+            _uncertainty_canonical_sha256(observation)
+            for observation in observations
+        ]
+        expected_summary = {
+            "schema_version": 1,
+            "status": "verified",
+            "count": expected_count,
+            "scored_count": sum(
+                isinstance(observation, Mapping)
+                and isinstance(observation.get("uncertainty"), Mapping)
+                and observation["uncertainty"].get("status")
+                == "scored_no_threshold"
+                for observation in observations
+            ),
+            "unavailable_count": sum(
+                not (
+                    isinstance(observation, Mapping)
+                    and isinstance(observation.get("uncertainty"), Mapping)
+                    and observation["uncertainty"].get("status")
+                    == "scored_no_threshold"
+                )
+                for observation in observations
+            ),
+            "observation_sha256s": observation_hashes,
+            "observations_sha256": _uncertainty_canonical_sha256(observations),
+        }
+        if _uncertainty_canonical_json_bytes(summary) != (
+            _uncertainty_canonical_json_bytes(expected_summary)
+        ):
+            raise MeasurementCeilingError(
+                f"{phase} uncertainty observation/list hash summary mismatch"
+            )
+
+        payload = {
+            "samples": samples,
+            "capture_contract": capture_contract,
+            "prediction_receipt_bundle": bundle,
+            "uncertainty_observations": observations,
+            "uncertainty_summary": summary,
+            "prediction_receipt_status": "verified",
+            "prediction_receipts_verified": True,
+            "model_artifact_sha256": model_sha256,
+            "gaze_measurement_contract_sha256": measurement_sha256,
+            "assessment_viewport": expected_viewport,
+        }
+        if validation.get("validation_payload_sha256") != (
+            _uncertainty_canonical_sha256(payload)
+        ):
+            raise MeasurementCeilingError(f"{phase} validation payload hash mismatch")
+
+        rows: list[dict[str, Any]] = []
+        target_order = [str(target["target_id"]) for target in frozen_targets]
+        successful_unavailable_count = 0
+        no_face_count = 0
+        exact_observation_fields = {
+            "schema_version",
+            "receipt_record_sha256",
+            "phase",
+            "receipt_ordinal",
+            "target_id",
+            "target_repeat_index",
+            "prediction_success",
+            "uncertainty",
+        }
+        for ordinal, (sample, observation) in enumerate(
+            zip(samples, observations, strict=True)
+        ):
+            if not isinstance(sample, Mapping) or not isinstance(observation, Mapping):
+                raise MeasurementCeilingError(
+                    f"{phase} receipt row {ordinal} must contain objects"
+                )
+            if set(observation) != exact_observation_fields:
+                raise MeasurementCeilingError(
+                    f"{phase} uncertainty observation {ordinal} fields changed"
+                )
+            target_id = str(sample.get("target_id") or "").strip()
+            prediction_success = sample.get("prediction_success")
+            if not target_id or type(prediction_success) is not bool:
+                raise MeasurementCeilingError(
+                    f"{phase} validation sample {ordinal} outcome is invalid"
+                )
+            frozen_target = frozen_targets[
+                ordinal // FIXED_TARGET_REPEATS_PER_PHASE
+            ]
+            sample_target_x_norm = _signed_normalized(
+                sample.get("target_x_norm"), field=f"{phase}.target_x_norm"
+            )
+            sample_target_y_norm = _signed_normalized(
+                sample.get("target_y_norm"), field=f"{phase}.target_y_norm"
+            )
+            if (
+                type(observation.get("schema_version")) is not int
+                or observation.get("schema_version") != 1
+                or observation.get("receipt_record_sha256")
+                != normalized_record_sha256s[ordinal]
+                or observation.get("phase") != phase
+                or type(observation.get("receipt_ordinal")) is not int
+                or observation.get("receipt_ordinal") != ordinal
+                or observation.get("target_id") != target_id
+                or type(observation.get("target_repeat_index")) is not int
+                or observation.get("target_repeat_index")
+                != ordinal % FIXED_TARGET_REPEATS_PER_PHASE
+                or observation.get("prediction_success") is not prediction_success
+                or target_id != frozen_target["target_id"]
+            ):
+                raise MeasurementCeilingError(
+                    f"{phase} uncertainty observation {ordinal} receipt binding mismatch"
+                )
+            raw_uncertainty = observation.get("uncertainty")
+            try:
+                normalized_uncertainty = normalize_uncertainty_observation(
+                    raw_uncertainty,
+                    viewport=(viewport_width, viewport_height),
+                )
+            except (OSError, TypeError, ValueError) as exc:
+                raise MeasurementCeilingError(
+                    f"{phase} uncertainty observation {ordinal} is invalid: {exc}"
+                ) from exc
+            if _uncertainty_canonical_json_bytes(raw_uncertainty) != (
+                _uncertainty_canonical_json_bytes(normalized_uncertainty)
+            ):
+                raise MeasurementCeilingError(
+                    f"{phase} uncertainty observation {ordinal} is not canonical"
+                )
+
+            target_x = _finite(
+                sample.get("target_x_px"), field=f"{phase}.target_x_px"
+            )
+            target_y = _finite(
+                sample.get("target_y_px"), field=f"{phase}.target_y_px"
+            )
+            if (
+                not math.isclose(
+                    target_x,
+                    float(frozen_target["target_x_px"]),
+                    rel_tol=0.0,
+                    abs_tol=1e-9,
+                )
+                or not math.isclose(
+                    target_y,
+                    float(frozen_target["target_y_px"]),
+                    rel_tol=0.0,
+                    abs_tol=1e-9,
+                )
+                or not math.isclose(
+                    sample_target_x_norm,
+                    float(frozen_target["target_x_norm"]),
+                    rel_tol=0.0,
+                    abs_tol=1e-9,
+                )
+                or not math.isclose(
+                    sample_target_y_norm,
+                    float(frozen_target["target_y_norm"]),
+                    rel_tol=0.0,
+                    abs_tol=1e-9,
+                )
+            ):
+                raise MeasurementCeilingError(
+                    f"{phase} validation sample {ordinal} target is not frozen"
+                )
+            score: float | None = None
+            spatial_error: float | None = None
+            if prediction_success:
+                predicted_x = _finite(
+                    sample.get("predicted_x_px"),
+                    field=f"{phase}.predicted_x_px",
+                )
+                predicted_y = _finite(
+                    sample.get("predicted_y_px"),
+                    field=f"{phase}.predicted_y_px",
+                )
+                spatial_error = math.hypot(
+                    predicted_x - target_x,
+                    predicted_y - target_y,
+                )
+                stored_error = _finite(
+                    sample.get("spatial_error_px"),
+                    field=f"{phase}.spatial_error_px",
+                )
+                if not math.isclose(
+                    stored_error, spatial_error, rel_tol=0.0, abs_tol=1e-9
+                ):
+                    raise MeasurementCeilingError(
+                        f"{phase} validation sample {ordinal} error mismatch"
+                    )
+                if normalized_uncertainty.get("status") != "scored_no_threshold":
+                    successful_unavailable_count += 1
+                else:
+                    score = float(normalized_uncertainty["score"])
+            else:
+                no_face_count += 1
+                if normalized_uncertainty.get("status") != (
+                    "unavailable_sensor_failure"
+                ):
+                    raise MeasurementCeilingError(
+                        f"{phase} no-face observation {ordinal} is not sensor-unavailable"
+                    )
+                if any(
+                    sample.get(field) is not None
+                    for field in (
+                        "predicted_x_px",
+                        "predicted_y_px",
+                        "spatial_error_px",
+                    )
+                ):
+                    raise MeasurementCeilingError(
+                        f"{phase} failed prediction {ordinal} contains coordinates"
+                    )
+            rows.append(
+                {
+                    "sample_id": (
+                        f"{phase}:{ordinal:02d}:"
+                        f"{normalized_record_sha256s[ordinal]}"
+                    ),
+                    "phase": phase,
+                    "receipt_ordinal": ordinal,
+                    "receipt_record_sha256": normalized_record_sha256s[ordinal],
+                    "target_id": target_id,
+                    "prediction_success": prediction_success,
+                    "uncertainty_score": score,
+                    "spatial_error_px": spatial_error,
+                }
+            )
+        for start in range(0, expected_count, FIXED_TARGET_REPEATS_PER_PHASE):
+            chunk = rows[start : start + FIXED_TARGET_REPEATS_PER_PHASE]
+            if len({row["target_id"] for row in chunk}) != 1:
+                raise MeasurementCeilingError(
+                    f"{phase} target repeats are not contiguous receipt clusters"
+                )
+        return {
+            "status": (
+                "not_evaluable_successful_uncertainty_unavailable"
+                if successful_unavailable_count
+                else "verified_scored"
+            ),
+            "integrity_status": "passed",
+            "reason": (
+                f"{successful_unavailable_count} successful predictions lack a "
+                "scored frozen-v2 uncertainty observation"
+                if successful_unavailable_count
+                else "all successful predictions have receipt-bound frozen-v2 scores"
+            ),
+            "receipt_integrity": {
+                "status": "passed",
+                "prediction_receipt_bundle_sha256": bundle["bundle_sha256"],
+                "uncertainty_observations_sha256": summary[
+                    "observations_sha256"
+                ],
+                "validation_payload_sha256": validation[
+                    "validation_payload_sha256"
+                ],
+                "model_artifact_sha256": model_sha256,
+                "gaze_measurement_contract_sha256": measurement_sha256,
+            },
+            "attempted_count": expected_count,
+            "successful_count": expected_count - no_face_count,
+            "no_face_count": no_face_count,
+            "successful_uncertainty_unavailable_count": (
+                successful_unavailable_count
+            ),
+            "target_order": target_order,
+            "rows": rows,
+        }
+    except (
+        MeasurementCeilingError,
+        OSError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        return {
+            "status": "failed_integrity",
+            "integrity_status": "failed",
+            "reason": str(exc),
+        }
+
+
+def _fixed_uncertainty_coverage_scope(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    scope: str,
+    target_order: Sequence[str],
+) -> dict[str, Any]:
+    """Build frozen score-ranked risk while treating five targets as clusters."""
+
+    normalized_targets = [str(value) for value in target_order]
+    if (
+        len(normalized_targets) != FIXED_TARGET_CLUSTER_COUNT
+        or len(set(normalized_targets)) != FIXED_TARGET_CLUSTER_COUNT
+    ):
+        raise MeasurementCeilingError(
+            "uncertainty coverage-risk requires exactly five target clusters"
+        )
+    attempted_rows = [dict(row) for row in rows]
+    successful = [
+        row
+        for row in attempted_rows
+        if row.get("prediction_success") is True
+    ]
+    if not successful:
+        raise MeasurementCeilingError(
+            "uncertainty coverage-risk has no successful fixed-target predictions"
+        )
+    for row in successful:
+        if row.get("uncertainty_score") is None or row.get("spatial_error_px") is None:
+            raise MeasurementCeilingError(
+                "successful fixed-target prediction lacks score or held-out error"
+            )
+    ordered = sorted(
+        successful,
+        key=lambda row: (
+            float(row["uncertainty_score"]),
+            str(row["sample_id"]),
+        ),
+    )
+    ordered_ids = [str(row["sample_id"]) for row in ordered]
+    curve: list[dict[str, Any]] = []
+    for coverage in UNCERTAINTY_V2_COVERAGE_LEVELS:
+        retained_count = min(
+            len(ordered),
+            max(1, int(round(coverage * len(ordered)))),
+        )
+        retained_ids = set(ordered_ids[:retained_count])
+        retained = [
+            row for row in successful if str(row["sample_id"]) in retained_ids
+        ]
+        retained_errors = [float(row["spatial_error_px"]) for row in retained]
+        per_target: dict[str, dict[str, Any]] = {}
+        zero_coverage_targets: list[str] = []
+        for target_id in normalized_targets:
+            target_attempts = [
+                row for row in attempted_rows if row["target_id"] == target_id
+            ]
+            target_successes = [
+                row for row in target_attempts if row["prediction_success"] is True
+            ]
+            target_retained = [
+                row
+                for row in target_successes
+                if str(row["sample_id"]) in retained_ids
+            ]
+            target_errors = [
+                float(row["spatial_error_px"]) for row in target_retained
+            ]
+            if not target_retained:
+                zero_coverage_targets.append(target_id)
+            per_target[target_id] = {
+                "attempted_count": len(target_attempts),
+                "successful_count": len(target_successes),
+                "retained_count": len(target_retained),
+                "capture_success_fraction": (
+                    len(target_successes) / len(target_attempts)
+                    if target_attempts
+                    else None
+                ),
+                "score_coverage_within_successful": (
+                    len(target_retained) / len(target_successes)
+                    if target_successes
+                    else None
+                ),
+                "end_to_end_retained_fraction": (
+                    len(target_retained) / len(target_attempts)
+                    if target_attempts
+                    else None
+                ),
+                "spatial_error_px": (
+                    {
+                        "mean": statistics.fmean(target_errors),
+                        "median": statistics.median(target_errors),
+                        "p90": _nearest_rank(target_errors, 0.90),
+                    }
+                    if target_errors
+                    else {"mean": None, "median": None, "p90": None}
+                ),
+            }
+        nonempty_target_means = [
+            float(target["spatial_error_px"]["mean"])
+            for target in per_target.values()
+            if target["spatial_error_px"]["mean"] is not None
+        ]
+        all_cluster_macro = (
+            statistics.fmean(nonempty_target_means)
+            if not zero_coverage_targets
+            else None
+        )
+        curve.append(
+            {
+                "requested_score_coverage": coverage,
+                "retained_successful_count": retained_count,
+                "successful_prediction_count": len(successful),
+                "attempted_capture_count": len(attempted_rows),
+                "achieved_score_coverage_within_successful": (
+                    retained_count / len(successful)
+                ),
+                "achieved_end_to_end_attempt_coverage": (
+                    retained_count / len(attempted_rows)
+                ),
+                "retained_sample_ids": ordered_ids[:retained_count],
+                "overall_retained_row_risk_px": {
+                    "availability": "descriptive_rows_not_iid",
+                    "mean": statistics.fmean(retained_errors),
+                    "median": statistics.median(retained_errors),
+                    "p90": _nearest_rank(retained_errors, 0.90),
+                },
+                "target_clusters_with_zero_coverage": zero_coverage_targets,
+                "target_cluster_macro_all_clusters": {
+                    "availability": (
+                        "all_five_clusters_have_nonzero_coverage"
+                        if not zero_coverage_targets
+                        else "unavailable_due_to_zero_coverage_clusters"
+                    ),
+                    "mean_spatial_error_px": all_cluster_macro,
+                },
+                "target_cluster_macro_nonempty_clusters": {
+                    "availability": "descriptive_nonempty_clusters_only",
+                    "nonempty_target_cluster_count": len(nonempty_target_means),
+                    "mean_spatial_error_px": statistics.fmean(
+                        nonempty_target_means
+                    ),
+                },
+                "worst_target_cluster_mean_spatial_error_px": (
+                    max(nonempty_target_means)
+                    if not zero_coverage_targets
+                    else None
+                ),
+                "worst_nonempty_target_cluster_mean_spatial_error_px": max(
+                    nonempty_target_means
+                ),
+                "per_target_cluster": per_target,
+            }
+        )
+    # Build the hypothetical flags from the already frozen curve. Keeping these
+    # flags beside raw rows preserves both views without selecting a threshold.
+    curve_retained = {
+        f"{point['requested_score_coverage']:.1f}": set(
+            point["retained_sample_ids"]
+        )
+        for point in curve
+    }
+    output_rows = [
+        {
+            **row,
+            "would_abstain_at_fixed_coverage": {
+                key: (
+                    None
+                    if row.get("prediction_success") is not True
+                    else str(row["sample_id"]) not in retained_ids
+                )
+                for key, retained_ids in curve_retained.items()
+            },
+        }
+        for row in attempted_rows
+    ]
+    return {
+        "status": "evaluable_descriptive_heldout",
+        "scope": scope,
+        "claim_boundary": (
+            "receipt_verified_training_only_score_ranked_heldout_fixed_target_"
+            "development_evidence"
+        ),
+        "score_source": (
+            "server_runtime_training_only_uncertainty_observation; no target, "
+            "residual, or held-out error enters score or ordering"
+        ),
+        "risk_source": "receipt_verified_heldout_fixed_target_spatial_error_px",
+        "fixed_requested_coverages": list(UNCERTAINTY_V2_COVERAGE_LEVELS),
+        "threshold_selected": False,
+        "threshold": None,
+        "quality_band_change_authorized": False,
+        "abstention_policy_authorized": False,
+        "attempted_capture_count": len(attempted_rows),
+        "successful_prediction_count": len(successful),
+        "no_face_count": len(attempted_rows) - len(successful),
+        "capture_success_fraction": len(successful) / len(attempted_rows),
+        "independent_target_cluster_count": FIXED_TARGET_CLUSTER_COUNT,
+        "sample_rows_are_independent_units": False,
+        "inferential_claim_authorized": False,
+        "limitation": (
+            "only five predeclared target clusters are observed; repeated rows and "
+            "start/end phases are not treated as 15 or 30 independent units"
+        ),
+        "ordered_sample_ids_low_to_high_training_only_score": ordered_ids,
+        "rows": output_rows,
+        "coverage_risk_curve": curve,
+    }
+
+
+def _heldout_uncertainty_coverage_risk(
+    model: Mapping[str, Any],
+    validations: Mapping[str, Any],
+    collection: Mapping[str, Any],
+    *,
+    model_artifact_file_sha256: str,
+    viewport_width: float,
+    viewport_height: float,
+) -> dict[str, Any]:
+    model_binding = _uncertainty_model_binding(model)
+    if model_binding["status"] == "unavailable":
+        return {
+            "status": "not_evaluable",
+            "integrity_status": "not_applicable",
+            "reason": model_binding["reason"],
+            "model_binding": model_binding,
+            "threshold_selected": False,
+            "quality_band_change_authorized": False,
+        }
+    if model_binding["status"] != "passed":
+        return {
+            "status": "not_evaluable_integrity_failure",
+            "integrity_status": "failed",
+            "reason": model_binding["reason"],
+            "model_binding": model_binding,
+            "threshold_selected": False,
+            "quality_band_change_authorized": False,
+        }
+
+    phases: dict[str, dict[str, Any]] = {}
+    for phase in ("start", "end"):
+        validation = validations.get(phase)
+        if not isinstance(validation, Mapping):
+            phases[phase] = {
+                "status": "not_evaluable_receipts_unavailable",
+                "integrity_status": "not_applicable",
+                "reason": f"{phase} validation is unavailable",
+            }
+            continue
+        verified = _receipt_phase_rows(
+            validation,
+            phase=phase,
+            collection=collection,
+            model_artifact_file_sha256=model_artifact_file_sha256,
+            viewport_width=viewport_width,
+            viewport_height=viewport_height,
+        )
+        if verified.get("status") == "verified_scored":
+            coverage = _fixed_uncertainty_coverage_scope(
+                verified["rows"],
+                scope=phase,
+                target_order=verified["target_order"],
+            )
+            coverage["receipt_integrity"] = verified["receipt_integrity"]
+            phases[phase] = coverage
+        else:
+            phases[phase] = verified
+
+    if any(phase.get("integrity_status") == "failed" for phase in phases.values()):
+        return {
+            "status": "not_evaluable_integrity_failure",
+            "integrity_status": "failed",
+            "reason": "at least one fixed-target receipt phase failed integrity",
+            "model_binding": model_binding,
+            "phases": phases,
+            "threshold_selected": False,
+            "quality_band_change_authorized": False,
+        }
+    if any(
+        phase.get("status") != "evaluable_descriptive_heldout"
+        for phase in phases.values()
+    ):
+        return {
+            "status": "not_evaluable",
+            "integrity_status": "passed",
+            "reason": (
+                "both receipt-verified phases require scored uncertainty for every "
+                "successful prediction"
+            ),
+            "model_binding": model_binding,
+            "phases": phases,
+            "threshold_selected": False,
+            "quality_band_change_authorized": False,
+        }
+    if phases["start"]["independent_target_cluster_count"] != (
+        phases["end"]["independent_target_cluster_count"]
+    ):
+        return {
+            "status": "not_evaluable_integrity_failure",
+            "integrity_status": "failed",
+            "reason": "start/end uncertainty target cluster counts differ",
+            "model_binding": model_binding,
+            "phases": phases,
+            "threshold_selected": False,
+            "quality_band_change_authorized": False,
+        }
+    start_target_order = [
+        target_id
+        for target_id in phases["start"]["coverage_risk_curve"][0][
+            "per_target_cluster"
+        ]
+    ]
+    end_target_order = [
+        target_id
+        for target_id in phases["end"]["coverage_risk_curve"][0][
+            "per_target_cluster"
+        ]
+    ]
+    if start_target_order != end_target_order:
+        return {
+            "status": "not_evaluable_integrity_failure",
+            "integrity_status": "failed",
+            "reason": "start/end uncertainty target IDs or order differ",
+            "model_binding": model_binding,
+            "phases": phases,
+            "threshold_selected": False,
+            "quality_band_change_authorized": False,
+        }
+    combined_rows = [
+        dict(row)
+        for phase in ("start", "end")
+        for row in phases[phase]["rows"]
+    ]
+    combined = _fixed_uncertainty_coverage_scope(
+        combined_rows,
+        scope="combined_start_end_repeated_measurements",
+        target_order=start_target_order,
+    )
+    return {
+        "status": "evaluable_descriptive_heldout",
+        "integrity_status": "passed",
+        "definition_sha256": model_binding["frozen_definition_sha256"],
+        "model_binding": model_binding,
+        "fixed_requested_coverages": list(UNCERTAINTY_V2_COVERAGE_LEVELS),
+        "threshold_selected": False,
+        "threshold": None,
+        "quality_band_change_authorized": False,
+        "abstention_policy_authorized": False,
+        "phases": phases,
+        "combined": combined,
+        "decision_boundary": (
+            "descriptive fresh fixed-target evidence only; no threshold, quality "
+            "band, production, line, word, or population claim"
+        ),
+    }
+
+
+def _future_uncertainty_v2_requirements(
+    model: Mapping[str, Any],
+    calibration_records: Sequence[Mapping[str, Any]],
+    validations: Mapping[str, Any],
+    heldout_evaluation: Mapping[str, Any],
+) -> dict[str, Any]:
+    calibration_fields = sorted(
+        {str(field) for record in calibration_records for field in record}
+    )
+    model_oof_fields: list[str] = []
+    uncertainty_bundle = model.get("uncertainty_v2")
+    if isinstance(uncertainty_bundle, Mapping):
+        for field in (
+            "definition_sha256",
+            "final_score_state",
+            "grid_validation",
+            "oof_evidence",
+        ):
+            if field in uncertainty_bundle:
+                model_oof_fields.append(f"uncertainty_v2.{field}")
+    validation_uncertainty_fields = sorted(
+        {
+            f"{phase}.{field}"
+            for phase in ("start", "end")
+            for field in (
+                "prediction_receipt_bundle",
+                "uncertainty_observations",
+                "uncertainty_summary",
+                "validation_payload_sha256",
+            )
+            if isinstance(validations.get(phase), Mapping)
+            and field in validations[phase]
+        }
+    )
+    calibration_sensor_fields = sorted(
+        set(calibration_fields)
+        & {
+            "raw_gaze_pitch_yaw",
+            "gaze_pitch_yaw",
+            "gaze_embedding",
+            "sensor_features",
+        }
+    )
+    constructable = heldout_evaluation.get("status") == (
+        "evaluable_descriptive_heldout"
+    )
+    return {
+        "status": (
+            "fulfilled_for_receipt_verified_descriptive_fixed_target_evaluation"
+            if constructable
+            else "required_before_predictive_uncertainty_claim"
+        ),
+        "current_evidence_inventory": {
+            "model_oof_or_uncertainty_fields_present": model_oof_fields,
+            "validation_uncertainty_fields_present": validation_uncertainty_fields,
+            "calibration_reconstructable_sensor_fields_present": (
+                calibration_sensor_fields
+            ),
+            "predictive_uncertainty_curve_constructable_from_current_artifacts": (
+                constructable
+            ),
+            "heldout_evaluation_status": heldout_evaluation.get("status"),
+            "reason": heldout_evaluation.get(
+                "reason",
+                (
+                    "receipt-verified frozen-v2 runtime scores and held-out target "
+                    "errors are available"
+                    if constructable
+                    else "required frozen-v2 receipt evidence is unavailable"
+                ),
+            ),
+        },
+        "protocol_requirement": {
+            "new_version": "v2",
+            "freeze_before_new_untouched_capture": True,
+            "v1_result_may_not_select_definition_or_threshold": True,
+        },
+        "required_per_oof_sample_fields": [
+            "sample_id",
+            "outer_fold_id",
+            "outer_holdout_group_id",
+            "target_id",
+            "oof_predicted_x_px",
+            "oof_predicted_y_px",
+            "oof_residual_x_px",
+            "oof_residual_y_px",
+            "oof_spatial_error_px",
+            "training_only_ood_score",
+            "training_only_leverage_score",
+            "training_only_prediction_covariance_px",
+        ],
+        "required_definition_binding": [
+            "uncertainty_definition_id",
+            "uncertainty_definition_version",
+            "uncertainty_definition_sha256",
+            "training_partition_only_fit_proof",
+            "coverage_grid",
+            "frozen_abstention_thresholds_or_explicit_none",
+        ],
+        "required_evaluation": {
+            "untouched_capture_required": True,
+            "score_must_be_computed_without_holdout_target_error": True,
+            "coverage_risk_unit": "predeclared_independent_cluster",
+            "report_raw_and_abstained_predictions": True,
+            "participant_capture_session_and_device_confirmation_axes_required": True,
+        },
+        "required_fixed_target_receipt_fields": [
+            "prediction_receipt_bundle",
+            "uncertainty_observations",
+            "uncertainty_summary",
+            "validation_payload_sha256",
+            "model_artifact_sha256",
+            "gaze_measurement_contract_sha256",
+            "assessment_viewport",
+        ],
     }
 
 
@@ -1233,6 +2492,7 @@ def build_measurement_ceiling_result(
     )
     calibration_records = _load_jsonl(manifest_path, label="calibration manifest")
     model = _load_object(model_path, label="model artifact")
+    model_file_sha256 = _sha256(model_path)
 
     general_collection = participant.get("general_collection")
     if not isinstance(general_collection, Mapping):
@@ -1284,6 +2544,24 @@ def build_measurement_ceiling_result(
         bootstrap_resamples=bootstrap_resamples,
         bootstrap_seed=bootstrap_seed,
     )
+    repeatability_proxy = _temporal_repeatability_proxy(
+        start_records,
+        end_records,
+    )
+    heldout_uncertainty = _heldout_uncertainty_coverage_risk(
+        model,
+        validations,
+        general_collection,
+        model_artifact_file_sha256=model_file_sha256,
+        viewport_width=viewport_width,
+        viewport_height=viewport_height,
+    )
+    uncertainty_v2_requirements = _future_uncertainty_v2_requirements(
+        model,
+        calibration_records,
+        validations,
+        heldout_uncertainty,
+    )
     binding = _binding_checks(
         participant,
         session_metadata_path,
@@ -1323,9 +2601,30 @@ def build_measurement_ceiling_result(
         and camera_geometry["status"] == "passed"
         and target_independence["status"] == "passed"
         and model_metrics["validation_metric_consistency"]["status"] == "passed"
+        and heldout_uncertainty.get("integrity_status") != "failed"
     )
     result_status = "completed" if integrity_gate_passed else "failed_integrity_gate"
     linked = participant.get("linked_data", {})
+    not_evaluable = {
+        "natural_reading_line_accuracy": {
+            "status": "not_evaluable",
+            "reason": "no independent line-level gaze ground truth was recorded",
+        },
+        "natural_reading_word_accuracy": {
+            "status": "not_evaluable",
+            "reason": "no independent word-level gaze ground truth was recorded",
+        },
+    }
+    if heldout_uncertainty.get("status") != "evaluable_descriptive_heldout":
+        not_evaluable["per_sample_uncertainty_calibration"] = {
+            "status": "not_evaluable",
+            "reason": str(
+                heldout_uncertainty.get(
+                    "reason",
+                    "receipt-verified frozen-v2 uncertainty evidence is unavailable",
+                )
+            ),
+        }
     result = {
         "schema_version": SCHEMA_VERSION,
         "analysis_id": ANALYSIS_ID,
@@ -1340,6 +2639,13 @@ def build_measurement_ceiling_result(
             "correction_fit_data": "start validation only",
             "correction_evaluation_data": "end validation only",
             "model_or_threshold_selection_authorized": False,
+            "repeatability_proxy_threshold_selection_authorized": False,
+            "repeatability_proxy_quality_band_change_authorized": False,
+            "uncertainty_v2_threshold_selection_authorized": False,
+            "uncertainty_v2_quality_band_change_authorized": False,
+            "uncertainty_v2_risk_uses_heldout_target_error_only": True,
+            "uncertainty_v2_score_uses_heldout_target_error": False,
+            "fixed_target_sample_rows_treated_as_independent": False,
             "descriptive_percentile_method": "nearest rank at ceil(n * p)",
         },
         "inputs": {
@@ -1357,7 +2663,7 @@ def build_measurement_ceiling_result(
             },
             "model_artifact": {
                 "label": model_artifact_label,
-                "sha256": _sha256(model_path),
+                "sha256": model_file_sha256,
             },
         },
         "provenance": {
@@ -1381,6 +2687,11 @@ def build_measurement_ceiling_result(
             "cross_phase_camera_geometry": camera_geometry,
             "bindings": binding,
             "model": model_metrics,
+            "uncertainty_v2_integrity": {
+                "status": heldout_uncertainty.get("integrity_status"),
+                "evaluation_status": heldout_uncertainty.get("status"),
+                "reason": heldout_uncertainty.get("reason"),
+            },
         },
         "viewport": {
             "width_px": viewport_width,
@@ -1400,20 +2711,10 @@ def build_measurement_ceiling_result(
         },
         "drift": _drift_vectors(start_metrics, end_metrics),
         "temporal_correction": correction,
-        "not_evaluable": {
-            "per_sample_uncertainty_calibration": {
-                "status": "not_evaluable",
-                "reason": "fixed-target validation did not record predictive uncertainty",
-            },
-            "natural_reading_line_accuracy": {
-                "status": "not_evaluable",
-                "reason": "no independent line-level gaze ground truth was recorded",
-            },
-            "natural_reading_word_accuracy": {
-                "status": "not_evaluable",
-                "reason": "no independent word-level gaze ground truth was recorded",
-            },
-        },
+        "temporal_repeatability_proxy": repeatability_proxy,
+        "heldout_uncertainty_coverage_risk": heldout_uncertainty,
+        "future_uncertainty_v2_data_requirements": uncertainty_v2_requirements,
+        "not_evaluable": not_evaluable,
         "decision": {
             "quality_band_changed": False,
             "production_model_changed": False,
@@ -1447,10 +2748,204 @@ def render_measurement_ceiling_markdown(
     independence = result["target_independence"]
     correction = result["temporal_correction"]
     bootstrap = correction["bootstrap"]
+    repeatability_proxy = result["temporal_repeatability_proxy"]
+    heldout_uncertainty = result["heldout_uncertainty_coverage_risk"]
+    uncertainty_v2 = result["future_uncertainty_v2_data_requirements"]
     model = result["provenance"]["model"]
     capture = result["provenance"]["capture_contract"]
     camera_geometry = result["provenance"]["cross_phase_camera_geometry"]
     drift = result["drift"]
+
+    proxy_lines = [
+        "## Start-only repeatability proxy (descriptive only)",
+        "",
+        f"Claim boundary: `{repeatability_proxy['claim_boundary']}`. The score is "
+        "computed only from repeated start-validation predictions; target risk is "
+        "computed only from end-validation target error. The analysis unit is a "
+        "whole target cluster, not an individual frame or reading sample.",
+        "",
+        "The coverage grid is frozen at `20/40/60/80/100%`; it is not searched, "
+        "and this result cannot select an abstention threshold, change a quality "
+        "band, or authorize per-sample abstention.",
+        "",
+    ]
+    if repeatability_proxy["status"] == "evaluable_descriptive_proxy":
+        proxy_lines.extend(
+            [
+                "| Target | Start repeats | Start RMS repeatability px | End samples | End mean error px | End median error px |",
+                "| --- | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for target_id, target in repeatability_proxy["targets"].items():
+            proxy_lines.append(
+                f"| {target_id} | {target['start_successful_repeat_count']} | "
+                f"{_fmt(target['start_repeatability_rms_px'])} | "
+                f"{target['end_successful_sample_count']} | "
+                f"{_fmt(target['end_mean_spatial_error_px'])} | "
+                f"{_fmt(target['end_median_spatial_error_px'])} |"
+            )
+        proxy_lines.extend(
+            [
+                "",
+                "| Requested coverage | Achieved coverage | Retained targets | End target-macro mean error px | End target-macro median error px |",
+                "| ---: | ---: | --- | ---: | ---: |",
+            ]
+        )
+        for point in repeatability_proxy["coverage_risk_curve"]:
+            proxy_lines.append(
+                f"| {_fmt(point['requested_coverage'] * 100, 0)}% | "
+                f"{_fmt(point['achieved_coverage'] * 100, 0)}% | "
+                f"{', '.join(point['retained_target_ids'])} | "
+                f"{_fmt(point['end_target_macro_mean_spatial_error_px'])} | "
+                f"{_fmt(point['end_target_macro_median_spatial_error_px'])} |"
+            )
+        association = repeatability_proxy["association"]
+        negative = repeatability_proxy["negative_result"]
+        proxy_lines.extend(
+            [
+                "",
+                f"Target-level Spearman association (`{association['metric']}`): "
+                f"`{_fmt(association['value'], 3)}`; a useful low-to-high risk proxy "
+                "would have a positive association.",
+                "",
+                "At 20% coverage, end target-macro mean error was "
+                f"`{_fmt(negative['lowest_coverage_end_mean_error_px'])} px`, versus "
+                f"`{_fmt(negative['full_coverage_end_mean_error_px'])} px` at full "
+                "coverage (difference "
+                f"`{_fmt(negative['lowest_coverage_minus_full_coverage_px'])} px`). "
+                f"Recorded conclusion: `{negative['conclusion']}`.",
+                "",
+                "This is a preserved negative descriptive result, not predictive "
+                "uncertainty calibration.",
+                "",
+            ]
+        )
+    else:
+        proxy_lines.extend(
+            [
+                f"Status: `not_evaluable`; {repeatability_proxy['reason']}.",
+                "",
+            ]
+        )
+
+    inventory = uncertainty_v2["current_evidence_inventory"]
+
+    def inline_fields(values: Sequence[str]) -> str:
+        return ", ".join(f"`{value}`" for value in values) or "`none`"
+
+    heldout_uncertainty_lines = [
+        "## Receipt-verified held-out uncertainty coverage-risk",
+        "",
+    ]
+    if heldout_uncertainty["status"] == "evaluable_descriptive_heldout":
+        heldout_uncertainty_lines.extend(
+            [
+                "Status: `evaluable_descriptive_heldout`. Runtime scores are bound "
+                "to frozen training-only uncertainty definition "
+                f"`{heldout_uncertainty['definition_sha256']}`. Held-out target "
+                "coordinates enter only the risk calculation, never the score or "
+                "ordering.",
+                "",
+                "The grid is frozen at `100/80/60/40/20%`. No threshold was "
+                "selected, no quality band changes, and the hypothetically "
+                "abstained rows remain in the machine-readable result.",
+                "",
+                "| Scope | Attempts | Successful | No face | Capture success | Target clusters |",
+                "| --- | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for scope_name, scope_result in (
+            ("Start", heldout_uncertainty["phases"]["start"]),
+            ("End", heldout_uncertainty["phases"]["end"]),
+            ("Combined", heldout_uncertainty["combined"]),
+        ):
+            heldout_uncertainty_lines.append(
+                f"| {scope_name} | {scope_result['attempted_capture_count']} | "
+                f"{scope_result['successful_prediction_count']} | "
+                f"{scope_result['no_face_count']} | "
+                f"{_fmt(scope_result['capture_success_fraction'] * 100)}% | "
+                f"{scope_result['independent_target_cluster_count']} |"
+            )
+        heldout_uncertainty_lines.append("")
+        for scope_name, scope_result in (
+            ("Start", heldout_uncertainty["phases"]["start"]),
+            ("End", heldout_uncertainty["phases"]["end"]),
+            ("Combined", heldout_uncertainty["combined"]),
+        ):
+            heldout_uncertainty_lines.extend(
+                [
+                    f"### {scope_name}",
+                    "",
+                    "| Requested score coverage | Achieved among successful | End-to-end attempt coverage | Retained | Target-macro mean px | Worst target mean px | Zero-coverage targets |",
+                    "| ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+                ]
+            )
+            for point in scope_result["coverage_risk_curve"]:
+                heldout_uncertainty_lines.append(
+                    f"| {_fmt(point['requested_score_coverage'] * 100, 0)}% | "
+                    f"{_fmt(point['achieved_score_coverage_within_successful'] * 100, 0)}% | "
+                    f"{_fmt(point['achieved_end_to_end_attempt_coverage'] * 100, 0)}% | "
+                    f"{point['retained_successful_count']} | "
+                    f"{_fmt(point['target_cluster_macro_all_clusters']['mean_spatial_error_px'])} | "
+                    f"{_fmt(point['worst_target_cluster_mean_spatial_error_px'])} | "
+                    f"{', '.join(point['target_clusters_with_zero_coverage']) or 'none'} |"
+                )
+            heldout_uncertainty_lines.append("")
+        heldout_uncertainty_lines.extend(
+            [
+                "Only five target clusters are observed. The 15 phase rows and 30 "
+                "combined rows are repeated measurements, not independent units; "
+                "zero-coverage clusters make the all-cluster macro and worst-cluster "
+                "metrics unavailable rather than silently dropping those targets.",
+                "",
+            ]
+        )
+    else:
+        heldout_uncertainty_lines.extend(
+            [
+                f"Status: `{heldout_uncertainty['status']}`; "
+                f"{heldout_uncertainty.get('reason', 'required evidence unavailable')}.",
+                "",
+                "No fixed coverage-risk curve, threshold, abstention policy, or "
+                "quality-band change is authorized. The start-only repeatability "
+                "proxy remains explicitly `proxy_not_predictive_uncertainty`.",
+                "",
+            ]
+        )
+
+    curve_constructable = inventory[
+        "predictive_uncertainty_curve_constructable_from_current_artifacts"
+    ]
+    uncertainty_v2_lines = [
+        "## Predictive uncertainty v2 evidence requirements",
+        "",
+        f"Status: `{uncertainty_v2['status']}`. A receipt-verified descriptive "
+        "fixed-target coverage-risk curve "
+        + ("is reconstructable." if curve_constructable else "is not reconstructable."),
+        "",
+        "Current evidence inventory:",
+        "",
+        "- Model OOF/uncertainty fields: "
+        f"{inline_fields(inventory['model_oof_or_uncertainty_fields_present'])}",
+        "- Validation uncertainty fields: "
+        f"{inline_fields(inventory['validation_uncertainty_fields_present'])}",
+        "- Reconstructable calibration sensor fields: "
+        f"{inline_fields(inventory['calibration_reconstructable_sensor_fields_present'])}",
+        f"- Reason: {inventory['reason']}.",
+        "",
+        "A frozen v2 must record one row per outer-fold held-out sample with: "
+        f"{inline_fields(uncertainty_v2['required_per_oof_sample_fields'])}.",
+        "",
+        "The uncertainty definition must be bound before evaluation with: "
+        f"{inline_fields(uncertainty_v2['required_definition_binding'])}.",
+        "",
+        "The score, OOD/leverage model, and covariance must be fit using training "
+        "partitions only. Evaluation requires a new untouched capture, preserves "
+        "raw and abstained predictions, and cannot use holdout target error to "
+        "construct the uncertainty score. V1 may not choose a definition or "
+        "threshold from this descriptive result.",
+        "",
+    ]
     lines = [
         "# Webcam Gaze Measurement Ceiling v1 - Existing-Data Audit",
         "",
@@ -1472,6 +2967,8 @@ def render_measurement_ceiling_markdown(
         f"{camera_geometry['status']} |",
         f"| Calibration/evaluation target independence | {independence['status']} |",
         f"| Model validation metric consistency | {model['validation_metric_consistency']['status']} |",
+        "| Frozen-v2 receipt uncertainty integrity | "
+        f"{result['provenance']['uncertainty_v2_integrity']['status']} |",
         f"| Calibration targets | {independence['calibration_target_count']} |",
         f"| Evaluation targets | {independence['evaluation_target_count']} |",
         f"| Below-tolerance overlaps | {independence['overlap_count']} |",
@@ -1759,6 +3256,9 @@ def render_measurement_ceiling_markdown(
             "",
             "This result cannot relabel the session or select a production correction.",
             "",
+            *proxy_lines,
+            *heldout_uncertainty_lines,
+            *uncertainty_v2_lines,
             "## Model metric contract",
             "",
             "| Field | Value |",
@@ -1777,8 +3277,19 @@ def render_measurement_ceiling_markdown(
             "",
             "## Not evaluable",
             "",
-            "- Predictive uncertainty calibration: **not evaluable**; validation samples "
-            "did not record uncertainty.",
+            *(
+                [
+                    "- Predictive uncertainty calibration: **not evaluable**; "
+                    + str(
+                        result["not_evaluable"][
+                            "per_sample_uncertainty_calibration"
+                        ]["reason"]
+                    )
+                    + "."
+                ]
+                if "per_sample_uncertainty_calibration" in result["not_evaluable"]
+                else []
+            ),
             "- Natural-reading line accuracy: **not evaluable**; no independent line-level "
             "ground truth exists.",
             "- Natural-reading word accuracy: **not evaluable**; no independent word-level "

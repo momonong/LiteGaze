@@ -1,0 +1,107 @@
+{
+  "schema_version": 2,
+  "definition_sha256": "75a24c436e9a89024462268812ecc9be149a1958b3911e5cd71c3974b235a180",
+  "definition": {
+    "definition_id": "lexigaze-training-only-gaze-uncertainty-v2-phase1",
+    "definition_version": "2026-08-10.v1",
+    "status": "frozen_before_fresh_matched_contract_capture",
+    "output_status": "scored_no_threshold",
+    "claim_boundary": "within_capture_training_only_ranking_requires_fresh_matched_contract_validation",
+    "required_grid": {
+      "motion_block_ids": ["neutral", "left", "right", "near", "far"],
+      "target_ids": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"],
+      "samples_per_motion_block_target_pair": 1,
+      "total_samples": 65
+    },
+    "outer_validation": {
+      "scheme": "leave_one_complete_motion_block_out",
+      "family_and_hyperparameter_selection_scope": "outer_training_motion_blocks_only",
+      "outer_holdout_target_or_residual_may_enter_model_or_score_fit": false
+    },
+    "score_inputs": {
+      "allowed": [
+        "gaze_pitch_yaw",
+        "head_pitch_yaw_for_motion_conditioned_stage",
+        "face_geometry_for_motion_conditioned_stage",
+        "fitted_stage_design",
+        "viewport_for_covariance_unit_conversion"
+      ],
+      "forbidden": [
+        "target_coordinate",
+        "residual",
+        "spatial_error",
+        "token_text",
+        "language_model_score",
+        "cognitive_profile",
+        "layout_or_reading_outcome"
+      ]
+    },
+    "ood_component": {
+      "feature_space": "stage_design_without_intercept",
+      "estimator": "fixed_diagonal_shrinkage_mahalanobis",
+      "diagonal_shrinkage": 0.1,
+      "numerical_jitter": 1e-09,
+      "per_stage_value": "sqrt(mahalanobis_squared / feature_count)",
+      "chain_aggregation": "maximum"
+    },
+    "leverage_component": {
+      "formula": "phi_transpose_times_inverse_regularized_gram_times_phi",
+      "ridge_penalty": "selected_stage_alpha_with_unpenalized_intercept",
+      "inverse": "moore_penrose_pseudoinverse",
+      "chain_aggregation": "maximum"
+    },
+    "disagreement_component": {
+      "ensemble": "leave_one_training_motion_block_out_with_whole_pipeline_refit_and_reselection",
+      "member_binding": "ordered_holdout_motion_block_id_plus_fit_block_hash_plus_fit_sample_hash_plus_stage_hash",
+      "covariance_space": "signed_normalized_screen_coordinates",
+      "covariance_ddof": 1,
+      "scalar": "sqrt(trace(covariance) / 2)",
+      "interpretation": "jackknife_model_disagreement_not_posterior_or_guaranteed_prediction_covariance"
+    },
+    "normalization": {
+      "reference": "current_model_training_partition_only",
+      "method": "right_continuous_empirical_cdf",
+      "primary_scalar": "maximum_of_ood_leverage_and_disagreement_percentiles",
+      "component_or_weight_selection_from_residuals_allowed": false
+    },
+    "coverage_risk": {
+      "coverage_grid": [1.0, 0.8, 0.6, 0.4, 0.2],
+      "ordering": "ascending_primary_uncertainty_score_then_sample_id",
+      "metrics": [
+        "overall_mean_median_p90_spatial_error",
+        "motion_block_macro_mean_median_p90_spatial_error",
+        "per_motion_block_coverage_and_error",
+        "worst_motion_block_mean_spatial_error"
+      ],
+      "threshold_selection_allowed": false,
+      "raw_and_hypothetically_abstained_rows_retained": true,
+      "zero_coverage_block_policy": "list_explicitly_and_mark_all_block_macro_and_worst_metrics_unavailable"
+    },
+    "negative_control": {
+      "ordering": "sha256(definition_sha256 + sample_id)",
+      "used_for_component_family_weight_or_threshold_selection": false
+    },
+    "runtime_policy": {
+      "threshold": null,
+      "abstention_status": "not_selected",
+      "quality_band": null,
+      "may_change_raw_mapping_or_sensor_acceptance": false,
+      "observation_schema": "stable_score_components_covariance_and_not_selected_abstention",
+      "observation_schema_version": 1,
+      "definition_sha_must_equal_frozen_definition": true,
+      "score_and_percentile_range": [0.0, 1.0],
+      "score_must_equal_maximum_component_percentile_absolute_tolerance": 1e-12,
+      "raw_components_non_negative": true,
+      "disagreement_value_must_equal_sqrt_trace_normalized_covariance_over_two": true,
+      "covariance_shape": [2, 2],
+      "covariance_symmetry_absolute_tolerance": 1e-09,
+      "covariance_psd_minimum_eigenvalue_tolerance": -1e-09,
+      "scored_observation_requires_positive_finite_viewport": true,
+      "pixel_covariance_viewport_transform_relative_tolerance": 1e-09,
+      "pixel_covariance_viewport_transform_absolute_tolerance": 1e-06,
+      "boolean_numeric_values_allowed": false,
+      "unavailable_statuses_are_allowlisted_and_reason_is_sanitized_to_240_chars": true,
+      "json_non_finite_values_allowed": false
+    }
+  }
+}

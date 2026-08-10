@@ -127,6 +127,19 @@ class GazeFrontendNodeContractTests(unittest.TestCase):
                     request_source = source[position : position + 1200]
                     self.assertIn("capture_contract:", request_source)
 
+    def test_participant_clients_keep_raw_access_tokens_out_of_json_bodies(self) -> None:
+        paths = (
+            ROOT / "web" / "static" / "gaze_page.js",
+            ROOT / "web" / "static" / "participant_assessment.js",
+            ROOT / "web" / "static" / "participant_collection.js",
+        )
+        for path in paths:
+            with self.subTest(path=path.relative_to(ROOT).as_posix()):
+                source = path.read_text(encoding="utf-8")
+                self.assertNotIn("study_access_token:", source)
+                self.assertIn("Authorization", source)
+                self.assertIn("Bearer", source)
+
     def test_node_contract_does_not_spawn_from_python_worker(self) -> None:
         source = Path(__file__).read_text(encoding="utf-8")
         process_api = "sub" + "process"

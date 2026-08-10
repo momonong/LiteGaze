@@ -650,6 +650,7 @@ def summarize_validation_samples(
     viewport_height_px: object,
     measurement_contract: Mapping[str, object] | None = None,
     expected_samples_per_point: int = 3,
+    prediction_receipt_status: str = "unavailable",
 ) -> dict[str, Any]:
     targets = validation_target_definitions(measurement_contract)
     targets_by_id = {target["target_id"]: target for target in targets}
@@ -661,6 +662,8 @@ def summarize_validation_samples(
         raise ValueError("validation samples must be an array")
     if len(samples) != len(targets) * expected_samples_per_point:
         raise ValueError("validation sample count does not match the frozen design")
+    if prediction_receipt_status not in {"verified", "unavailable"}:
+        raise ValueError("prediction receipt status is invalid")
     grouped_errors: dict[str, list[tuple[float, float, float]]] = {}
     sample_counts: Counter[str] = Counter()
     success_count = 0
@@ -781,6 +784,8 @@ def summarize_validation_samples(
     sorted_errors = sorted(errors)
     p90_index = max(0, math.ceil(len(sorted_errors) * 0.9) - 1) if sorted_errors else 0
     return {
+        "prediction_receipt_status": prediction_receipt_status,
+        "prediction_receipts_verified": prediction_receipt_status == "verified",
         "sample_count": len(samples),
         "successful_sample_count": success_count,
         "target_count": len(grouped_errors),
@@ -802,6 +807,43 @@ def summarize_validation_samples(
             else None
         ),
         "samples": normalized_samples,
+    }
+
+
+def unavailable_validation_summary(
+    *,
+    viewport_width_px: object,
+    viewport_height_px: object,
+    measurement_contract: Mapping[str, object] | None = None,
+    reason: str = "prediction_receipts_unavailable",
+) -> dict[str, Any]:
+    """Return a fail-closed summary without trusting legacy client predictions."""
+
+    targets = validation_target_definitions(measurement_contract)
+    viewport_width = _finite_number(viewport_width_px, field="viewport_width_px")
+    viewport_height = _finite_number(viewport_height_px, field="viewport_height_px")
+    if not 1 <= viewport_width <= 16384 or not 1 <= viewport_height <= 16384:
+        raise ValueError("validation viewport dimensions are out of range")
+    return {
+        "prediction_receipt_status": "unavailable",
+        "prediction_receipts_verified": False,
+        "prediction_receipt_reasons": [str(reason)],
+        "sample_count": 0,
+        "expected_sample_count": len(targets) * 3,
+        "successful_sample_count": 0,
+        "target_count": len(targets),
+        "target_coordinate_system": SIGNED_SCREEN_COORDINATE_SYSTEM,
+        "validation_targets": deepcopy(targets),
+        "viewport": {
+            "width_px": int(viewport_width),
+            "height_px": int(viewport_height),
+        },
+        "targets_with_prediction": 0,
+        "prediction_success_fraction": 0.0,
+        "median_spatial_error_px": None,
+        "p90_spatial_error_px": None,
+        "precision_rms_px": None,
+        "samples": [],
     }
 
 
@@ -987,6 +1029,13 @@ def classify_provisional_geometry_quality(
         if p90_raw is not None
         else None
     )
+    receipt_status = str(
+        validation_summary.get("prediction_receipt_status") or "unavailable"
+    )
+    receipts_verified = (
+        receipt_status == "verified"
+        and validation_summary.get("prediction_receipts_verified") is True
+    )
 
     spatial_band = "behavioral_only"
     reasons: list[str] = []
@@ -1008,6 +1057,8 @@ def classify_provisional_geometry_quality(
         spatial_band = "passage_level_only"
     else:
         reasons.append("spatial_or_prediction_success_threshold_not_met")
+    if not receipts_verified:
+        reasons.append("prediction_receipts_unavailable")
 
     contract_status = "unavailable"
     contract_compatible: bool | None = None
@@ -1045,7 +1096,8 @@ def classify_provisional_geometry_quality(
     # Geometry-dependent output is fail-closed. Behavioral labels remain usable.
     recommended_mode = (
         spatial_band
-        if contract_compatible is True
+        if receipts_verified
+        and contract_compatible is True
         and independence_status == "passed"
         and target_independent is True
         else "behavioral_only"
@@ -1057,6 +1109,8 @@ def classify_provisional_geometry_quality(
     }[recommended_mode]
     return {
         "status": "provisional_sensor_geometry_only",
+        "prediction_receipt_status": receipt_status,
+        "prediction_receipts_verified": receipts_verified,
         "spatial_band": spatial_band,
         "recommended_gaze_mode": recommended_mode,
         "recommendation": recommendation,

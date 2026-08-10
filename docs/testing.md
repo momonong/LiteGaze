@@ -1,6 +1,6 @@
 # Testing LexiGaze Safely
 
-LexiGaze separates fast, deterministic regressions from model and hardware experiments. Pull requests use the fast lane so routine validation cannot consume a developer GPU, API quota, or external benchmark.
+LexiGaze separates fast, deterministic regressions from model and hardware experiments. Run the fast lane locally before delivery so routine validation cannot consume a developer GPU, API quota, or external benchmark. The GitHub workflow is intentionally disabled for the current research workflow.
 
 ## Offline CPU quality gate
 
@@ -28,9 +28,9 @@ The command supervises a disposable worker and enforces a 180-second timeout. It
 
 Use `--json-output <path>` to persist the same summary or `--timeout-seconds <n>` to adjust the supervisor limit.
 
-## CI dependency boundary
+## Local and optional-CI dependency boundary
 
-The workflow installs only `requirements-quality-gate.txt`, then compiles and lints the validation surfaces before running the gate. That dependency file intentionally excludes Torch, CUDA, Transformers, OpenCV, model packages, and the full project dependency graph. Dependency installation can use the package network; the test worker itself is network-denied.
+`requirements-quality-gate.txt` is the reproducible dependency boundary for the local gate. It intentionally excludes Torch, CUDA, Transformers, model packages, and the full project dependency graph. It includes the headless CPU OpenCV wheel because capture/provenance tests decode frames without using an interactive display. Dependency installation can use the package network; the test worker itself is network-denied. The file `.github/workflows/offline-cpu-quality-gate.yml.disabled` documents how the same lane could run in CI, but it does not run automatically while its `.disabled` suffix remains.
 
 ## Heavy and research tests
 

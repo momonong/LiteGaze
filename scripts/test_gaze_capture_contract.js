@@ -115,6 +115,20 @@ assert.doesNotMatch(
   participantCollectionSource,
   /viewport_width: innerWidth[\s\S]{0,80}viewport_height: innerHeight/,
 );
+assert.match(participantCollectionSource, /validation_phase: validationContext\.phase/);
+assert.match(participantCollectionSource, /validation_target_id: validationContext\.targetId/);
+assert.match(participantCollectionSource, /error\.payload = payload/);
+const validationSource = participantCollectionSource.match(
+  /async function runValidation\(\)[\s\S]*?\r?\n}\r?\n\r?\nfunction formatElapsed/,
+)?.[0] || "";
+assert.match(validationSource, /prediction_receipts: predictionReceipts/);
+assert.match(validationSource, /prediction_receipts: \[\]/);
+assert.match(validationSource, /prediction_receipt\?\.token/);
+assert.doesNotMatch(validationSource, /predicted_x_px\s*:/);
+assert.doesNotMatch(validationSource, /predicted_y_px\s*:/);
+assert.doesNotMatch(validationSource, /target_x_px\s*:/);
+assert.doesNotMatch(validationSource, /target_y_px\s*:/);
+assert.doesNotMatch(validationSource, /capture_contract\s*:/);
 
 const gazePageSource = fs.readFileSync(
   path.join(__dirname, "../web/static/gaze_page.js"),

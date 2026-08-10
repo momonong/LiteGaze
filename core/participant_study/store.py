@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import secrets
 import shutil
 import threading
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,11 @@ from core.gaze_core.capture_contract import (
     compare_capture_contracts,
     load_participant_gaze_measurement_contract,
     normalize_capture_contract,
+)
+from core.gaze_core.uncertainty import (
+    RUNTIME_OBSERVATION_SCHEMA_VERSION,
+    normalize_uncertainty_observation,
+    unavailable_uncertainty,
 )
 
 from .general_collection import (
@@ -33,12 +39,23 @@ from .general_collection import (
     probe_order,
     public_passage,
     summarize_validation_samples,
+    unavailable_validation_summary,
     validate_general_design,
     validate_profile,
     validate_round_payload,
     validate_system_profile,
+    validation_target_definitions,
 )
 from .protocol import activation_status, load_protocol, public_protocol
+
+
+_SUCCESS_CONTRADICTORY_UNCERTAINTY_STATUSES = frozenset(
+    {
+        "unavailable_capture_failure",
+        "unavailable_prediction_failure",
+        "unavailable_sensor_failure",
+    }
+)
 
 
 class StudyError(RuntimeError):
@@ -151,6 +168,198 @@ def _verified_assessment_viewport(
         ) from exc
 
 
+def _normalized_model_artifact_sha256(value: object) -> str:
+    digest = str(value or "").strip().lower()
+    if not MODEL_ARTIFACT_SHA256_PATTERN.fullmatch(digest):
+        raise StudyValidationError("model artifact SHA-256 is invalid")
+    return digest
+
+
+def _finite_prediction_number(value: object, *, field: str) -> float:
+    if isinstance(value, bool):
+        raise StudyValidationError(f"prediction receipt {field} is invalid")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise StudyValidationError(
+            f"prediction receipt {field} is invalid"
+        ) from exc
+    if not math.isfinite(number):
+        raise StudyValidationError(f"prediction receipt {field} is invalid")
+    return number
+
+
+def _receipt_token_sha256(token: str) -> str:
+    return hashlib.sha256(token.encode("ascii")).hexdigest()
+
+
+def _prediction_receipt_registry(
+    collection: Mapping[str, object],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    raw_registry = collection.get("prediction_receipts")
+    if raw_registry is None:
+        return {
+            "schema_version": PREDICTION_RECEIPT_SCHEMA_VERSION,
+            "records": {},
+        }, {}
+    if not isinstance(raw_registry, Mapping):
+        raise StudyValidationError("prediction receipt registry is invalid")
+    if raw_registry.get("schema_version") != PREDICTION_RECEIPT_SCHEMA_VERSION:
+        raise StudyValidationError("prediction receipt registry schema is invalid")
+    raw_records = raw_registry.get("records")
+    if not isinstance(raw_records, Mapping):
+        raise StudyValidationError("prediction receipt records are invalid")
+    records = {
+        str(receipt_sha256): dict(record)
+        for receipt_sha256, record in raw_records.items()
+        if isinstance(record, Mapping)
+    }
+    if len(records) != len(raw_records):
+        raise StudyValidationError("prediction receipt record is invalid")
+    return dict(raw_registry), records
+
+
+def _uncertainty_for_receipt_issuance(
+    prediction_response: Mapping[str, object],
+    *,
+    prediction_success: bool,
+    viewport: Sequence[float],
+) -> dict[str, Any]:
+    """Normalize server uncertainty without making gaze depend on availability."""
+
+    if not prediction_success:
+        return unavailable_uncertainty(
+            "unavailable_sensor_failure",
+            "no face was detected, so no sensor observation was scored",
+        )
+    raw_observation = prediction_response.get("uncertainty")
+    if raw_observation is None:
+        return unavailable_uncertainty(
+            "unavailable_receipt_missing",
+            "the prediction response did not include runtime uncertainty evidence",
+        )
+    try:
+        normalized = normalize_uncertainty_observation(
+            raw_observation,
+            viewport=viewport,
+        )
+    except (OSError, TypeError, ValueError):
+        return unavailable_uncertainty(
+            "unavailable_invalid_observation",
+            "runtime uncertainty evidence failed the frozen receipt contract",
+        )
+    if normalized.get("status") in _SUCCESS_CONTRADICTORY_UNCERTAINTY_STATUSES:
+        return unavailable_uncertainty(
+            "unavailable_invalid_observation",
+            "successful prediction uncertainty contradicted the prediction outcome",
+        )
+    return normalized
+
+
+def _uncertainty_from_stored_prediction(
+    prediction: Mapping[str, object],
+    *,
+    prediction_success: bool,
+    viewport: Sequence[float],
+) -> dict[str, Any]:
+    """Revalidate persisted evidence; only pre-integration records may omit it."""
+
+    schema_version = prediction.get("uncertainty_schema_version")
+    raw_observation = prediction.get("uncertainty")
+    if schema_version is None and raw_observation is None:
+        status = (
+            "unavailable_receipt_missing"
+            if prediction_success
+            else "unavailable_sensor_failure"
+        )
+        return unavailable_uncertainty(
+            status,
+            "legacy prediction receipt did not contain runtime uncertainty evidence",
+        )
+    if (
+        type(schema_version) is not int
+        or schema_version != RECEIPT_UNCERTAINTY_SCHEMA_VERSION
+    ):
+        raise StudyValidationError(
+            "prediction receipt uncertainty schema version is invalid"
+        )
+    try:
+        normalized = normalize_uncertainty_observation(
+            raw_observation,
+            viewport=viewport,
+        )
+    except (OSError, TypeError, ValueError) as exc:
+        raise StudyValidationError(
+            "prediction receipt uncertainty evidence is invalid"
+        ) from exc
+    if (
+        not prediction_success
+        and normalized.get("status") != "unavailable_sensor_failure"
+    ):
+        raise StudyValidationError(
+            "no-face prediction receipt uncertainty must be sensor-unavailable"
+        )
+    if (
+        prediction_success
+        and normalized.get("status")
+        in _SUCCESS_CONTRADICTORY_UNCERTAINTY_STATUSES
+    ):
+        raise StudyValidationError(
+            "successful prediction receipt uncertainty contradicts its outcome"
+        )
+    return normalized
+
+
+def _receipt_uncertainty_observation(
+    *,
+    issued_record_sha256: str,
+    phase: str,
+    receipt_ordinal: int,
+    target_id: str,
+    target_repeat_index: int,
+    prediction_success: bool,
+    uncertainty: Mapping[str, object],
+) -> dict[str, Any]:
+    return {
+        "schema_version": RECEIPT_UNCERTAINTY_SCHEMA_VERSION,
+        "receipt_record_sha256": issued_record_sha256,
+        "phase": phase,
+        "receipt_ordinal": receipt_ordinal,
+        "target_id": target_id,
+        "target_repeat_index": target_repeat_index,
+        "prediction_success": prediction_success,
+        "uncertainty": json.loads(
+            canonical_json_bytes(uncertainty).decode("utf-8")
+        ),
+    }
+
+
+def _summarize_receipt_uncertainty(
+    observations: Sequence[Mapping[str, object]],
+    *,
+    status: str,
+) -> dict[str, Any]:
+    normalized = [
+        json.loads(canonical_json_bytes(observation).decode("utf-8"))
+        for observation in observations
+    ]
+    scored_count = sum(
+        dict(observation.get("uncertainty") or {}).get("status")
+        == "scored_no_threshold"
+        for observation in normalized
+    )
+    observation_hashes = [canonical_sha256(observation) for observation in normalized]
+    return {
+        "schema_version": RECEIPT_UNCERTAINTY_SCHEMA_VERSION,
+        "status": status,
+        "count": len(normalized),
+        "scored_count": scored_count,
+        "unavailable_count": len(normalized) - scored_count,
+        "observation_sha256s": observation_hashes,
+        "observations_sha256": canonical_sha256(normalized),
+    }
+
+
 ACTIVE_STATES = {
     "consented",
     "system_check_passed",
@@ -166,6 +375,10 @@ READING_VIDEO_MIME_EXTENSIONS = {
     "video/mp4": ".mp4",
 }
 READING_VIDEO_ID_PATTERN = re.compile(r"VID-[A-F0-9]{20,32}")
+PREDICTION_RECEIPT_SCHEMA_VERSION = 1
+PREDICTION_RECEIPT_TOKEN_PATTERN = re.compile(r"PR-[A-F0-9]{48}")
+MODEL_ARTIFACT_SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
+RECEIPT_UNCERTAINTY_SCHEMA_VERSION = RUNTIME_OBSERVATION_SCHEMA_VERSION
 
 
 def _utc_now() -> str:
@@ -752,6 +965,7 @@ class ParticipantStudyStore:
                     "gaze_measurement_contract"
                 ),
                 "assessment_viewport": collection.get("assessment_viewport"),
+                "model_artifact_sha256": collection.get("model_artifact_sha256"),
                 "validations": {
                     key: {
                         metric: value
@@ -780,6 +994,753 @@ class ParticipantStudyStore:
             _, session = self._read(session_id)
             self._authorize(session, access_token)
             return self.consent_receipt(session)
+
+    def _prediction_receipt_context_locked(
+        self,
+        session: Mapping[str, object],
+        *,
+        phase: str,
+        target_id: str,
+        model_name: str,
+        model_artifact_sha256: str,
+        viewport: Mapping[str, object],
+    ) -> dict[str, Any]:
+        if phase not in {"start", "end"}:
+            raise StudyValidationError("prediction receipt phase is invalid")
+        if session.get("state") != "assessment_in_progress":
+            raise StudyStateError("prediction receipts require an active assessment")
+        collection = session.get("general_collection")
+        if not isinstance(collection, Mapping):
+            raise StudyStateError("general collection is unavailable")
+        expected_collection_phase = (
+            "start_validation_required"
+            if phase == "start"
+            else "end_validation_required"
+        )
+        if collection.get("phase") != expected_collection_phase:
+            raise StudyStateError(f"{phase} prediction receipts are not expected now")
+        measurement_contract, measurement_provenance = (
+            _verified_session_measurement_contract(collection)
+        )
+        frozen_viewport = _verified_assessment_viewport(collection)
+        if _normalized_assessment_viewport(viewport) != frozen_viewport:
+            raise StudyValidationError(
+                "prediction receipt viewport differs from the frozen assessment viewport"
+            )
+        linked_data = dict(session.get("linked_data") or {})
+        linked_model = str(linked_data.get("model_name") or "")
+        if not linked_model or str(model_name or "") != linked_model:
+            raise StudyAuthorizationError(
+                "prediction receipt model is not linked to this study session"
+            )
+        artifact_sha256 = _normalized_model_artifact_sha256(model_artifact_sha256)
+        frozen_artifact_sha256 = str(
+            collection.get("model_artifact_sha256") or ""
+        ).strip()
+        if frozen_artifact_sha256 and (
+            _normalized_model_artifact_sha256(frozen_artifact_sha256)
+            != artifact_sha256
+        ):
+            raise StudyStateError(
+                "linked model artifact changed after assessment receipt freeze"
+            )
+        assessment_id = str(collection.get("assessment_id") or "")
+        if (
+            not assessment_id
+            or str(linked_data.get("assessment_id") or "") != assessment_id
+        ):
+            raise StudyStateError("assessment linkage is unavailable")
+        capture_session_id = str(linked_data.get("gaze_session_id") or "")
+        if not capture_session_id:
+            raise StudyStateError("calibration capture session linkage is unavailable")
+        targets = validation_target_definitions(measurement_contract)
+        registry, records = _prediction_receipt_registry(collection)
+        del registry
+        phase_records = [
+            record
+            for record in records.values()
+            if dict(record.get("issued") or {}).get("phase") == phase
+        ]
+        receipt_ordinal = len(phase_records)
+        expected_count = len(targets) * 3
+        if receipt_ordinal >= expected_count:
+            raise StudyStateError(
+                f"{phase} prediction receipt bundle is already complete"
+            )
+        expected_target = targets[receipt_ordinal // 3]
+        if str(target_id or "") != expected_target["target_id"]:
+            raise StudyValidationError(
+                "prediction receipt target does not match the server-frozen sequence"
+            )
+        target = {
+            "target_id": expected_target["target_id"],
+            "target_x_viewport_fraction": float(
+                expected_target["target_x_viewport_fraction"]
+            ),
+            "target_y_viewport_fraction": float(
+                expected_target["target_y_viewport_fraction"]
+            ),
+            "target_x_norm": float(expected_target["target_x_norm"]),
+            "target_y_norm": float(expected_target["target_y_norm"]),
+            "target_x_px": float(
+                math.floor(
+                    float(expected_target["target_x_viewport_fraction"])
+                    * frozen_viewport["width_px"]
+                    + 0.5
+                )
+            ),
+            "target_y_px": float(
+                math.floor(
+                    float(expected_target["target_y_viewport_fraction"])
+                    * frozen_viewport["height_px"]
+                    + 0.5
+                )
+            ),
+        }
+        context = {
+            "schema_version": PREDICTION_RECEIPT_SCHEMA_VERSION,
+            "study_session_id": session["study_session_id"],
+            "authorization_fingerprint_sha256": session["access_token_sha256"],
+            "assessment_id": assessment_id,
+            "model_name": linked_model,
+            "model_artifact_sha256": artifact_sha256,
+            "capture_session_id": capture_session_id,
+            "phase": phase,
+            "receipt_ordinal": receipt_ordinal,
+            "target_repeat_index": receipt_ordinal % 3,
+            "target": target,
+            "viewport": frozen_viewport,
+            "measurement_contract_sha256": measurement_provenance["sha256"],
+        }
+        return {
+            **context,
+            "challenge_sha256": canonical_sha256(context),
+        }
+
+    def prepare_general_prediction_receipt(
+        self,
+        session_id: str,
+        access_token: str,
+        *,
+        phase: str,
+        target_id: str,
+        model_name: str,
+        model_artifact_sha256: str,
+        viewport: Mapping[str, object],
+    ) -> dict[str, Any]:
+        """Authorize and freeze the next server-ordered validation challenge."""
+
+        with self._lock:
+            _, session = self._read(session_id)
+            self._authorize(session, access_token)
+            return self._prediction_receipt_context_locked(
+                session,
+                phase=phase,
+                target_id=target_id,
+                model_name=model_name,
+                model_artifact_sha256=model_artifact_sha256,
+                viewport=viewport,
+            )
+
+    def issue_general_prediction_receipt(
+        self,
+        session_id: str,
+        access_token: str,
+        *,
+        challenge: Mapping[str, object],
+        model_artifact_sha256_after: str,
+        capture_contract: Mapping[str, object] | None,
+        prediction_response: Mapping[str, object],
+        prediction_status: int,
+    ) -> dict[str, Any]:
+        """Persist one opaque receipt after an attributable server prediction."""
+
+        if not isinstance(challenge, Mapping):
+            raise StudyValidationError("prediction receipt challenge is invalid")
+        if not isinstance(prediction_response, Mapping):
+            raise StudyValidationError("prediction receipt response is invalid")
+        try:
+            normalized_capture_contract = normalize_capture_contract(capture_contract)
+        except (TypeError, ValueError) as exc:
+            raise StudyValidationError(
+                "prediction receipt requires a valid capture contract"
+            ) from exc
+        capture_contract_check = prediction_response.get("capture_contract_check")
+        if (
+            not isinstance(capture_contract_check, Mapping)
+            or capture_contract_check.get("compatible") is not True
+        ):
+            raise StudyValidationError(
+                "capture-hard prediction failures cannot receive validation receipts"
+            )
+        success = (
+            200 <= int(prediction_status) < 300
+            and prediction_response.get("ok") is True
+        )
+        prediction: dict[str, Any]
+        if success:
+            raw_px = prediction_response.get("screen_xy_px")
+            raw_norm = prediction_response.get("screen_xy_norm")
+            if (
+                not isinstance(raw_px, Sequence)
+                or isinstance(raw_px, (str, bytes))
+                or len(raw_px) != 2
+                or not isinstance(raw_norm, Sequence)
+                or isinstance(raw_norm, (str, bytes))
+                or len(raw_norm) != 2
+            ):
+                raise StudyValidationError("successful prediction coordinates are invalid")
+            prediction = {
+                "success": True,
+                "screen_xy_px": [
+                    _finite_prediction_number(raw_px[0], field="screen_xy_px[0]"),
+                    _finite_prediction_number(raw_px[1], field="screen_xy_px[1]"),
+                ],
+                "screen_xy_norm": [
+                    _finite_prediction_number(
+                        raw_norm[0], field="screen_xy_norm[0]"
+                    ),
+                    _finite_prediction_number(
+                        raw_norm[1], field="screen_xy_norm[1]"
+                    ),
+                ],
+                "http_status": int(prediction_status),
+                "failure_stage": None,
+                "failure_code": None,
+                "error": None,
+            }
+        else:
+            failure_stage = str(prediction_response.get("failure_stage") or "")
+            failure_code = str(prediction_response.get("failure_code") or "")
+            if (
+                failure_stage != "attributable_sensor_failure"
+                or failure_code != "no_face_detected"
+                or int(prediction_status) != 400
+                or prediction_response.get("ok") is not False
+                or prediction_response.get("screen_xy_px") is not None
+                or prediction_response.get("screen_xy_norm") is not None
+            ):
+                raise StudyValidationError(
+                    "only explicit no-face failures can receive failure receipts"
+                )
+            prediction = {
+                "success": False,
+                "screen_xy_px": None,
+                "screen_xy_norm": None,
+                "http_status": int(prediction_status),
+                "failure_stage": failure_stage,
+                "failure_code": failure_code,
+                "error": str(prediction_response.get("error") or "")[:240],
+            }
+        with self._lock:
+            path, session = self._read(session_id)
+            self._authorize(session, access_token)
+            challenge_without_hash = {
+                key: value
+                for key, value in challenge.items()
+                if key != "challenge_sha256"
+            }
+            if (
+                str(challenge.get("challenge_sha256") or "")
+                != canonical_sha256(challenge_without_hash)
+            ):
+                raise StudyValidationError("prediction receipt challenge hash mismatch")
+            current = self._prediction_receipt_context_locked(
+                session,
+                phase=str(challenge.get("phase") or ""),
+                target_id=str(dict(challenge.get("target") or {}).get("target_id") or ""),
+                model_name=str(challenge.get("model_name") or ""),
+                model_artifact_sha256=str(
+                    challenge.get("model_artifact_sha256") or ""
+                ),
+                viewport=dict(challenge.get("viewport") or {}),
+            )
+            if canonical_json_bytes(current) != canonical_json_bytes(dict(challenge)):
+                raise StudyStateError("prediction receipt challenge is stale")
+            artifact_after = _normalized_model_artifact_sha256(
+                model_artifact_sha256_after
+            )
+            if artifact_after != current["model_artifact_sha256"]:
+                raise StudyStateError("model artifact changed during prediction")
+            viewport_width = int(dict(current["viewport"])["width_px"])
+            viewport_height = int(dict(current["viewport"])["height_px"])
+            if prediction["success"]:
+                predicted_x, predicted_y = prediction["screen_xy_px"]
+                normalized_x, normalized_y = prediction["screen_xy_norm"]
+                if (
+                    not 0 <= predicted_x <= viewport_width
+                    or not 0 <= predicted_y <= viewport_height
+                    or not -1 <= normalized_x <= 1
+                    or not -1 <= normalized_y <= 1
+                ):
+                    raise StudyValidationError(
+                        "prediction coordinates exceed the frozen viewport contract"
+                    )
+                expected_x = ((normalized_x + 1.0) * 0.5) * viewport_width
+                expected_y = ((normalized_y + 1.0) * 0.5) * viewport_height
+                if not math.isclose(
+                    predicted_x, expected_x, abs_tol=1e-6
+                ) or not math.isclose(predicted_y, expected_y, abs_tol=1e-6):
+                    raise StudyValidationError(
+                        "prediction pixel and normalized coordinates disagree"
+                    )
+            prediction["uncertainty_schema_version"] = (
+                RECEIPT_UNCERTAINTY_SCHEMA_VERSION
+            )
+            prediction["uncertainty"] = _uncertainty_for_receipt_issuance(
+                prediction_response,
+                prediction_success=prediction["success"],
+                viewport=(viewport_width, viewport_height),
+            )
+            collection = dict(session.get("general_collection") or {})
+            frozen_artifact_sha256 = str(
+                collection.get("model_artifact_sha256") or ""
+            )
+            if frozen_artifact_sha256 and frozen_artifact_sha256 != artifact_after:
+                raise StudyStateError("model artifact changed after receipt freeze")
+            collection["model_artifact_sha256"] = artifact_after
+            receipt_token = "PR-" + secrets.token_hex(24).upper()
+            receipt_sha256 = _receipt_token_sha256(receipt_token)
+            issued = {
+                "schema_version": PREDICTION_RECEIPT_SCHEMA_VERSION,
+                "receipt_id_sha256": receipt_sha256,
+                "issued_at_utc": _utc_now(),
+                **challenge_without_hash,
+                "capture_contract": normalized_capture_contract,
+                "capture_contract_check": json.loads(
+                    canonical_json_bytes(capture_contract_check).decode("utf-8")
+                ),
+                "prediction": prediction,
+            }
+            issued_record_sha256 = canonical_sha256(issued)
+            registry, records = _prediction_receipt_registry(collection)
+            if receipt_sha256 in records:
+                raise StudyStateError("prediction receipt collision")
+            records[receipt_sha256] = {
+                "issued": issued,
+                "issued_record_sha256": issued_record_sha256,
+                "consumed_at_utc": None,
+                "consumed_validation_phase": None,
+            }
+            registry.update(
+                {
+                    "schema_version": PREDICTION_RECEIPT_SCHEMA_VERSION,
+                    "records": records,
+                }
+            )
+            collection["prediction_receipts"] = registry
+            session["general_collection"] = collection
+            session["updated_at_utc"] = _utc_now()
+            self._write(path, session)
+            return {
+                "schema_version": PREDICTION_RECEIPT_SCHEMA_VERSION,
+                "token": receipt_token,
+                "receipt_record_sha256": issued_record_sha256,
+            }
+
+    def _consume_general_prediction_receipts_locked(
+        self,
+        session: Mapping[str, object],
+        collection: dict[str, Any],
+        *,
+        phase: str,
+        receipt_tokens: Sequence[object],
+        model_artifact_sha256: str,
+        measurement_contract: Mapping[str, object],
+        measurement_provenance: Mapping[str, str],
+        assessment_viewport: Mapping[str, int],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        if isinstance(receipt_tokens, (str, bytes)):
+            raise StudyValidationError("prediction receipts must be an array")
+        targets = validation_target_definitions(measurement_contract)
+        expected_count = len(targets) * 3
+        if len(receipt_tokens) != expected_count:
+            raise StudyValidationError(
+                "prediction receipt count does not match the frozen design"
+            )
+        normalized_tokens = [str(token or "") for token in receipt_tokens]
+        if any(
+            not PREDICTION_RECEIPT_TOKEN_PATTERN.fullmatch(token)
+            for token in normalized_tokens
+        ):
+            raise StudyValidationError("prediction receipt token is invalid")
+        if len(set(normalized_tokens)) != len(normalized_tokens):
+            raise StudyValidationError("prediction receipt token was reused")
+        current_artifact_sha256 = _normalized_model_artifact_sha256(
+            model_artifact_sha256
+        )
+        frozen_artifact_sha256 = _normalized_model_artifact_sha256(
+            collection.get("model_artifact_sha256")
+        )
+        if current_artifact_sha256 != frozen_artifact_sha256:
+            raise StudyStateError("model artifact changed before validation receipt use")
+        linked_data = dict(session.get("linked_data") or {})
+        expected_common = {
+            "study_session_id": session["study_session_id"],
+            "authorization_fingerprint_sha256": session["access_token_sha256"],
+            "assessment_id": collection.get("assessment_id"),
+            "model_name": linked_data.get("model_name"),
+            "model_artifact_sha256": frozen_artifact_sha256,
+            "capture_session_id": linked_data.get("gaze_session_id"),
+            "phase": phase,
+            "viewport": dict(assessment_viewport),
+            "measurement_contract_sha256": measurement_provenance["sha256"],
+        }
+        registry, records = _prediction_receipt_registry(collection)
+        samples: list[dict[str, Any]] = []
+        capture_contracts: list[dict[str, Any]] = []
+        receipt_hashes: list[str] = []
+        record_hashes: list[str] = []
+        failures: list[dict[str, Any]] = []
+        uncertainty_observations: list[dict[str, Any]] = []
+        for ordinal, token in enumerate(normalized_tokens):
+            receipt_sha256 = _receipt_token_sha256(token)
+            record = records.get(receipt_sha256)
+            if not isinstance(record, Mapping):
+                raise StudyAuthorizationError(
+                    "prediction receipt does not belong to this study session"
+                )
+            if record.get("consumed_at_utc") is not None:
+                raise StudyStateError("prediction receipt has already been consumed")
+            issued = record.get("issued")
+            if not isinstance(issued, Mapping):
+                raise StudyValidationError("prediction receipt record is invalid")
+            issued_record_sha256 = str(record.get("issued_record_sha256") or "")
+            if issued_record_sha256 != canonical_sha256(issued):
+                raise StudyValidationError("prediction receipt record hash mismatch")
+            if issued.get("receipt_id_sha256") != receipt_sha256:
+                raise StudyValidationError("prediction receipt identity mismatch")
+            for field, expected in expected_common.items():
+                if issued.get(field) != expected:
+                    raise StudyValidationError(
+                        f"prediction receipt {field} binding mismatch"
+                    )
+            target = targets[ordinal // 3]
+            expected_target = {
+                "target_id": target["target_id"],
+                "target_x_viewport_fraction": float(
+                    target["target_x_viewport_fraction"]
+                ),
+                "target_y_viewport_fraction": float(
+                    target["target_y_viewport_fraction"]
+                ),
+                "target_x_norm": float(target["target_x_norm"]),
+                "target_y_norm": float(target["target_y_norm"]),
+                "target_x_px": float(
+                    math.floor(
+                        float(target["target_x_viewport_fraction"])
+                        * int(assessment_viewport["width_px"])
+                        + 0.5
+                    )
+                ),
+                "target_y_px": float(
+                    math.floor(
+                        float(target["target_y_viewport_fraction"])
+                        * int(assessment_viewport["height_px"])
+                        + 0.5
+                    )
+                ),
+            }
+            if (
+                issued.get("receipt_ordinal") != ordinal
+                or issued.get("target_repeat_index") != ordinal % 3
+                or canonical_json_bytes(issued.get("target"))
+                != canonical_json_bytes(expected_target)
+            ):
+                raise StudyValidationError(
+                    "prediction receipt target or sequence binding mismatch"
+                )
+            capture_contract_check = issued.get("capture_contract_check")
+            if (
+                not isinstance(capture_contract_check, Mapping)
+                or capture_contract_check.get("compatible") is not True
+            ):
+                raise StudyValidationError(
+                    "prediction receipt capture contract is not compatible"
+                )
+            try:
+                capture_contract = normalize_capture_contract(
+                    issued.get("capture_contract")
+                )
+            except (TypeError, ValueError) as exc:
+                raise StudyValidationError(
+                    "prediction receipt capture contract is invalid"
+                ) from exc
+            if capture_contracts and compare_capture_contracts(
+                capture_contracts[0], capture_contract
+            ).get("compatible") is not True:
+                raise StudyValidationError(
+                    "prediction receipt capture contracts changed during validation"
+                )
+            capture_contracts.append(capture_contract)
+            prediction = issued.get("prediction")
+            if not isinstance(prediction, Mapping):
+                raise StudyValidationError("prediction receipt outcome is invalid")
+            sample = {
+                "target_id": expected_target["target_id"],
+                "target_x_px": expected_target["target_x_px"],
+                "target_y_px": expected_target["target_y_px"],
+                "target_x_norm": expected_target["target_x_norm"],
+                "target_y_norm": expected_target["target_y_norm"],
+                "prediction_success": prediction.get("success") is True,
+            }
+            if sample["prediction_success"]:
+                predicted = prediction.get("screen_xy_px")
+                predicted_norm = prediction.get("screen_xy_norm")
+                if (
+                    not isinstance(predicted, Sequence)
+                    or isinstance(predicted, (str, bytes))
+                    or len(predicted) != 2
+                    or not isinstance(predicted_norm, Sequence)
+                    or isinstance(predicted_norm, (str, bytes))
+                    or len(predicted_norm) != 2
+                ):
+                    raise StudyValidationError(
+                        "prediction receipt success coordinates are invalid"
+                    )
+                sample["predicted_x_px"] = _finite_prediction_number(
+                    predicted[0], field="predicted_x_px"
+                )
+                sample["predicted_y_px"] = _finite_prediction_number(
+                    predicted[1], field="predicted_y_px"
+                )
+                normalized_x = _finite_prediction_number(
+                    predicted_norm[0], field="screen_xy_norm[0]"
+                )
+                normalized_y = _finite_prediction_number(
+                    predicted_norm[1], field="screen_xy_norm[1]"
+                )
+                expected_x = ((normalized_x + 1.0) * 0.5) * int(
+                    assessment_viewport["width_px"]
+                )
+                expected_y = ((normalized_y + 1.0) * 0.5) * int(
+                    assessment_viewport["height_px"]
+                )
+                if not math.isclose(
+                    sample["predicted_x_px"], expected_x, abs_tol=1e-6
+                ) or not math.isclose(
+                    sample["predicted_y_px"], expected_y, abs_tol=1e-6
+                ):
+                    raise StudyValidationError(
+                        "prediction receipt coordinate transform mismatch"
+                    )
+            else:
+                failure_stage = str(prediction.get("failure_stage") or "")
+                if (
+                    failure_stage != "attributable_sensor_failure"
+                    or prediction.get("failure_code") != "no_face_detected"
+                    or int(prediction.get("http_status") or 0) != 400
+                    or prediction.get("screen_xy_px") is not None
+                    or prediction.get("screen_xy_norm") is not None
+                ):
+                    raise StudyValidationError(
+                        "prediction receipt failure stage is invalid"
+                    )
+                failures.append(
+                    {
+                        "receipt_record_sha256": issued_record_sha256,
+                        "failure_stage": failure_stage,
+                        "failure_code": str(prediction.get("failure_code") or ""),
+                        "http_status": int(prediction.get("http_status") or 0),
+                    }
+                )
+            uncertainty = _uncertainty_from_stored_prediction(
+                prediction,
+                prediction_success=sample["prediction_success"],
+                viewport=(
+                    assessment_viewport["width_px"],
+                    assessment_viewport["height_px"],
+                ),
+            )
+            uncertainty_observations.append(
+                _receipt_uncertainty_observation(
+                    issued_record_sha256=issued_record_sha256,
+                    phase=phase,
+                    receipt_ordinal=ordinal,
+                    target_id=expected_target["target_id"],
+                    target_repeat_index=ordinal % 3,
+                    prediction_success=sample["prediction_success"],
+                    uncertainty=uncertainty,
+                )
+            )
+            samples.append(sample)
+            receipt_hashes.append(receipt_sha256)
+            record_hashes.append(issued_record_sha256)
+        summary = summarize_validation_samples(
+            samples,
+            viewport_width_px=assessment_viewport["width_px"],
+            viewport_height_px=assessment_viewport["height_px"],
+            measurement_contract=measurement_contract,
+            prediction_receipt_status="verified",
+        )
+        summary["uncertainty_observations"] = uncertainty_observations
+        summary["uncertainty_summary"] = _summarize_receipt_uncertainty(
+            uncertainty_observations,
+            status="verified",
+        )
+        bundle_core = {
+            "schema_version": PREDICTION_RECEIPT_SCHEMA_VERSION,
+            "status": "verified",
+            "phase": phase,
+            "count": len(record_hashes),
+            "receipt_record_sha256s": record_hashes,
+        }
+        summary["prediction_receipt_bundle"] = {
+            **bundle_core,
+            "bundle_sha256": canonical_sha256(bundle_core),
+        }
+        summary["model_artifact_sha256"] = frozen_artifact_sha256
+        summary["prediction_failures"] = failures
+        consumed_at = _utc_now()
+        for receipt_sha256 in receipt_hashes:
+            record = dict(records[receipt_sha256])
+            record["consumed_at_utc"] = consumed_at
+            record["consumed_validation_phase"] = phase
+            records[receipt_sha256] = record
+        registry["records"] = records
+        collection["prediction_receipts"] = registry
+        return summary, capture_contracts[0]
+
+    def _is_idempotent_prediction_receipt_replay_locked(
+        self,
+        session: Mapping[str, object],
+        collection: Mapping[str, object],
+        *,
+        phase: str,
+        receipt_tokens: Sequence[object],
+        model_artifact_sha256: str | None,
+        existing_summary: Mapping[str, object],
+    ) -> bool:
+        """Recognize only an exact already-consumed bundle; never consume twice."""
+
+        if model_artifact_sha256 is None or len(receipt_tokens) != 15:
+            return False
+        normalized_tokens = [str(token or "") for token in receipt_tokens]
+        if (
+            len(set(normalized_tokens)) != 15
+            or any(
+                not PREDICTION_RECEIPT_TOKEN_PATTERN.fullmatch(token)
+                for token in normalized_tokens
+            )
+        ):
+            return False
+        try:
+            current_artifact_sha256 = _normalized_model_artifact_sha256(
+                model_artifact_sha256
+            )
+            frozen_artifact_sha256 = _normalized_model_artifact_sha256(
+                collection.get("model_artifact_sha256")
+            )
+            assessment_viewport = _verified_assessment_viewport(collection)
+            _, records = _prediction_receipt_registry(collection)
+        except StudyValidationError:
+            return False
+        if current_artifact_sha256 != frozen_artifact_sha256:
+            return False
+        linked_data = dict(session.get("linked_data") or {})
+        record_hashes: list[str] = []
+        uncertainty_observations: list[dict[str, Any]] = []
+        for ordinal, token in enumerate(normalized_tokens):
+            record = records.get(_receipt_token_sha256(token))
+            if not isinstance(record, Mapping):
+                return False
+            if (
+                not record.get("consumed_at_utc")
+                or record.get("consumed_validation_phase") != phase
+            ):
+                return False
+            issued = record.get("issued")
+            issued_record_sha256 = str(record.get("issued_record_sha256") or "")
+            if (
+                not isinstance(issued, Mapping)
+                or canonical_sha256(issued) != issued_record_sha256
+                or issued.get("study_session_id") != session.get("study_session_id")
+                or issued.get("authorization_fingerprint_sha256")
+                != session.get("access_token_sha256")
+                or issued.get("assessment_id") != collection.get("assessment_id")
+                or issued.get("model_name") != linked_data.get("model_name")
+                or issued.get("model_artifact_sha256") != frozen_artifact_sha256
+                or issued.get("capture_session_id")
+                != linked_data.get("gaze_session_id")
+                or issued.get("phase") != phase
+                or issued.get("receipt_ordinal") != ordinal
+            ):
+                return False
+            prediction = issued.get("prediction")
+            if not isinstance(prediction, Mapping):
+                return False
+            prediction_success = prediction.get("success") is True
+            try:
+                uncertainty = _uncertainty_from_stored_prediction(
+                    prediction,
+                    prediction_success=prediction_success,
+                    viewport=(
+                        assessment_viewport["width_px"],
+                        assessment_viewport["height_px"],
+                    ),
+                )
+            except StudyValidationError:
+                return False
+            uncertainty_observations.append(
+                _receipt_uncertainty_observation(
+                    issued_record_sha256=issued_record_sha256,
+                    phase=phase,
+                    receipt_ordinal=ordinal,
+                    target_id=str(dict(issued.get("target") or {}).get("target_id") or ""),
+                    target_repeat_index=ordinal % 3,
+                    prediction_success=prediction_success,
+                    uncertainty=uncertainty,
+                )
+            )
+            record_hashes.append(issued_record_sha256)
+        bundle_core = {
+            "schema_version": PREDICTION_RECEIPT_SCHEMA_VERSION,
+            "status": "verified",
+            "phase": phase,
+            "count": len(record_hashes),
+            "receipt_record_sha256s": record_hashes,
+        }
+        expected_bundle = {
+            **bundle_core,
+            "bundle_sha256": canonical_sha256(bundle_core),
+        }
+        if canonical_json_bytes(
+            existing_summary.get("prediction_receipt_bundle")
+        ) != canonical_json_bytes(expected_bundle):
+            return False
+        expected_uncertainty_summary = _summarize_receipt_uncertainty(
+            uncertainty_observations,
+            status="verified",
+        )
+        if (
+            canonical_json_bytes(existing_summary.get("uncertainty_observations"))
+            != canonical_json_bytes(uncertainty_observations)
+            or canonical_json_bytes(existing_summary.get("uncertainty_summary"))
+            != canonical_json_bytes(expected_uncertainty_summary)
+        ):
+            return False
+        expected_payload_sha256 = canonical_sha256(
+            {
+                "samples": existing_summary.get("samples"),
+                "capture_contract": existing_summary.get("capture_contract"),
+                "prediction_receipt_bundle": expected_bundle,
+                "uncertainty_observations": uncertainty_observations,
+                "uncertainty_summary": expected_uncertainty_summary,
+                "prediction_receipt_status": "verified",
+                "prediction_receipts_verified": True,
+                "model_artifact_sha256": frozen_artifact_sha256,
+                "gaze_measurement_contract_sha256": existing_summary.get(
+                    "gaze_measurement_contract_sha256"
+                ),
+                "assessment_viewport": existing_summary.get(
+                    "assessment_viewport"
+                ),
+            }
+        )
+        return (
+            existing_summary.get("validation_payload_sha256")
+            == expected_payload_sha256
+        )
 
     def record_general_profile(
         self,
@@ -940,6 +1901,11 @@ class ParticipantStudyStore:
                             "reasons": [],
                             "interrupted_rounds": [],
                         },
+                        "model_artifact_sha256": None,
+                        "prediction_receipts": {
+                            "schema_version": PREDICTION_RECEIPT_SCHEMA_VERSION,
+                            "records": {},
+                        },
                     }
                 )
                 self._event(session, "general_collection_started")
@@ -961,17 +1927,24 @@ class ParticipantStudyStore:
         access_token: str,
         *,
         phase: str,
-        samples: list[Mapping[str, object]],
+        prediction_receipts: Sequence[object] | None = None,
+        model_artifact_sha256: str | None = None,
+        samples: list[Mapping[str, object]] | None = None,
         capture_contract: Mapping[str, object] | None = None,
+        client_prediction_payload_present: bool = False,
     ) -> dict[str, Any]:
         if phase not in {"start", "end"}:
             raise StudyValidationError("validation phase must be start or end")
-        normalized_contract = None
-        if capture_contract is not None:
-            try:
-                normalized_contract = normalize_capture_contract(capture_contract)
-            except ValueError as exc:
-                raise StudyValidationError(str(exc)) from exc
+        receipt_tokens = list(prediction_receipts or [])
+        legacy_client_payload_present = (
+            client_prediction_payload_present
+            or samples is not None
+            or capture_contract is not None
+        )
+        if receipt_tokens and legacy_client_payload_present:
+            raise StudyValidationError(
+                "receipt validation must not include client prediction samples"
+            )
         with self._lock:
             path, session = self._read(session_id)
             self._authorize(session, access_token)
@@ -982,15 +1955,87 @@ class ParticipantStudyStore:
                 _verified_session_measurement_contract(collection)
             )
             assessment_viewport = _verified_assessment_viewport(collection)
-            try:
-                summary = summarize_validation_samples(
-                    samples,
+            expected_phase = (
+                "start_validation_required"
+                if phase == "start"
+                else "end_validation_required"
+            )
+            if collection.get("phase") != expected_phase:
+                existing = dict(collection.get("validations") or {}).get(phase)
+                if (
+                    receipt_tokens
+                    and isinstance(existing, Mapping)
+                    and self._is_idempotent_prediction_receipt_replay_locked(
+                        session,
+                        collection,
+                        phase=phase,
+                        receipt_tokens=receipt_tokens,
+                        model_artifact_sha256=model_artifact_sha256,
+                        existing_summary=existing,
+                    )
+                ):
+                    return self._public_session(session)
+                raise StudyStateError(f"{phase} validation is not expected now")
+            if receipt_tokens:
+                if model_artifact_sha256 is None:
+                    raise StudyValidationError(
+                        "current model artifact hash is required for receipt validation"
+                    )
+                summary, normalized_contract = (
+                    self._consume_general_prediction_receipts_locked(
+                        session,
+                        collection,
+                        phase=phase,
+                        receipt_tokens=receipt_tokens,
+                        model_artifact_sha256=model_artifact_sha256,
+                        measurement_contract=measurement_contract,
+                        measurement_provenance=measurement_provenance,
+                        assessment_viewport=assessment_viewport,
+                    )
+                )
+            else:
+                normalized_contract = None
+                summary = unavailable_validation_summary(
                     viewport_width_px=assessment_viewport["width_px"],
                     viewport_height_px=assessment_viewport["height_px"],
                     measurement_contract=measurement_contract,
+                    reason=(
+                        "legacy_client_prediction_payload_ignored"
+                        if legacy_client_payload_present
+                        else "prediction_receipts_unavailable"
+                    ),
                 )
-            except (TypeError, ValueError) as exc:
-                raise StudyValidationError(str(exc)) from exc
+                bundle_core = {
+                    "schema_version": PREDICTION_RECEIPT_SCHEMA_VERSION,
+                    "status": "unavailable",
+                    "phase": phase,
+                    "count": 0,
+                    "receipt_record_sha256s": [],
+                }
+                summary["prediction_receipt_bundle"] = {
+                    **bundle_core,
+                    "bundle_sha256": canonical_sha256(bundle_core),
+                }
+                summary["model_artifact_sha256"] = collection.get(
+                    "model_artifact_sha256"
+                )
+                summary["uncertainty_observations"] = []
+                summary["uncertainty_summary"] = _summarize_receipt_uncertainty(
+                    [],
+                    status="unavailable",
+                )
+                integrity = collection.setdefault("gaze_integrity", {})
+                reasons = list(integrity.get("reasons") or [])
+                reason = "prediction_receipts_unavailable"
+                if reason not in reasons:
+                    reasons.append(reason)
+                integrity.update({"eligible": False, "reasons": reasons})
+                self._event(
+                    session,
+                    "general_prediction_receipts_unavailable",
+                    phase=phase,
+                    legacy_client_payload_ignored=legacy_client_payload_present,
+                )
             if normalized_contract is not None:
                 summary["capture_contract"] = normalized_contract
             summary["assessment_viewport"] = assessment_viewport
@@ -1003,29 +2048,28 @@ class ParticipantStudyStore:
                 {
                     "samples": summary["samples"],
                     "capture_contract": normalized_contract,
+                    "prediction_receipt_bundle": summary[
+                        "prediction_receipt_bundle"
+                    ],
+                    "uncertainty_observations": summary[
+                        "uncertainty_observations"
+                    ],
+                    "uncertainty_summary": summary["uncertainty_summary"],
+                    "prediction_receipt_status": summary[
+                        "prediction_receipt_status"
+                    ],
+                    "prediction_receipts_verified": summary[
+                        "prediction_receipts_verified"
+                    ],
+                    "model_artifact_sha256": summary.get(
+                        "model_artifact_sha256"
+                    ),
                     "gaze_measurement_contract_sha256": summary[
                         "gaze_measurement_contract_sha256"
                     ],
                     "assessment_viewport": assessment_viewport,
                 }
             )
-            expected_phase = (
-                "start_validation_required"
-                if phase == "start"
-                else "end_validation_required"
-            )
-            if collection.get("phase") != expected_phase:
-                existing = dict(collection.get("validations") or {}).get(phase)
-                if existing and (
-                    existing.get("validation_payload_sha256")
-                    == summary["validation_payload_sha256"]
-                    or (
-                        existing.get("validation_payload_sha256") is None
-                        and existing.get("samples_sha256") == summary["samples_sha256"]
-                    )
-                ):
-                    return self._public_session(session)
-                raise StudyStateError(f"{phase} validation is not expected now")
             calibration_quality = dict(
                 dict(session.get("quality") or {}).get("calibration") or {}
             )
@@ -1118,6 +2162,21 @@ class ParticipantStudyStore:
                     is True
                     for item in validation_summaries
                 )
+                prediction_receipt_eligible = all(
+                    item.get("prediction_receipt_status") == "verified"
+                    and item.get("prediction_receipts_verified") is True
+                    and dict(item.get("prediction_receipt_bundle") or {}).get(
+                        "status"
+                    )
+                    == "verified"
+                    and int(
+                        dict(item.get("prediction_receipt_bundle") or {}).get(
+                            "count", 0
+                        )
+                    )
+                    == 15
+                    for item in validation_summaries
+                )
                 target_independence_eligible = all(
                     dict(item.get("target_independence_check") or {}).get("status")
                     == "passed"
@@ -1142,10 +2201,17 @@ class ParticipantStudyStore:
                     ]
                     metrics["effective_sampling_hz"] = None
                 geometry_contract_eligible = (
-                    capture_contract_eligible
+                    prediction_receipt_eligible
+                    and capture_contract_eligible
                     and target_independence_eligible
                     and gaze_integrity_eligible
                 )
+                metrics["prediction_receipt_status"] = (
+                    "verified" if prediction_receipt_eligible else "unavailable"
+                )
+                metrics[
+                    "prediction_receipt_eligible"
+                ] = prediction_receipt_eligible
                 metrics["capture_contract_eligible"] = capture_contract_eligible
                 metrics[
                     "target_independence_eligible"

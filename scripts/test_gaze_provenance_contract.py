@@ -2,12 +2,23 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from core.gaze_core.model_registry import model_path
 from core.gaze_core.sample_store import create_session
+from core.participant_study import ParticipantStudyStore
+from scripts.test_general_collection import (
+    _assessment_viewport,
+    _capture_contract,
+    _consent_payload,
+    _profile,
+    _rehearsal_settings,
+    _system_profile,
+)
 from web import create_app
 
 
@@ -204,6 +215,161 @@ class GazeProvenanceContractTests(unittest.TestCase):
         self.assertEqual(captured["target_y_norm"], -0.456)
         self.assertEqual(captured["motion_block_id"], "researcher-defined")
         self.assertEqual(captured["collection_protocol"], "legacy-custom-v7")
+
+
+class PredictionReceiptRouteTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory(prefix="lexigaze-receipt-route-")
+        self.addCleanup(self.temp_dir.cleanup)
+        self.root = Path(self.temp_dir.name)
+        self.config = {
+            **_rehearsal_settings(),
+            "TESTING": True,
+            "LEXIGAZE_PUBLIC_STUDY_MODE": "1",
+            "LEXIGAZE_STUDY_ROOT": str(self.root),
+            "LEXIGAZE_GAZE_ROOT": str(self.root),
+        }
+        self.store = ParticipantStudyStore(self.root, settings=self.config)
+        pair = self.store.create_collection_invite_pairs(1)[0]
+        enrolled = self.store.enroll(
+            _consent_payload(pair["visits"][0]["invite_code"])
+        )
+        self.session_id = enrolled["study_session_id"]
+        self.token = enrolled["access_token"]
+        self.model_name = "receipt-route-model"
+        self.store.record_general_profile(self.session_id, self.token, _profile())
+        self.store.record_general_system_check(
+            self.session_id, self.token, _system_profile()
+        )
+        self.store.start_calibration(self.session_id, self.token, "GAZE-ROUTE")
+        self.store.complete_calibration(
+            self.session_id,
+            self.token,
+            {
+                "passed": True,
+                "capture_contract": _capture_contract(),
+            },
+            model_name=self.model_name,
+        )
+        self.store.start_general_collection(
+            self.session_id,
+            self.token,
+            assessment_viewport=_assessment_viewport(),
+        )
+        artifact = model_path(self.root, self.model_name)
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        artifact.write_text('{"fixture":true}\n', encoding="utf-8")
+        self.client = create_app(self.config).test_client()
+        self.headers = {
+            "Authorization": f"Bearer {self.token}",
+            "X-Lexigaze-Study-Session": self.session_id,
+        }
+        self.payload = {
+            "image_data": "data:image/jpeg;base64,fixture",
+            "capture_contract": _capture_contract(),
+            "model_name": self.model_name,
+            "viewport_width": 1280,
+            "viewport_height": 800,
+            "study_session_id": self.session_id,
+            "allow_cuda": False,
+            "validation_phase": "start",
+            "validation_target_id": "heldout_top_left",
+        }
+
+    def test_success_and_explicit_no_face_return_receipts_but_hard_errors_do_not(
+        self,
+    ) -> None:
+        success = {
+            "ok": True,
+            "screen_xy_px": [640.0, 400.0],
+            "screen_xy_norm": [0.0, 0.0],
+            "capture_contract_check": {
+                "status": "compatible",
+                "compatible": True,
+            },
+        }
+        with patch("web.routes.gaze.predict", return_value=(success, 200)):
+            response = self.client.post(
+                "/api/gaze/predict",
+                json=self.payload,
+                headers=self.headers,
+            )
+        self.assertEqual(response.status_code, 200)
+        first = response.get_json()["prediction_receipt"]["token"]
+        self.assertRegex(first, r"^PR-[A-F0-9]{48}$")
+
+        no_face = {
+            "ok": False,
+            "error": "no face detected in frame",
+            "failure_code": "no_face_detected",
+            "failure_stage": "attributable_sensor_failure",
+            "capture_contract_check": {
+                "status": "compatible",
+                "compatible": True,
+            },
+        }
+        with patch("web.routes.gaze.predict", return_value=(no_face, 400)):
+            response = self.client.post(
+                "/api/gaze/predict",
+                json=self.payload,
+                headers=self.headers,
+            )
+        self.assertEqual(response.status_code, 400)
+        second = response.get_json()["prediction_receipt"]["token"]
+        self.assertRegex(second, r"^PR-[A-F0-9]{48}$")
+
+        capture_hard = {
+            "ok": False,
+            "error": "capture contract mismatch",
+            "failure_code": "capture_contract_mismatch",
+            "failure_stage": "capture_hard_error",
+            "capture_contract_check": {
+                "status": "mismatch",
+                "compatible": False,
+            },
+        }
+        with patch("web.routes.gaze.predict", return_value=(capture_hard, 409)):
+            response = self.client.post(
+                "/api/gaze/predict",
+                json=self.payload,
+                headers=self.headers,
+            )
+        self.assertEqual(response.status_code, 409)
+        self.assertNotIn("prediction_receipt", response.get_json())
+
+        public = self.store.get_session(self.session_id, self.token)
+        self.assertNotIn("prediction_receipts", public["general_collection"])
+        self.assertNotIn(first, json.dumps(public))
+        self.assertNotIn(second, json.dumps(public))
+
+    def test_receipt_routes_reject_non_object_json_without_predicting(self) -> None:
+        endpoints = (
+            "/api/gaze/predict",
+            "/api/predict",
+            f"/api/study/sessions/{self.session_id}/general/validation",
+        )
+        with patch("web.routes.gaze.predict") as predict:
+            for endpoint in endpoints:
+                with self.subTest(endpoint=endpoint):
+                    response = self.client.post(
+                        endpoint,
+                        json=[{}],
+                        headers=self.headers,
+                    )
+                    self.assertEqual(response.status_code, 400)
+                    self.assertEqual(
+                        response.get_json(),
+                        {
+                            "ok": False,
+                            "error": "request JSON body must be an object",
+                        },
+                    )
+        self.assertFalse(predict.called)
+        session = self.store.get_session(self.session_id, self.token)
+        self.assertEqual(
+            session["general_collection"]["phase"],
+            "start_validation_required",
+        )
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ Machine-readable result: [`results/2026-08-10-webcam-gaze-measurement-ceiling-v1
 | Cross-phase camera aspect-ratio integrity | failed |
 | Calibration/evaluation target independence | failed |
 | Model validation metric consistency | failed |
+| Frozen-v2 receipt uncertainty integrity | not_applicable |
 | Calibration targets | 13 |
 | Evaluation targets | 5 |
 | Below-tolerance overlaps | 5 |
@@ -188,11 +189,62 @@ Frozen correction: `start_trained_median_translation`. Translation was fit only 
 | Median spatial error px | 128.69 | 148.43 | 19.74 |
 | P90 spatial error px | 278.00 | 199.41 | -78.59 |
 
-Target-cluster bootstrap (10000 resamples, seed `20260810`) gives a corrected-minus-raw median-error 95% interval of `[-155.90, 144.69] px`; `39.21%` of resamples improve.
+Target-cluster bootstrap (20000 resamples, seed `20260810`) gives a corrected-minus-raw median-error 95% interval of `[-155.90, 144.69] px`; `38.98%` of resamples improve.
 The paired resampling unit is `evaluation_target_id` (5 observed clusters; 5 draws per resample). Sampler: `sha256(seed:resample_index:draw_index) modulo target_count`.
 The bootstrap interval is descriptive only and does not establish a population-level correction benefit.
 
 This result cannot relabel the session or select a production correction.
+
+## Start-only repeatability proxy (descriptive only)
+
+Claim boundary: `proxy_not_predictive_uncertainty`. The score is computed only from repeated start-validation predictions; target risk is computed only from end-validation target error. The analysis unit is a whole target cluster, not an individual frame or reading sample.
+
+The coverage grid is frozen at `20/40/60/80/100%`; it is not searched, and this result cannot select an abstention threshold, change a quality band, or authorize per-sample abstention.
+
+| Target | Start repeats | Start RMS repeatability px | End samples | End mean error px | End median error px |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| bottom_left | 3 | 15.18 | 3 | 43.89 | 50.69 |
+| bottom_right | 3 | 16.27 | 3 | 108.23 | 108.63 |
+| center | 3 | 10.84 | 3 | 282.22 | 278.00 |
+| top_left | 3 | 36.45 | 3 | 218.71 | 218.75 |
+| top_right | 3 | 42.40 | 3 | 117.65 | 128.69 |
+
+| Requested coverage | Achieved coverage | Retained targets | End target-macro mean error px | End target-macro median error px |
+| ---: | ---: | --- | ---: | ---: |
+| 20% | 20% | center | 282.22 | 278.00 |
+| 40% | 40% | center, bottom_left | 163.05 | 164.35 |
+| 60% | 60% | center, bottom_left, bottom_right | 144.78 | 108.63 |
+| 80% | 80% | center, bottom_left, bottom_right, top_left | 163.26 | 163.69 |
+| 100% | 100% | center, bottom_left, bottom_right, top_left, top_right | 154.14 | 128.69 |
+
+Target-level Spearman association (`spearman_start_proxy_vs_end_target_mean_error`): `-0.100`; a useful low-to-high risk proxy would have a positive association.
+
+At 20% coverage, end target-macro mean error was `282.22 px`, versus `154.14 px` at full coverage (difference `128.08 px`). Recorded conclusion: `available_start_repeatability_proxy_does_not_rank_end_risk`.
+
+This is a preserved negative descriptive result, not predictive uncertainty calibration.
+
+## Receipt-verified held-out uncertainty coverage-risk
+
+Status: `not_evaluable`; model artifact has no uncertainty_v2 bundle.
+
+No fixed coverage-risk curve, threshold, abstention policy, or quality-band change is authorized. The start-only repeatability proxy remains explicitly `proxy_not_predictive_uncertainty`.
+
+## Predictive uncertainty v2 evidence requirements
+
+Status: `required_before_predictive_uncertainty_claim`. A receipt-verified descriptive fixed-target coverage-risk curve is not reconstructable.
+
+Current evidence inventory:
+
+- Model OOF/uncertainty fields: `none`
+- Validation uncertainty fields: `none`
+- Reconstructable calibration sensor fields: `none`
+- Reason: model artifact has no uncertainty_v2 bundle.
+
+A frozen v2 must record one row per outer-fold held-out sample with: `sample_id`, `outer_fold_id`, `outer_holdout_group_id`, `target_id`, `oof_predicted_x_px`, `oof_predicted_y_px`, `oof_residual_x_px`, `oof_residual_y_px`, `oof_spatial_error_px`, `training_only_ood_score`, `training_only_leverage_score`, `training_only_prediction_covariance_px`.
+
+The uncertainty definition must be bound before evaluation with: `uncertainty_definition_id`, `uncertainty_definition_version`, `uncertainty_definition_sha256`, `training_partition_only_fit_proof`, `coverage_grid`, `frozen_abstention_thresholds_or_explicit_none`.
+
+The score, OOD/leverage model, and covariance must be fit using training partitions only. Evaluation requires a new untouched capture, preserves raw and abstained predictions, and cannot use holdout target error to construct the uncertainty score. V1 may not choose a definition or threshold from this descriptive result.
 
 ## Model metric contract
 
@@ -211,7 +263,7 @@ A failed consistency check records the historical M0 artifact bug; it does not r
 
 ## Not evaluable
 
-- Predictive uncertainty calibration: **not evaluable**; validation samples did not record uncertainty.
+- Predictive uncertainty calibration: **not evaluable**; model artifact has no uncertainty_v2 bundle.
 - Natural-reading line accuracy: **not evaluable**; no independent line-level ground truth exists.
 - Natural-reading word accuracy: **not evaluable**; no independent word-level ground truth exists.
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -17,18 +18,20 @@ from .calibration_regression import (
     fit_best_stage,
     fit_standardized_ridge,
     motion_conditioned_features,
-    standardized_design,
 )
 from .model_registry import clean_model_name, model_path
 from .motion_experiment import (
     BASELINE_MODEL,
     CHALLENGER_MODEL,
     VALIDATION_SCHEME,
+    build_uncertainty_v2_bundle,
     evaluate_motion_candidates,
 )
 from .motion_robustness import audit_payload, load_motion_samples
 from .sample_store import ensure_sessions_dir
+from .stage_pipeline import apply_stage_chain
 from .torch_runtime import cuda_runtime_available
+from .uncertainty import validate_complete_motion_grid
 
 
 def _selected_motion_validation_metrics(
@@ -53,6 +56,29 @@ def _selected_motion_validation_metrics(
         "validation_px_error": float(validation_error),
         "hyperparameter_cv_px_error": float(hyperparameter_error),
     }
+
+
+def _stable_training_sample_id(
+    dataset_id: str,
+    manifest_index: int,
+    record: dict,
+) -> str:
+    """Create an opaque, deterministic id without persisting a source path."""
+
+    identity = {
+        "dataset_id": str(dataset_id),
+        "manifest_index": int(manifest_index),
+        "capture_burst_id": str(record.get("capture_burst_id", "")),
+        "motion_block_id": str(record.get("motion_block_id", "")),
+        "point_index": str(record.get("point_index", "")),
+    }
+    serialized = json.dumps(
+        identity,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(serialized).hexdigest()
 
 
 def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
@@ -139,9 +165,11 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
         validation_groups = []
         head_pose_list = []
         face_geometry_list = []
+        uncertainty_sample_ids = []
+        uncertainty_target_ids = []
 
         # 2. Extract baseline predictions
-        for record in records:
+        for manifest_index, record in enumerate(records):
             if not record.get("normalized_face_path"):
                 continue
             if uses_motion_protocol:
@@ -176,10 +204,30 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
             if uses_motion_protocol:
                 head_pose_list.append(head_pose)
                 face_geometry_list.append(face_geometry)
+                uncertainty_sample_ids.append(
+                    _stable_training_sample_id(dataset_id, manifest_index, record)
+                )
+                uncertainty_target_ids.append(str(record.get("point_index", "")))
 
         N = len(gaze_list)
         if N == 0:
             return {"ok": False, "error": "no valid face images processed successfully"}, 400
+        if uses_motion_protocol:
+            try:
+                validate_complete_motion_grid(
+                    uncertainty_sample_ids,
+                    uncertainty_target_ids,
+                    validation_groups,
+                )
+            except ValueError as exc:
+                return {
+                    "ok": False,
+                    "error": (
+                        "uncertainty v2 requires the exact frozen 13x5 processed "
+                        f"grid: {exc}"
+                    ),
+                    "uncertainty_v2_status": "failed_closed_incomplete_grid",
+                }, 400
 
         # 3. Fit stages sequentially
         stages = []
@@ -246,15 +294,19 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                 validation_groups=grouped_validation,
             )
 
-            # Recompute predictions on train set for metrics
-            yaw = X_raw[:, 1]
-            pitch = X_raw[:, 0]
-            if poly_degree == 1:
-                X = np.column_stack([yaw, pitch, np.ones(N)])
-            else:
-                X = np.column_stack([yaw, pitch, yaw * yaw, pitch * pitch, yaw * pitch, np.ones(N)])
-
-            baseline_predictions = X @ W
+            # Preserve the historical unclamped training metric while sharing
+            # the same stage-order/design implementation as nested evaluation.
+            baseline_predictions = apply_stage_chain(
+                X_raw,
+                [{
+                    "stage": 1,
+                    "calibrator_type": "gaze_polynomial",
+                    "W": W.tolist(),
+                    "poly_degree": poly_degree,
+                    "alpha": best_alpha,
+                }],
+                clamp=False,
+            )
             baseline_validation_error = baseline_hyperparameter_error
             best_validation_error = baseline_hyperparameter_error
             selected_validation_metrics = {
@@ -337,14 +389,6 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                 select_conditioned = False
 
             if select_conditioned:
-                pred_Y = (
-                    standardized_design(
-                        motion_features,
-                        feature_mean,
-                        feature_scale,
-                    )
-                    @ conditioned_weights
-                )
                 stages = [{
                     "stage": 1,
                     "calibrator_type": "motion_conditioned_ridge_v1",
@@ -362,6 +406,13 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                     "validation_scheme": validation_scheme,
                     "mean_px_error": 0.0,
                 }]
+                pred_Y = apply_stage_chain(
+                    X_raw,
+                    stages,
+                    head_pitch_yaw=np.array(head_pose_list),
+                    face_geometry=np.array(face_geometry_list),
+                    clamp=False,
+                )
             else:
                 pred_Y = baseline_predictions
                 stages = [{
@@ -381,28 +432,11 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                 }]
         else:
             # Stage 2+: Secondary Calibration using self-tuning LOOCV
-            current_inputs = gaze_list
-            for stage_idx, stage_meta in enumerate(stages):
-                W_stage = np.array(stage_meta["W"])
-                s_degree = stage_meta["poly_degree"]
-                
-                next_inputs = []
-                for idx in range(N):
-                    if stage_idx == 0:
-                        p_i, y_i = current_inputs[idx][0], current_inputs[idx][1]
-                    else:
-                        y_i, p_i = current_inputs[idx][0], current_inputs[idx][1]
-                        
-                    if s_degree == 1:
-                        feat = np.array([y_i, p_i, 1.0])
-                    else:
-                        feat = np.array([y_i, p_i, y_i * y_i, p_i * p_i, y_i * p_i, 1.0])
-                    
-                    pred = feat @ W_stage
-                    next_inputs.append([float(pred[0]), float(pred[1])])
-                current_inputs = next_inputs
-
-            s1_arr = np.array(current_inputs)
+            s1_arr = apply_stage_chain(
+                np.array(gaze_list),
+                stages,
+                clamp=False,
+            )
             Y = np.array(target_list)
             W2, poly_degree, best_alpha, best_validation_error = fit_best_stage(
                 s1_arr,
@@ -413,18 +447,9 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                 validation_groups=grouped_validation,
             )
 
-            # Recompute predictions on train set for metrics
-            s1_x = s1_arr[:, 0]
-            s1_y = s1_arr[:, 1]
-            if poly_degree == 1:
-                X = np.column_stack([s1_x, s1_y, np.ones(N)])
-            else:
-                X = np.column_stack([s1_x, s1_y, s1_x * s1_x, s1_y * s1_y, s1_x * s1_y, np.ones(N)])
-
-            pred_Y = X @ W2
-            
             stages = list(stages) + [{
                 "stage": len(stages) + 1,
+                "calibrator_type": "gaze_polynomial",
                 "W": W2.tolist(),
                 "poly_degree": poly_degree,
                 "alpha": best_alpha,
@@ -433,6 +458,11 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
                 "validation_scheme": validation_scheme,
                 "mean_px_error": 0.0
             }]
+            pred_Y = apply_stage_chain(
+                np.array(gaze_list),
+                stages,
+                clamp=False,
+            )
 
         # 4. Calculate error and noise metrics
         errors = []
@@ -471,6 +501,19 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
             inherited_contract=inherited_fit_target_contract,
             inherited_targets_required=base_model_name != "0",
         )
+        uncertainty_v2_bundle = None
+        if uses_motion_protocol:
+            uncertainty_v2_bundle = build_uncertainty_v2_bundle(
+                np.array(gaze_list),
+                np.array(head_pose_list),
+                np.array(face_geometry_list),
+                np.array(target_list),
+                viewport_list,
+                validation_groups,
+                uncertainty_sample_ids,
+                uncertainty_target_ids,
+                stages,
+            )
 
         # Save model JSON artifact to the chenghao/gaze_data/runs/ directory
         output_model_path = model_path(root, output_name)
@@ -489,6 +532,9 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
             "train_samples": N,
             "fit_target_contract": fit_target_contract,
         }
+        if uncertainty_v2_bundle is not None:
+            calibration_data["model_artifact_schema_version"] = 2
+            calibration_data["uncertainty_v2"] = uncertainty_v2_bundle
         if "hyperparameter_cv_px_error" in stages[-1]:
             calibration_data["hyperparameter_cv_px_error"] = stages[-1][
                 "hyperparameter_cv_px_error"
@@ -513,6 +559,18 @@ def train_placeholder(root: Path, payload: dict) -> tuple[dict, int]:
             "capture_contract": capture_contract,
             "fit_target_contract": fit_target_contract,
         }
+        if uncertainty_v2_bundle is not None:
+            response["uncertainty_v2"] = {
+                "status": uncertainty_v2_bundle["status"],
+                "definition_sha256": uncertainty_v2_bundle[
+                    "definition_sha256"
+                ],
+                "threshold": None,
+                "abstention_status": uncertainty_v2_bundle[
+                    "abstention_policy"
+                ]["status"],
+                "fresh_matched_contract_capture_required": True,
+            }
         if "hyperparameter_cv_px_error" in stages[-1]:
             response["hyperparameter_cv_px_error"] = stages[-1][
                 "hyperparameter_cv_px_error"

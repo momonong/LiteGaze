@@ -90,6 +90,8 @@ async function api(path, options = {}) {
   if (!response.ok || payload.ok === false) {
     const error = new Error(payload.error || `Request failed (${response.status})`);
     error.status = response.status;
+    error.payload = payload;
+    error.code = payload.failure_stage || payload.failure_code || "request_failed";
     throw error;
   }
   return payload;
@@ -362,7 +364,7 @@ function frameSnapshot() {
   return snapshot;
 }
 
-async function predictFrame() {
+async function predictFrame(validationContext = null) {
   const viewport = assertAssessmentViewportStable();
   const snapshot = frameSnapshot();
   return api("/api/gaze/predict", {
@@ -374,8 +376,11 @@ async function predictFrame() {
       viewport_width: viewport.width_px,
       viewport_height: viewport.height_px,
       study_session_id: state.context.study_session_id,
-      study_access_token: state.context.access_token,
       allow_cuda: false,
+      ...(validationContext ? {
+        validation_phase: validationContext.phase,
+        validation_target_id: validationContext.targetId,
+      } : {}),
     }),
   });
 }
@@ -394,7 +399,7 @@ async function runValidation() {
     if (!Array.isArray(points) || points.length !== 5) {
       throw new Error("找不到 frozen five-point held-out validation contract。");
     }
-    const samples = [];
+    const predictionReceipts = [];
     ui.targetOverlay.classList.remove("hidden");
     for (const point of points) {
       const targetId = String(point.target_id || "");
@@ -412,29 +417,24 @@ async function runValidation() {
       await delay(700);
       for (let repeat = 0; repeat < 3; repeat += 1) {
         try {
-          const result = await predictFrame();
-          samples.push({
-            target_id: targetId,
-            target_x_px: targetX,
-            target_y_px: targetY,
-            target_x_norm: targetXNorm,
-            target_y_norm: targetYNorm,
-            prediction_success: true,
-            predicted_x_px: result.screen_xy_px[0],
-            predicted_y_px: result.screen_xy_px[1],
-          });
+          const result = await predictFrame({ phase, targetId });
+          const token = String(result.prediction_receipt?.token || "");
+          if (!/^PR-[A-F0-9]{48}$/.test(token)) {
+            const error = new Error("Server 未回傳有效的 validation prediction receipt。");
+            error.code = "prediction_receipt_unavailable";
+            throw error;
+          }
+          predictionReceipts.push(token);
         } catch (error) {
           if (error?.code === "assessment_viewport_changed") throw error;
-          samples.push({
-            target_id: targetId,
-            target_x_px: targetX,
-            target_y_px: targetY,
-            target_x_norm: targetXNorm,
-            target_y_norm: targetYNorm,
-            prediction_success: false,
-          });
+          const token = String(error?.payload?.prediction_receipt?.token || "");
+          if (!/^PR-[A-F0-9]{48}$/.test(token)) {
+            error.code = "prediction_receipt_unavailable";
+            throw error;
+          }
+          predictionReceipts.push(token);
         }
-        ui.validationProgress.textContent = `${samples.length} / 15`;
+        ui.validationProgress.textContent = `${predictionReceipts.length} / 15`;
         await delay(250);
       }
     }
@@ -443,14 +443,28 @@ async function runValidation() {
       method: "POST",
       body: JSON.stringify({
         phase,
-        samples,
-        capture_contract: state.captureContract,
+        prediction_receipts: predictionReceipts,
       }),
     });
     state.session = result.session;
     await routeCollectionPhase();
   } catch (error) {
     ui.targetOverlay.classList.add("hidden");
+    if (error?.code === "prediction_receipt_unavailable") {
+      try {
+        const fallback = await api(`/api/study/sessions/${state.context.study_session_id}/general/validation`, {
+          method: "POST",
+          body: JSON.stringify({ phase, prediction_receipts: [] }),
+        });
+        state.session = fallback.session;
+        showAlert("Prediction receipt 無法建立；本次 gaze 已明確降級為 behavioral-only，但閱讀與作答仍可繼續。");
+        await routeCollectionPhase();
+        return;
+      } catch (fallbackError) {
+        showAlert(fallbackError.message);
+        return;
+      }
+    }
     showAlert(error.message);
   } finally {
     ui.validationBtn.disabled = false;
@@ -539,12 +553,16 @@ function renderProvisionalGeometryQuality() {
   ui.geometryQualityNotice.textContent = "";
   if (integrity?.eligible === false) {
     ui.geometryQualityNotice.classList.add("degraded");
-    ui.geometryQualityNotice.textContent = "閱讀 viewport 或 reading segment 已中斷；本次 gaze 已永久降級為 behavioral-only，但仍可完成閱讀與 word-review。";
+    const integrityReasons = Array.isArray(integrity.reasons) ? integrity.reasons : [];
+    ui.geometryQualityNotice.textContent = integrityReasons.includes("prediction_receipts_unavailable")
+      ? "Server-issued prediction receipts 無法驗證；client 預測座標未被採信，本次 gaze 已降級為 behavioral-only，但仍可完成閱讀與作答。"
+      : "閱讀 viewport 或 reading segment 已中斷；本次 gaze 已永久降級為 behavioral-only，但仍可完成閱讀與 word-review。";
     ui.geometryQualityNotice.classList.remove("hidden");
     return;
   }
   if (!quality) return;
   const mode = quality.recommended_gaze_mode;
+  const receiptStatus = String(quality.prediction_receipt_status || "unavailable");
   const captureContractStatus = String(quality.capture_contract_status || "unavailable");
   const contractMismatch = quality.capture_contract_compatible === false;
   const captureContractUnavailable = !contractMismatch
@@ -562,6 +580,9 @@ function renderProvisionalGeometryQuality() {
   } else {
     ui.geometryQualityNotice.classList.add("degraded");
     const blockers = [];
+    if (receiptStatus !== "verified" || quality.prediction_receipts_verified !== true) {
+      blockers.push("server-issued prediction receipts 不可用或未驗證");
+    }
     if (contractMismatch) {
       blockers.push("相機 capture contract 與校準不一致。");
     } else if (captureContractUnavailable) {

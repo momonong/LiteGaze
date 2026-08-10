@@ -58,7 +58,6 @@ function withStudyContext(body = {}) {
   return {
     ...body,
     study_session_id: studyContext.study_session_id,
-    study_access_token: studyContext.access_token,
   };
 }
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import tempfile
 import unittest
@@ -15,6 +16,7 @@ from core.gaze_core.sample_store import create_session, safe_session_dir
 from core.participant_study import ParticipantStudyStore
 from core.participant_study.protocol import activation_status, load_protocol
 from web import create_app
+from web.routes.study import _participant_model_name
 
 
 def _consent_payload(protocol: dict, *, mode: str = "dry_run") -> dict:
@@ -276,6 +278,22 @@ class ParticipantCalibrationRouteTests(unittest.TestCase):
             json={"gaze_session_id": self.gaze_session_id},
         )
 
+    def test_model_name_is_visit_and_capture_specific(self) -> None:
+        shared = {"participant_id": "GP-SHARED", "mode": "rehearsal"}
+        visit_one = {
+            **shared,
+            "collection_assignment": {"visit_index": 1},
+        }
+        visit_two = {
+            **shared,
+            "collection_assignment": {"visit_index": 2},
+        }
+        first = _participant_model_name(visit_one, "GAZE-CAPTURE-ONE")
+        second = _participant_model_name(visit_two, "GAZE-CAPTURE-TWO")
+        self.assertIn("_visit1_", first)
+        self.assertIn("_visit2_", second)
+        self.assertNotEqual(first, second)
+
     def test_quality_failure_deletes_the_entire_temporary_dataset(self) -> None:
         with (
             patch("web.routes.study.ParticipantStudyStore", return_value=self.store),
@@ -309,14 +327,20 @@ class ParticipantCalibrationRouteTests(unittest.TestCase):
     def test_successful_personalization_is_cpu_only_and_purges_images(self) -> None:
         quality = {"passed": True, "reasons": [], "sample_count": 65}
         fit_target_contract = build_fit_target_contract([(-0.8, -0.8), (0.0, 0.0)])
-        training_result = {
-            "ok": True,
-            "model_name": "participant-pilot-model",
-            "training_device": "cpu",
-            "best_val_px_error": 30.0,
-            "validation_scheme": "participant_holdout",
-            "fit_target_contract": fit_target_contract,
-        }
+
+        def successful_training(_root, payload):
+            return (
+                {
+                    "ok": True,
+                    "model_name": payload["output_model_name"],
+                    "training_device": "cpu",
+                    "best_val_px_error": 30.0,
+                    "validation_scheme": "participant_holdout",
+                    "fit_target_contract": fit_target_contract,
+                },
+                200,
+            )
+
         with (
             patch("web.routes.study.ParticipantStudyStore", return_value=self.store),
             patch(
@@ -325,13 +349,39 @@ class ParticipantCalibrationRouteTests(unittest.TestCase):
             ),
             patch(
                 "web.routes.study.train_placeholder",
-                return_value=(training_result, 200),
+                side_effect=successful_training,
             ) as train,
         ):
             response = self._complete()
         self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
         training_payload = train.call_args.args[1]
         self.assertIs(training_payload["allow_cuda"], False)
+        capture_digest = hashlib.sha256(
+            self.gaze_session_id.encode("utf-8")
+        ).hexdigest()[:12]
+        participant = self.store.get_session(
+            self.enrolled["study_session_id"],
+            self.enrolled["access_token"],
+        )
+        assignment = dict(participant.get("collection_assignment") or {})
+        visit_index = assignment.get("visit_index")
+        visit_label = (
+            f"visit{visit_index}" if visit_index is not None else "unpaired"
+        )
+        self.assertEqual(
+            training_payload["output_model_name"],
+            (
+                f"{self.enrolled['participant_id'].lower()}_pilot_"
+                f"{visit_label}_{capture_digest}_general_v1"
+            ),
+        )
+        self.assertNotEqual(
+            training_payload["output_model_name"],
+            _participant_model_name(
+                participant,
+                f"{self.gaze_session_id}-another-capture",
+            ),
+        )
         session_dir = safe_session_dir(
             self.root, self.gaze_session_id, require_exists=True
         )
@@ -346,6 +396,45 @@ class ParticipantCalibrationRouteTests(unittest.TestCase):
             status["quality"]["calibration"]["fit_target_contract"],
             fit_target_contract,
         )
+        self.assertEqual(
+            status["linked_data"]["model_name"],
+            training_payload["output_model_name"],
+        )
+
+    def test_training_response_model_name_mismatch_fails_closed(self) -> None:
+        quality = {"passed": True, "reasons": [], "sample_count": 65}
+        with (
+            patch("web.routes.study.ParticipantStudyStore", return_value=self.store),
+            patch(
+                "web.routes.study.audit_participant_calibration",
+                return_value=quality,
+            ),
+            patch(
+                "web.routes.study.train_placeholder",
+                return_value=(
+                    {
+                        "ok": True,
+                        "model_name": "wrong-model-name",
+                        "training_device": "cpu",
+                    },
+                    200,
+                ),
+            ),
+        ):
+            response = self._complete()
+
+        self.assertEqual(response.status_code, 422, response.get_data(as_text=True))
+        payload = response.get_json()
+        self.assertIn(
+            "personalization_model_binding_mismatch",
+            payload["quality"]["reasons"],
+        )
+        status = self.store.get_session(
+            self.enrolled["study_session_id"],
+            self.enrolled["access_token"],
+        )
+        self.assertEqual(status["state"], "system_check_passed")
+        self.assertNotIn("model_name", status["linked_data"])
 
 
 class ParticipantAdaptiveIntegrationTests(unittest.TestCase):
@@ -396,7 +485,6 @@ class ParticipantAdaptiveIntegrationTests(unittest.TestCase):
     def _body(self, **extra):
         return {
             "study_session_id": self.enrolled["study_session_id"],
-            "study_access_token": self.enrolled["access_token"],
             **extra,
         }
 

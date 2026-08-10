@@ -24,6 +24,7 @@ from scripts.test_general_collection import (
     _assessment_viewport,
     _consent_payload,
     _profile,
+    _record_prediction_receipt_validation,
     _rehearsal_settings,
     _system_profile,
     _validation_samples,
@@ -59,6 +60,14 @@ def _capture_contract(
 
 def _passed_independence() -> dict[str, object]:
     return {"status": "passed", "independent": True}
+
+
+def _verified_geometry_summary(**metrics: object) -> dict[str, object]:
+    return {
+        "prediction_receipt_status": "verified",
+        "prediction_receipts_verified": True,
+        **metrics,
+    }
 
 
 def _reference_fit_target_contract() -> dict[str, object]:
@@ -154,6 +163,7 @@ class TargetIndependenceContractTests(unittest.TestCase):
             _validation_samples(),
             viewport_width_px=1280,
             viewport_height_px=800,
+            prediction_receipt_status="verified",
         )
 
     def test_frozen_targets_pass_against_reference_calibration_targets(self) -> None:
@@ -227,11 +237,11 @@ class TargetIndependenceContractTests(unittest.TestCase):
 class ProvisionalGeometryQualityTests(unittest.TestCase):
     def test_classifier_uses_only_sensor_geometry_and_marks_final_pending(self) -> None:
         quality = classify_provisional_geometry_quality(
-            {
-                "median_spatial_error_px": 40.0,
-                "p90_spatial_error_px": 90.0,
-                "prediction_success_fraction": 0.85,
-            },
+            _verified_geometry_summary(
+                median_spatial_error_px=40.0,
+                p90_spatial_error_px=90.0,
+                prediction_success_fraction=0.85,
+            ),
             capture_contract_check={"status": "compatible", "compatible": True},
             target_independence_check=_passed_independence(),
         )
@@ -243,6 +253,8 @@ class ProvisionalGeometryQualityTests(unittest.TestCase):
     def test_contract_mismatch_downgrades_without_changing_spatial_band(self) -> None:
         quality = classify_provisional_geometry_quality(
             {
+                "prediction_receipt_status": "verified",
+                "prediction_receipts_verified": True,
                 "median_spatial_error_px": 40.0,
                 "p90_spatial_error_px": 90.0,
                 "prediction_success_fraction": 0.85,
@@ -257,6 +269,8 @@ class ProvisionalGeometryQualityTests(unittest.TestCase):
     def test_missing_contract_fails_closed_but_keeps_spatial_description(self) -> None:
         quality = classify_provisional_geometry_quality(
             {
+                "prediction_receipt_status": "verified",
+                "prediction_receipts_verified": True,
                 "median_spatial_error_px": 40.0,
                 "p90_spatial_error_px": 90.0,
                 "prediction_success_fraction": 0.85,
@@ -273,6 +287,8 @@ class ProvisionalGeometryQualityTests(unittest.TestCase):
 
     def test_target_independence_is_required_for_any_gaze_recommendation(self) -> None:
         summary = {
+            "prediction_receipt_status": "verified",
+            "prediction_receipts_verified": True,
             "median_spatial_error_px": 40.0,
             "p90_spatial_error_px": 90.0,
             "prediction_success_fraction": 0.85,
@@ -307,6 +323,8 @@ class ProvisionalGeometryQualityTests(unittest.TestCase):
         for summary, expected in (
             (
                 {
+                    "prediction_receipt_status": "verified",
+                    "prediction_receipts_verified": True,
                     "median_spatial_error_px": 90.0,
                     "p90_spatial_error_px": 170.0,
                     "prediction_success_fraction": 0.6,
@@ -315,6 +333,8 @@ class ProvisionalGeometryQualityTests(unittest.TestCase):
             ),
             (
                 {
+                    "prediction_receipt_status": "verified",
+                    "prediction_receipts_verified": True,
                     "median_spatial_error_px": 250.0,
                     "p90_spatial_error_px": 400.0,
                     "prediction_success_fraction": 0.2,
@@ -396,12 +416,11 @@ class ProvisionalGeometryStoreTests(unittest.TestCase):
         provisional = collection["provisional_geometry_quality"]
         self.assertEqual(collection["phase"], "reading_ready")
         self.assertEqual(provisional["recommended_gaze_mode"], "behavioral_only")
-        self.assertFalse(provisional["capture_contract_compatible"])
+        self.assertEqual(provisional["prediction_receipt_status"], "unavailable")
+        self.assertFalse(provisional["prediction_receipts_verified"])
         self.assertEqual(
-            collection["validations"]["start"]["capture_contract"][
-                "transport_height_px"
-            ],
-            480,
+            collection["validations"]["start"]["sample_count"],
+            0,
         )
 
         first_round = self.store.begin_general_round(self.session_id, self.token)
@@ -413,12 +432,11 @@ class ProvisionalGeometryStoreTests(unittest.TestCase):
     ) -> None:
         calibration_contract = _capture_contract()
         self._prepare(calibration_contract)
-        public = self.store.record_general_validation(
+        public = _record_prediction_receipt_validation(
+            self.store,
             self.session_id,
             self.token,
             phase="start",
-            samples=_validation_samples(),
-            capture_contract=calibration_contract,
         )
         collection = public["general_collection"]
         provisional = collection["provisional_geometry_quality"]

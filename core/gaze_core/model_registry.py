@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -59,6 +60,19 @@ def list_models(root: Path) -> list[dict]:
 
 def model_path(root: Path, model_name: str) -> Path:
     return ensure_runs_dir(root) / f"{clean_model_name(model_name)}.json"
+
+
+def model_artifact_sha256(root: Path, model_name: str) -> str:
+    """Hash the exact server-linked calibration artifact without parsing it."""
+
+    path = model_path(root, model_name)
+    if not path.is_file():
+        raise FileNotFoundError(f"model {model_name} not found")
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def delete_model(root: Path, model_name: str) -> dict:

@@ -117,6 +117,28 @@ def _assessment_viewport() -> dict[str, int]:
     return {"width_px": 1280, "height_px": 800}
 
 
+TEST_MODEL_ARTIFACT_SHA256 = "a" * 64
+
+
+def _capture_contract() -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "intent_width_px": 1280,
+        "intent_height_px": 720,
+        "intent_frame_rate_hz": 30.0,
+        "source_width_px": 1280,
+        "source_height_px": 720,
+        "source_frame_rate_hz": 30.0,
+        "transport_width_px": 640,
+        "transport_height_px": 360,
+        "resize_policy": "fit_width_preserve_aspect",
+        "mime_type": "image/jpeg",
+        "jpeg_quality": 0.8,
+        "mirror_applied": False,
+        "facing_mode": "user",
+    }
+
+
 def _validation_samples(offset: float = 10.0) -> list[dict[str, object]]:
     targets = validation_target_definitions()
     return [
@@ -143,6 +165,95 @@ def _validation_samples(offset: float = 10.0) -> list[dict[str, object]]:
         ]
         for repeat in range(3)
     ]
+
+
+def _issue_prediction_receipts(
+    store: ParticipantStudyStore,
+    session_id: str,
+    access_token: str,
+    *,
+    phase: str,
+    samples: list[dict[str, object]] | None = None,
+    model_artifact_sha256: str = TEST_MODEL_ARTIFACT_SHA256,
+) -> list[str]:
+    issued: list[str] = []
+    public = store.get_session(session_id, access_token)
+    model_name = str(public["linked_data"]["model_name"])
+    for sample in samples or _validation_samples():
+        challenge = store.prepare_general_prediction_receipt(
+            session_id,
+            access_token,
+            phase=phase,
+            target_id=str(sample["target_id"]),
+            model_name=model_name,
+            model_artifact_sha256=model_artifact_sha256,
+            viewport=_assessment_viewport(),
+        )
+        predicted_x = float(sample.get("predicted_x_px", 0.0))
+        predicted_y = float(sample.get("predicted_y_px", 0.0))
+        success = sample.get("prediction_success") is True
+        response = {
+            "ok": success,
+            "capture_contract_check": {
+                "status": "compatible",
+                "compatible": True,
+                "reasons": [],
+                "warnings": [],
+            },
+        }
+        if success:
+            response.update(
+                {
+                    "screen_xy_px": [predicted_x, predicted_y],
+                    "screen_xy_norm": [
+                        predicted_x / 1280.0 * 2.0 - 1.0,
+                        predicted_y / 800.0 * 2.0 - 1.0,
+                    ],
+                }
+            )
+        else:
+            response.update(
+                {
+                    "failure_stage": "attributable_sensor_failure",
+                    "failure_code": "no_face_detected",
+                    "error": "no face detected in frame",
+                }
+            )
+        receipt = store.issue_general_prediction_receipt(
+            session_id,
+            access_token,
+            challenge=challenge,
+            model_artifact_sha256_after=model_artifact_sha256,
+            capture_contract=_capture_contract(),
+            prediction_response=response,
+            prediction_status=200 if response["ok"] is True else 400,
+        )
+        issued.append(receipt["token"])
+    return issued
+
+
+def _record_prediction_receipt_validation(
+    store: ParticipantStudyStore,
+    session_id: str,
+    access_token: str,
+    *,
+    phase: str,
+    samples: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    receipts = _issue_prediction_receipts(
+        store,
+        session_id,
+        access_token,
+        phase=phase,
+        samples=samples,
+    )
+    return store.record_general_validation(
+        session_id,
+        access_token,
+        phase=phase,
+        prediction_receipts=receipts,
+        model_artifact_sha256=TEST_MODEL_ARTIFACT_SHA256,
+    )
 
 
 class GeneralCollectionDesignTests(unittest.TestCase):
@@ -460,12 +571,21 @@ class GeneralCollectionStoreTests(unittest.TestCase):
             assessment_viewport=_assessment_viewport(),
         )
         if record_start_validation:
-            self.store.record_general_validation(
-                self.session_id,
-                self.token,
-                phase="start",
-                samples=_validation_samples(),
-            )
+            self._record_receipt_validation(phase="start")
+
+    def _record_receipt_validation(
+        self,
+        *,
+        phase: str,
+        samples: list[dict[str, object]] | None = None,
+    ) -> dict[str, object]:
+        return _record_prediction_receipt_validation(
+            self.store,
+            self.session_id,
+            self.token,
+            phase=phase,
+            samples=samples,
+        )
 
     def _round_payload(self, passage_id: str) -> dict[str, object]:
         passage = passage_by_id(passage_id)
@@ -562,9 +682,7 @@ class GeneralCollectionStoreTests(unittest.TestCase):
                 self.token,
                 assessment_viewport=_assessment_viewport(),
             )
-            validated = self.store.record_general_validation(
-                self.session_id,
-                self.token,
+            validated = self._record_receipt_validation(
                 phase="start",
                 samples=frozen_contract_samples,
             )
@@ -704,9 +822,7 @@ class GeneralCollectionStoreTests(unittest.TestCase):
             status["general_collection"]["phase"],
             "end_validation_required",
         )
-        completed = self.store.record_general_validation(
-            self.session_id,
-            self.token,
+        completed = self._record_receipt_validation(
             phase="end",
             samples=_validation_samples(offset=14.0),
         )
@@ -841,9 +957,7 @@ class GeneralCollectionStoreTests(unittest.TestCase):
                     self.session_id,
                     self.token,
                 )
-        completed = self.store.record_general_validation(
-            self.session_id,
-            self.token,
+        completed = self._record_receipt_validation(
             phase="end",
             samples=_validation_samples(offset=14.0),
         )
@@ -878,9 +992,7 @@ class GeneralCollectionStoreTests(unittest.TestCase):
             status["general_collection"]["phase"],
             "end_validation_required",
         )
-        completed = self.store.record_general_validation(
-            self.session_id,
-            self.token,
+        completed = self._record_receipt_validation(
             phase="end",
             samples=_validation_samples(offset=14.0),
         )
@@ -933,11 +1045,11 @@ class UnencryptedReadingVideoStoreTests(unittest.TestCase):
             self.token,
             assessment_viewport=_assessment_viewport(),
         )
-        self.store.record_general_validation(
+        _record_prediction_receipt_validation(
+            self.store,
             self.session_id,
             self.token,
             phase="start",
-            samples=_validation_samples(),
         )
 
     def test_video_is_immutable_required_before_probes_and_index_only_exported(self) -> None:

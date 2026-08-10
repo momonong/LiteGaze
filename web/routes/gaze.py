@@ -15,6 +15,7 @@ from core.gaze_core.model_registry import (
     delete_model,
     ensure_runs_dir,
     list_models,
+    model_artifact_sha256,
     rename_model,
 )
 from core.gaze_core.motion_robustness import audit_payload, load_motion_samples
@@ -35,7 +36,10 @@ from core.gaze_core.sample_store import (
 from core.gaze_core.training import train_placeholder
 from core.participant_study import (
     ParticipantStudyStore,
+    StudyAuthorizationError,
     StudyError,
+    StudyStateError,
+    StudyValidationError,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -242,13 +246,20 @@ def _participant_model_list() -> tuple[dict, int]:
 
 
 def _predict_response(body: dict) -> tuple[dict, int]:
+    receipt_challenge = None
+    store = None
+    access_token = ""
+    study_session_id = ""
+    artifact_sha256_before = ""
     if _public_study_mode():
         body = dict(body)
         body["allow_cuda"] = False
         try:
-            _, participant = _participant_session(body)
+            store, participant = _participant_session(body)
         except StudyError as exc:
             return {"ok": False, "error": str(exc)}, 403
+        access_token = _study_access_token(body)
+        study_session_id = _study_session_id(body)
         allowed_model = str(participant.get("linked_data", {}).get("model_name") or "")
         if not allowed_model or body.get("model_name") != allowed_model:
             return {
@@ -263,7 +274,80 @@ def _predict_response(body: dict) -> tuple[dict, int]:
                 "ok": False,
                 "error": "study session is not ready for prediction",
             }, 409
-    return predict(_gaze_root(), body)
+        validation_phase = str(body.get("validation_phase") or "").strip()
+        validation_target_id = str(body.get("validation_target_id") or "").strip()
+        if bool(validation_phase) != bool(validation_target_id):
+            return {
+                "ok": False,
+                "error": "validation phase and target ID must be supplied together",
+            }, 400
+        if validation_phase:
+            try:
+                artifact_sha256_before = model_artifact_sha256(
+                    _gaze_root(), allowed_model
+                )
+                receipt_challenge = store.prepare_general_prediction_receipt(
+                    study_session_id,
+                    access_token,
+                    phase=validation_phase,
+                    target_id=validation_target_id,
+                    model_name=allowed_model,
+                    model_artifact_sha256=artifact_sha256_before,
+                    viewport={
+                        "width_px": body.get("viewport_width"),
+                        "height_px": body.get("viewport_height"),
+                    },
+                )
+            except FileNotFoundError as exc:
+                return {
+                    "ok": False,
+                    "error": str(exc),
+                    "failure_stage": "model_hard_error",
+                }, 409
+            except StudyAuthorizationError as exc:
+                return {"ok": False, "error": str(exc)}, 403
+            except StudyStateError as exc:
+                return {"ok": False, "error": str(exc)}, 409
+            except StudyValidationError as exc:
+                return {"ok": False, "error": str(exc)}, 400
+    response, status = predict(_gaze_root(), body)
+    if receipt_challenge is None:
+        return response, status
+    receipt_eligible = response.get("ok") is True or response.get(
+        "failure_stage"
+    ) == "attributable_sensor_failure"
+    if not receipt_eligible:
+        return response, status
+    try:
+        artifact_sha256_after = model_artifact_sha256(
+            _gaze_root(), str(receipt_challenge["model_name"])
+        )
+        if artifact_sha256_after != artifact_sha256_before:
+            raise StudyStateError("model artifact changed during prediction")
+        receipt = store.issue_general_prediction_receipt(
+            study_session_id,
+            access_token,
+            challenge=receipt_challenge,
+            model_artifact_sha256_after=artifact_sha256_after,
+            capture_contract=body.get("capture_contract"),
+            prediction_response=response,
+            prediction_status=status,
+        )
+    except FileNotFoundError as exc:
+        return {
+            "ok": False,
+            "error": str(exc),
+            "failure_stage": "model_hard_error",
+        }, 409
+    except StudyAuthorizationError as exc:
+        return {"ok": False, "error": str(exc)}, 403
+    except (StudyStateError, StudyValidationError) as exc:
+        return {
+            "ok": False,
+            "error": str(exc),
+            "failure_stage": "prediction_receipt_hard_error",
+        }, 409
+    return {**response, "prediction_receipt": receipt}, status
 
 
 @gaze_bp.get("/health")
@@ -312,7 +396,11 @@ def train():
 
 @gaze_bp.post("/predict")
 def predict_gaze():
-    body = request.get_json(force=True) or {}
+    body = request.get_json(force=True)
+    if not isinstance(body, dict):
+        return jsonify(
+            {"ok": False, "error": "request JSON body must be an object"}
+        ), 400
     response, status = _predict_response(body)
     return jsonify(response), status
 
@@ -492,7 +580,11 @@ def api_train():
 @gaze_api_bp.post("/predict")
 def api_predict():
     try:
-        body = request.get_json(force=True) or {}
+        body = request.get_json(force=True)
+        if not isinstance(body, dict):
+            return jsonify(
+                {"ok": False, "error": "request JSON body must be an object"}
+            ), 400
         response, status = _predict_response(body)
         return jsonify(response), status
     except Exception as exc:
