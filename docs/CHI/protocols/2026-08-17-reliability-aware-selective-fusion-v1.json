@@ -1,0 +1,370 @@
+{
+  "schema_version": 1,
+  "protocol_id": "lexigaze-chi-reliability-aware-selective-fusion-v1",
+  "frozen_on": "2026-08-17",
+  "status": "planning_only_no_collection_or_model_promotion_authorization",
+  "contribution": {
+    "system_claim": "A reliability-aware reading aid that predicts whether a reader may want to review a sampled word and falls back to text-plus-person evidence when webcam gaze is unavailable or unreliable.",
+    "hci_question": "When does unobtrusive webcam gaze add useful evidence to personalized word-review support, and when should the interface abstain from using it?",
+    "excluded_positioning": [
+      "cognitive diagnosis",
+      "English proficiency or CEFR estimation",
+      "attention or fatigue detection",
+      "validated learning improvement"
+    ]
+  },
+  "research_questions": [
+    {
+      "id": "RQ1",
+      "question": "What fraction of participant-session-passage observations remains eligible for word-level gaze after independent calibration, drift, sampling, and tracking quality checks?",
+      "analysis_role": "descriptive_feasibility"
+    },
+    {
+      "id": "RQ2",
+      "question": "On a joint holdout of unseen participants, passage families, capture sessions, and device groups, does reliability-aware selective fusion improve three-class word-review probability estimates over both text-plus-person evidence and always-on text-person-gaze fusion?",
+      "analysis_role": "primary_confirmatory"
+    },
+    {
+      "id": "RQ3",
+      "question": "Does the gaze branch degrade safely through exact text-plus-person fallback and a predeclared selective risk-coverage analysis?",
+      "analysis_role": "confirmatory_safety"
+    },
+    {
+      "id": "RQ4",
+      "question": "How repeatable and burdensome is the two-visit workflow, including completion, calibration, retry, timing, and response-process evidence?",
+      "analysis_role": "feasibility_and_future_formative_work"
+    }
+  ],
+  "hypotheses": [
+    {
+      "id": "H1",
+      "statement": "F2 has lower mean three-class negative log-likelihood than both F1 and F0 on the single-open joint confirmation partition by practical thresholds frozen before confirmation outcomes are accessed.",
+      "test_role": "primary_intersection_union_claim_with_F2_minus_F1_and_F2_minus_F0_co_primary_components",
+      "threshold_status": "must_be_derived_from_a_preoutcome_product_cost_model"
+    },
+    {
+      "id": "H2",
+      "statement": "Whenever word-level gaze is ineligible, every F2 class probability exactly equals the corresponding F1 probability.",
+      "threshold": "bitwise_or_numerically_exact_with_absolute_tolerance_1e-12"
+    },
+    {
+      "id": "H3",
+      "statement": "At the frozen coverage grid, selective F2 risk and calibration are reported without post-outcome threshold selection, including negative or non-monotonic results.",
+      "threshold_status": "report_all_frozen_coverage_cells"
+    }
+  ],
+  "outcome": {
+    "id": "post_reading_word_review_need",
+    "levels_in_report_order": [
+      "no_review",
+      "unsure",
+      "review_needed"
+    ],
+    "collection_timing": "after_reading_before_any_model_or_gaze_feedback",
+    "sampling_probability_must_be_recorded": true,
+    "primary_model_family": "regularized_multinomial_probability_model",
+    "ordinal_model_role": "sensitivity_only"
+  },
+  "comparators": [
+    {
+      "id": "B0",
+      "name": "training_prevalence",
+      "inputs": [
+        "development_partition_class_counts"
+      ]
+    },
+    {
+      "id": "B1",
+      "name": "lexical_controls",
+      "inputs": [
+        "word_length",
+        "frequency",
+        "within_passage_position"
+      ]
+    },
+    {
+      "id": "B2",
+      "name": "frozen_text_artifact",
+      "inputs": [
+        "B1",
+        "frozen_GPT2_causal_surprisal"
+      ],
+      "participant_outcome_fine_tuning_allowed": false
+    },
+    {
+      "id": "B3",
+      "name": "authorized_anchor_and_language_background",
+      "inputs": [
+        "authorized_external_lexical_anchor",
+        "coarse_language_background"
+      ],
+      "anchor_status": "must_be_authorized_and_frozen_before_collection"
+    },
+    {
+      "id": "G1",
+      "name": "quality_gated_gaze_only",
+      "inputs": [
+        "predeclared_word_level_gaze_features",
+        "gaze_quality",
+        "gaze_missingness"
+      ]
+    },
+    {
+      "id": "F0",
+      "name": "always_on_text_person_gaze_fusion",
+      "inputs": [
+        "B1",
+        "B2",
+        "B3",
+        "predeclared_raw_word_level_gaze_features",
+        "gaze_quality_as_a_continuous_covariate",
+        "gaze_missingness_indicator"
+      ],
+      "gaze_behavior": "uses_observed_gaze_without_quality_abstention",
+      "true_missing_gaze_behavior": "development_only_deterministic_median_imputation_plus_missingness_indicator_without_F1_fallback",
+      "imputer_freeze": "fit_on_development_only_and_frozen_before_validation_or_confirmation"
+    },
+    {
+      "id": "F1",
+      "name": "text_plus_person_fallback",
+      "inputs": [
+        "B1",
+        "B2",
+        "B3"
+      ]
+    },
+    {
+      "id": "F2",
+      "name": "reliability_aware_text_person_gaze_fusion",
+      "inputs": [
+        "F1",
+        "G1"
+      ],
+      "ineligible_gaze_behavior": "exact_F1_probability_fallback"
+    }
+  ],
+  "split_policy": {
+    "partitions": {
+      "development": 0.6,
+      "validation": 0.2,
+      "confirmation": 0.2
+    },
+    "primary_holdout": "joint_participant_passage_capture_device_group_confirmation",
+    "required_group_axes": [
+      "participant_id",
+      "passage_family_id",
+      "passage_probe_id",
+      "capture_session_id",
+      "device_group_id"
+    ],
+    "group_key_definitions": {
+      "participant_id": "globally_unique_participant_identifier",
+      "passage_family_id": "globally_unique_family_identifier_frozen_before_outcome_access",
+      "passage_probe_id": "canonical_passage_id_double_colon_probe_id_composite; bare probe_id is local within a passage and is prohibited as a split key",
+      "capture_session_id": "globally_unique_capture_identifier_nested_under_participant_id",
+      "device_group_id": "predeclared_device_camera_browser_configuration_group"
+    },
+    "partition_assignment_and_discard_policy": [
+      "Before outcome access, assign participant_id, passage_family_id, and device_group_id to development, validation, or confirmation using a versioned seeded blocked assignment table.",
+      "Capture_session_id inherits its participant_id partition and passage_probe_id inherits its passage_family_id partition.",
+      "During prospective collection, serve only participant, passage-family, and device-group combinations assigned to the same partition.",
+      "For preexisting or protocol-deviation rows, retain a row only when all five resolved group axes map to the same partition; otherwise discard it before feature fitting, calibration, threshold selection, or outcome inspection and report counts by mismatch reason.",
+      "Never reassign a group after observing outcomes, quality, missingness, or model scores; never duplicate a row across partitions."
+    ],
+    "bare_probe_id_split_key_allowed": false,
+    "primary_device_group_scope": "participant_device_instance_configuration_group_nested_under_participant; holding out a participant also holds out that device instance but does not establish unseen device-class transfer",
+    "secondary_device_class_holdout": "separate_future_transfer_analysis_required_only_when_independent_device_class_cluster_count_is_adequate",
+    "same_group_never_crosses_partitions": true,
+    "validation_access": "limited_predeclared_model_and_calibration_choice_only",
+    "confirmation_access": "single_open_no_retuning_or_threshold_changes",
+    "primary_uncertainty": "participant_by_passage_family_multiway_resampling_or_equivalent_crossed_cluster_inference"
+  },
+  "metrics": {
+    "primary": "mean_multiclass_negative_log_likelihood",
+    "secondary": [
+      "multiclass_brier_score",
+      "ranked_probability_score",
+      "classwise_calibration",
+      "risk_coverage_curve",
+      "gaze_eligibility_coverage",
+      "workflow_completion_and_missingness"
+    ],
+    "coverage_grid": [
+      1.0,
+      0.8,
+      0.6,
+      0.4,
+      0.2
+    ],
+    "coverage_denominator": "gaze_eligible_observations_only",
+    "coverage_selection_count_rounding": "ceil_product_minus_1e-12_with_minimum_one_when_any_eligible",
+    "conditional_accepted_risk": "score_only_the_selected_eligible_observations",
+    "system_hybrid_risk": "use_F2_on_selected_eligible_observations_and_F1_on_every_other_observation",
+    "ranked_probability_score_definition": "mean_squared_cumulative_probability_error_over_K_minus_1",
+    "alpha_two_sided": 0.05,
+    "minimum_unique_confirmation_participants_for_power_diagnostic": 8,
+    "minimum_unique_confirmation_passage_families_for_power_diagnostic": 8,
+    "minimum_unique_confirmation_device_groups_for_structural_diagnostic": 8,
+    "practical_effect_threshold": "pending_preoutcome_product_cost_model_not_estimated_by_this_simulation"
+  },
+  "simulation": {
+    "purpose": "assumption_sensitive_yield_and_power_planning_only",
+    "data_source": "deterministic_synthetic_crossed_cluster_generator",
+    "human_outcomes_used": false,
+    "question_answer_data_used": false,
+    "cognitive_profile_data_used": false,
+    "f0_sensitivity_proxy": "apply_the_effect_blend_to_noisy_synthetic_gaze_on_every_row_without_quality_abstention",
+    "f2_sensitivity_proxy": "apply_reliability_weighted_effect_blend_only_on_quality_eligible_rows_and_exact_F1_elsewhere",
+    "truly_missing_gaze_simulated": false,
+    "F2_vs_F0_simulation_scope": "observed_noisy_synthetic_gaze_only; excludes_true_missing_gaze_cases_and_is_not_informative_about_F0_imputation_behavior",
+    "device_group_generator": "one_nested_synthetic_device_instance_group_per_paired_completed_confirmation_participant; development_validation_confirmation_assignment_is_not_exercised",
+    "seed": 20260817,
+    "replicates_per_cell": 200,
+    "candidate_enrollments": [
+      20,
+      40,
+      144,
+      300,
+      600,
+      900
+    ],
+    "confirmation_participant_fraction": 0.2,
+    "confirmation_passage_families": 12,
+    "confirmation_passages_per_paired_participant": 3,
+    "word_probes_per_passage": 8,
+    "effect_scenarios": {
+      "no_added_gaze_signal": {
+        "reliability_blend": 0.0,
+        "role": "exact_F1_null_sentinel_not_a_type_I_error_model"
+      },
+      "weak_added_gaze_signal": {
+        "reliability_blend": 0.12,
+        "role": "sensitivity_anchor_not_a_smallest_effect_of_interest"
+      },
+      "moderate_added_gaze_signal": {
+        "reliability_blend": 0.3,
+        "role": "sensitivity_anchor_not_a_smallest_effect_of_interest"
+      }
+    },
+    "scenario_bundles": {
+      "optimistic": {
+        "visit1_completion_probability": 0.95,
+        "visit2_retention_given_visit1": 0.9,
+        "word_level_gaze_session_eligibility": 0.75,
+        "reliability_beta_alpha": 5.0,
+        "reliability_beta_beta": 2.0,
+        "class_prevalence": [
+          0.6,
+          0.22,
+          0.18
+        ],
+        "latent_participant_icc": 0.1,
+        "latent_passage_icc": 0.06,
+        "person_anchor_fraction": 0.5,
+        "text_signal_fraction": 0.7,
+        "f1_noise_sd": 0.3,
+        "gaze_noise_sd": 0.55
+      },
+      "base": {
+        "visit1_completion_probability": 0.9,
+        "visit2_retention_given_visit1": 0.8,
+        "word_level_gaze_session_eligibility": 0.52,
+        "reliability_beta_alpha": 3.0,
+        "reliability_beta_beta": 2.5,
+        "class_prevalence": [
+          0.7,
+          0.18,
+          0.12
+        ],
+        "latent_participant_icc": 0.18,
+        "latent_passage_icc": 0.12,
+        "person_anchor_fraction": 0.4,
+        "text_signal_fraction": 0.58,
+        "f1_noise_sd": 0.42,
+        "gaze_noise_sd": 0.85
+      },
+      "pessimistic": {
+        "visit1_completion_probability": 0.8,
+        "visit2_retention_given_visit1": 0.65,
+        "word_level_gaze_session_eligibility": 0.3,
+        "reliability_beta_alpha": 2.0,
+        "reliability_beta_beta": 4.0,
+        "class_prevalence": [
+          0.82,
+          0.12,
+          0.06
+        ],
+        "latent_participant_icc": 0.3,
+        "latent_passage_icc": 0.2,
+        "person_anchor_fraction": 0.3,
+        "text_signal_fraction": 0.48,
+        "f1_noise_sd": 0.58,
+        "gaze_noise_sd": 1.2
+      }
+    },
+    "power_test": {
+      "estimands": [
+        {
+          "id": "F2_minus_F1",
+          "role": "co_primary_component_of_H1_intersection_union_claim",
+          "metric": "mean_multiclass_NLL_on_joint_confirmation"
+        },
+        {
+          "id": "F2_minus_F0",
+          "role": "co_primary_component_of_H1_intersection_union_claim",
+          "metric": "mean_multiclass_NLL_on_joint_confirmation"
+        }
+      ],
+      "variance": "conservative_two_way_participant_and_passage_family_cluster_sandwich",
+      "component_success": "upper_two_sided_95_percent_interval_less_than_zero",
+      "joint_success": "both_F2_minus_F1_and_F2_minus_F0_components_succeed",
+      "multiplicity_role": "intersection_union_joint_superiority_claim_controls_alpha_by_requiring_both_components; separate_component_claims_are_descriptive",
+      "diagnostic_power_threshold": 0.8,
+      "diagnostic_evaluable_probability_threshold": 0.8
+    }
+  },
+  "claim_boundary": {
+    "allowed": [
+      "conditional synthetic yield and power sensitivity",
+      "software determinism and exact fallback behavior",
+      "planning consequences of participant, passage, quality, prevalence, and ICC assumptions"
+    ],
+    "prohibited_training_selection_or_claim_sources": [
+      "question_answer_correctness",
+      "comprehension_score",
+      "adaptive_test_theta",
+      "text_model_score_as_its_own_label",
+      "gaze_calibration_target_as_word_review_label",
+      "cognitive_profile",
+      "attention_label",
+      "fatigue_label",
+      "English_proficiency",
+      "CEFR",
+      "same_participant_or_passage_outcomes_used_for_tuning_and_confirmation"
+    ],
+    "not_supported_by_this_protocol": [
+      "a recommended recruitment target",
+      "human model benefit",
+      "production promotion",
+      "learning improvement",
+      "webcam gaze accuracy"
+    ]
+  },
+  "compute": {
+    "device": "cpu",
+    "gpu_allowed": false,
+    "torch_required": false,
+    "network_allowed": false,
+    "expected_dependencies": [
+      "python_standard_library",
+      "numpy"
+    ]
+  },
+  "decision_policy": {
+    "formal_recruitment_authorized": false,
+    "model_promotion_authorized": false,
+    "diagnostic_first_n_is_not_a_recommendation": true,
+    "negative_and_non_monotonic_results_must_be_retained": true,
+    "next_required_evidence": "replace assumptions with blinded rehearsal aggregates, freeze a practical cost threshold, and rerun before any formal sample-size decision"
+  }
+}

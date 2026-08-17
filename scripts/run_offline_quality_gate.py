@@ -75,6 +75,9 @@ TEST_TARGETS = (
     "scripts.test_webcam_gaze_measurement_run_store.WebcamGazeMeasurementRunStoreTests",
     "scripts.test_webcam_gaze_measurement_runner",
     "scripts.test_webcam_gaze_measurement_run_analysis",
+    "scripts.test_chi_selective_fusion_evaluation",
+    "scripts.test_chi_selective_fusion_power",
+    "scripts.test_chi_selective_fusion_smoke",
 )
 
 PROVIDER_CREDENTIALS = (

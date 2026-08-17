@@ -1,0 +1,65 @@
+{
+  "audit_id": "chi-selective-fusion-current-data-smoke-v1",
+  "claim_boundary": {
+    "effect_estimation_authorized": false,
+    "formal_promotion_authorized": false,
+    "model_fitting_authorized": false,
+    "pipeline_smoke_claim_authorized": true,
+    "user_benefit_claim_authorized": false,
+    "webcam_accuracy_claim_authorized": false
+  },
+  "gates": {
+    "all_sessions_behavioral_only": true,
+    "eight_reviews_per_session_passage": true,
+    "eligible_gaze_tables_empty_for_behavioral_only_smoke": true,
+    "every_session_has_word_reviews": true,
+    "formal_promotion_disabled": true,
+    "ineligible_gaze_not_exported_as_evidence": true,
+    "ineligible_validation_not_exported_as_evidence": true,
+    "manifest_gaze_counts_match_export_tables": true,
+    "manifest_gaze_separation_contract": true,
+    "required_review_fields_nonempty": true,
+    "review_identity_unique": true,
+    "review_session_foreign_key_valid": true,
+    "session_identity_unique_nonempty": true,
+    "sessions_nonempty_and_completed": true,
+    "three_class_labels_allowlisted": true,
+    "unavailable_uncertainty_not_exported_as_evidence": true,
+    "unverified_reading_rows_are_non_evidence": true
+  },
+  "gaze": {
+    "behavioral_only_session_count": 1,
+    "client_roundtrip_unverified_reading_row_count": 649,
+    "reading_gaze_eligible_session_count": 0,
+    "required_runtime_branch": "F1_text_person_fallback",
+    "uncertainty_evidence_eligible_session_count": 0,
+    "validation_gaze_eligible_session_count": 0
+  },
+  "input_sha256": {
+    "dataset_manifest_evidence_canonical": "768fc6a5b34c71484ac7e02bb1a687944d31b4e3a3a20978c86859fe9311880e",
+    "gaze_telemetry_csv": "43e31b7c889326e362e3e5bdcedf2acc88c5fdb451097ba722568dbae41f3803",
+    "reading_telemetry_unverified_csv": "e76349e106121a0b6aaf92b0b3f9e859be6b5539b544a84ed94fd824ab15b35e",
+    "sessions_csv": "9f8b29a6977507e61f271816773da9021bb566915c5bdd589f8f9620f17a3309",
+    "validation_samples_csv": "7661709bf8eedb7842d213305b6f2f793f175ec5acae780ba45f6fa0c3d73980",
+    "word_reviews_csv": "3958516b1d9cf880becea06f0923a724be3ea1f0b915023af797c85fae5c4f82"
+  },
+  "label_counts": {
+    "no_review": 39,
+    "review_needed": 2,
+    "unsure": 7
+  },
+  "label_fractions": {
+    "no_review": 0.8125,
+    "review_needed": 0.041666666666666664,
+    "unsure": 0.14583333333333334
+  },
+  "participant_count": 1,
+  "passage_count": 6,
+  "passage_family_count": 6,
+  "rare_review_needed_warning": true,
+  "schema_version": 1,
+  "scope": "self_development_export_pipeline_only",
+  "session_count": 1,
+  "status": "passed_pipeline_smoke",
+  "word_review_count": 48
+}
