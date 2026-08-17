@@ -1,0 +1,241 @@
+{
+  "schema_version": 1,
+  "protocol_id": "lexigaze-chi-dress-rehearsal-process-measurement-v1",
+  "frozen_on": "2026-08-17",
+  "status": "additive_process_measurement_rehearsal_only_no_formal_collection_authorization",
+  "parent_protocols": [
+    "lexigaze-generalizable-participant-collection-v1",
+    "lexigaze-chi-reliability-aware-selective-fusion-v1"
+  ],
+  "purpose": "Stress-test the unchanged two-visit workflow and produce conservative descriptive diagnostics that may widen but never narrow the prior pessimistic completion, burden, gaze-eligibility, class-prevalence, or crossed-cluster planning ranges.",
+  "participant_scope": {
+    "minimum_started_participants": 5,
+    "maximum_started_participants": 8,
+    "target_started_participants": 6,
+    "extension_to_chase_a_gate_allowed": false,
+    "required_visits_per_participant": 2,
+    "outcome_blind_slot_plan": {
+      "slot_ids": [
+        "DR01",
+        "DR02",
+        "DR03",
+        "DR04",
+        "DR05",
+        "DR06",
+        "DR07",
+        "DR08"
+      ],
+      "maximum_activated_slots": 8,
+      "pseudonymous_slots_only": true,
+      "frozen_before_target_outcomes": true,
+      "replacement_or_extension_based_on_outcomes_allowed": false
+    },
+    "visit_interval_hours": {
+      "minimum": 18,
+      "maximum": 72
+    },
+    "analysis_role": "process_and_measurement_only",
+    "rehearsal_rows_may_enter_formal_confirmation": false
+  },
+  "timeline_and_blinding": [
+    "Freeze this contract and the practical-effect worksheet before opening any target rehearsal or future confirmation cohort word-review outcome or model-comparison result.",
+    "Run the existing standardized rehearsal flow without adaptive routing, threshold changes, or participant-specific model tuning.",
+    "Create a blinded aggregate containing process, quality, class-count, and cluster-structure diagnostics but no F0, F1, or F2 predictions, losses, or comparison results.",
+    "Apply the frozen stop/go rules without adding participants beyond eight to chase a pass.",
+    "Use blinded diagnostics only to retain or widen prior pessimistic planning ranges; never narrow a completion, gaze, prevalence, or ICC range from five to eight people, and collect a separate frozen confirmation cohort for any model claim."
+  ],
+  "claim_boundary": {
+    "allowed": [
+      "workflow completion and attrition descriptions",
+      "active-time and researcher-intervention burden descriptions",
+      "calibration, drift, sampling, missingness, and gaze-eligibility descriptions",
+      "three-class word-review counts and prevalence ranges for planning",
+      "participant and passage-family cluster-input completeness and conservative prior-widening diagnostics",
+      "software, resume, export, withdrawal, and exact-fallback process checks"
+    ],
+    "prohibited": [
+      "human effect or model superiority",
+      "webcam or word-level gaze accuracy",
+      "production model promotion",
+      "cognitive ability, attention, fatigue, reading ability, English proficiency, or CEFR",
+      "learning improvement or educational benefit",
+      "formal sample-size authorization from rehearsal point estimates",
+      "threshold tuning or model evaluation on the same participants, passages, probes, captures, or devices"
+    ],
+    "formal_collection_authorized": false,
+    "model_training_or_promotion_authorized": false
+  },
+  "completion_definitions": {
+    "visit1_consented_attempt": "a versioned consent submission is accepted for a valid pseudonymous invitation even if subsequent session creation, camera preflight, or reading startup fails",
+    "visit1_started": "a pseudonymous invitation pair has an accepted consent record and a created Visit 1 session before any required reading passage",
+    "visit1_completed": "exactly one authoritative general_collection_completed event exists after every required Visit 1 passage, word-review audit, end validation, and debrief state is persisted",
+    "visit2_started": "the paired Visit 2 code is consumed 18 to 72 hours after the Visit 1 completion event under the frozen device policy",
+    "visit2_completed": "exactly one authoritative general_collection_completed event exists after every required Visit 2 passage, word-review audit, end validation, and debrief state is persisted",
+    "paired_completed": "Visit 1 and Visit 2 both meet their completion definitions for the same invitation pair with no withdrawal or unreconciled protocol deviation",
+    "rate_denominators": {
+      "session_creation_fraction": "visit1_started_count / visit1_consented_attempt_count",
+      "visit1_completion_fraction": "visit1_completed_count / visit1_consented_attempt_count",
+      "visit2_retention_fraction": "visit2_completed_count / visit1_completed_count",
+      "paired_completion_fraction": "paired_completed_count / visit1_consented_attempt_count"
+    },
+    "required_report": [
+      "all numerator and denominator counts",
+      "exact withdrawal and protocol-deviation counts without free-text identifiers",
+      "Wilson 95 percent intervals for fractions",
+      "pre-session-creation and camera-preflight failure counts",
+      "missing denominator reported as not_estimable rather than zero"
+    ]
+  },
+  "burden_definitions": {
+    "active_visit_seconds": "sum of recorded active phase durations from accepted consent through debrief; exclude the between-visit interval, background-tab time, and researcher pauses",
+    "wall_clock_attempt_seconds": "elapsed time from accepted consent to completion, withdrawal, explicit abort, or last durable event; include background-tab time and researcher pauses but exclude the between-visit interval",
+    "censored_unfinished_attempt_seconds": "observed wall-clock seconds from accepted consent to the last durable event for every unfinished attempt; never discard or recode as a completed duration",
+    "calibration_validation_seconds": "active seconds in start calibration, start validation, end validation, and any quality retry",
+    "reading_review_seconds": "active seconds in required passages and their post-reading word-review audits",
+    "researcher_intervention_count": "count of moderator actions needed to continue beyond the frozen instructions; ordinary scripted prompts are excluded",
+    "forced_restart_count": "count of sessions restarted because resume could not restore the frozen state",
+    "required_summaries": [
+      "median, minimum, maximum, and individual pseudonymous active_visit_seconds for completed and unfinished attempts separately",
+      "median, minimum, maximum, and individual pseudonymous wall_clock_attempt_seconds with completion or censoring status",
+      "all censored_unfinished_attempt_seconds and terminal reason codes",
+      "median and maximum calibration_validation_seconds",
+      "researcher_intervention_count by visit and reason code",
+      "forced_restart_count, resume_count, interruption_count, and export_retry_count"
+    ],
+    "free_text_used_for_gate_decisions": false
+  },
+  "gaze_eligibility_definition": {
+    "unit": "scheduled_capture_opportunity",
+    "numerator": "scheduled capture opportunities classified word_level_candidate by the already-frozen independent start/end validation and sampling rules",
+    "denominator": "all scheduled capture opportunities after accepted consent including never-started, failed, incomplete, behavioral_only, and passage_level_only captures; no-capture is ineligible",
+    "behavioral_labels_retained_when_gaze_ineligible": true,
+    "threshold_refitting_in_rehearsal_allowed": false,
+    "required_inputs": [
+      "participant_id",
+      "capture_session_id",
+      "device_group_id",
+      "capture_scheduled",
+      "capture_started",
+      "capture_completed",
+      "start_validation_present",
+      "end_validation_present",
+      "median_spatial_error_px",
+      "p90_spatial_error_px",
+      "precision_rms_px",
+      "prediction_success_fraction",
+      "effective_sampling_hz",
+      "drift_change_px",
+      "quality_band",
+      "word_level_gaze_eligible",
+      "coarse_failure_code",
+      "terminal_capture_reason_code"
+    ],
+    "required_report": [
+      "numerator, denominator, fraction, and participant-cluster bootstrap 95 percent interval",
+      "eligible participant count",
+      "never-started, failed, incomplete, and completed capture counts",
+      "quality-band and coarse-failure counts",
+      "missingness for every required input"
+    ]
+  },
+  "class_prevalence_input": {
+    "outcome_id": "post_reading_word_review_need",
+    "levels_in_report_order": [
+      "no_review",
+      "unsure",
+      "review_needed"
+    ],
+    "unit": "sampled_passage_probe_label",
+    "required_keys": [
+      "participant_id",
+      "passage_family_id",
+      "passage_probe_id",
+      "capture_session_id"
+    ],
+    "passage_probe_id_definition": "canonical_passage_id_double_colon_probe_id; bare probe_id is prohibited as a global key",
+    "sampling_probability_required": true,
+    "sampling_probability_assignment": "assigned_and_logged_before_the_word_review_outcome_is_observed",
+    "planning_summary": "report raw counts plus Hajek-normalized inverse-sampling-weighted proportions with participant-by-passage-family crossed-cluster intervals; do not collapse unsure after seeing counts",
+    "five_to_eight_person_use": "descriptive_only; retain or widen the prior pessimistic prevalence range and never narrow it",
+    "model_predictions_or_losses_in_blinded_aggregate_allowed": false
+  },
+  "icc_planning_inputs": {
+    "role": "cluster_structure_input_completeness_only_not_an_ICC_estimation_or_participant_trait_claim",
+    "outcome_inputs": [
+      "three one-vs-rest indicators in frozen class order",
+      "participant_id",
+      "passage_family_id",
+      "passage_probe_id",
+      "sampling_probability"
+    ],
+    "frozen_estimator": "none_authorized_at_five_to_eight_participant_clusters; retain the full prior pessimistic participant and passage-family ICC ranges and only report cluster counts and boundary diagnostics",
+    "required_report": [
+      "unique participant and passage-family cluster counts",
+      "cross-tabulated observation counts per participant and passage family for every frozen indicator",
+      "zero-variance, complete-separation, and sparse-cell boundary diagnostics",
+      "the unchanged prior pessimistic participant and passage-family ICC ranges or wider ranges if diagnostics require them"
+    ],
+    "minimum_unique_participants_for_description": 5,
+    "minimum_unique_passage_families_for_description": 8,
+    "participant_or_passage_icc_estimable_under_this_rehearsal": false,
+    "point_estimate_alone_may_replace_planning_range": false,
+    "narrower_range_than_prior_pessimistic_allowed": false,
+    "boundary_diagnostic_behavior": "retain_or_widen_prior_pessimistic_ranges_and_report_ICC_not_estimable",
+    "sum_of_participant_and_passage_icc_must_be_below": 1.0
+  },
+  "stop_go_criteria": {
+    "STOP_AND_INVESTIGATE": [
+      "any consent, withdrawal, invitation-pair, cross-visit identity, or protected-data integrity failure",
+      "any prohibited claim, model-score access, outcome-dependent threshold change, or participant-specific tuning",
+      "any behavioral word-review row removed solely because gaze was unavailable or ineligible"
+    ],
+    "REPAIR_AND_REPEAT_REHEARSAL": [
+      "fewer than 5 consented Visit 1 attempts by the frozen cap of 8",
+      "fewer than 5 paired completions or paired completion fraction below 0.75 using consented Visit 1 attempts as denominator",
+      "any unresumable attempt or more than 20 percent of consented visit attempts require a forced restart",
+      "median active completed-visit duration above 45 minutes, fewer than 80 percent of completed visits finish within 60 active minutes, or any unfinished attempt lacks censored wall-clock burden",
+      "quality disposition missing for any scheduled capture opportunity or more than 5 percent of required gaze-quality fields missing after counting structurally unavailable fields explicitly",
+      "word-level gaze eligibility below 0.30 across all scheduled opportunities or fewer than 3 unique participants contribute an eligible opportunity",
+      "valid word-review labels below 0.98 of scheduled probes"
+    ],
+    "HOLD_NUISANCE_UPDATE": [
+      "five to eight people may never narrow completion, gaze-eligibility, class-prevalence, participant-ICC, or passage-family-ICC prior pessimistic ranges",
+      "any review class with fewer than 10 labels or fewer than 3 contributing participants widens the rare-class planning range",
+      "fewer than 5 unique participants or 8 unique passage families widens the cluster planning ranges",
+      "the practical-effect worksheet lacks externally verified pre-outcome evidence and independent manual signoff"
+    ],
+    "GO_TO_BLINDED_FEASIBILITY_PLANNING_ONLY": [
+      "all STOP_AND_INVESTIGATE and REPAIR_AND_REPEAT_REHEARSAL conditions are false",
+      "completion, burden, gaze eligibility, class prevalence, and ICC inputs are reported with frozen denominators and missingness",
+      "the practical-effect worksheet is machine-verified against external pre-outcome evidence and independently signed off"
+    ],
+    "go_does_not_authorize": [
+      "formal recruitment",
+      "confirmation outcome access",
+      "model fitting or promotion",
+      "effect, accuracy, ability, proficiency, attention, fatigue, or learning-benefit claims"
+    ]
+  },
+  "aggregate_result_contract": {
+    "participant_count_is_bounded_5_to_8": true,
+    "direct_identifiers_or_raw_media_allowed": false,
+    "F0_F1_F2_predictions_losses_or_comparisons_allowed": false,
+    "individual_process_values_must_use_rehearsal_pseudonyms": true,
+    "protocol_bank_and_export_sha256_required": true,
+    "negative_and_missing_results_must_be_retained": true,
+    "five_to_eight_person_diagnostics_may_narrow_prior_pessimistic_ranges": false
+  },
+  "compute": {
+    "device": "cpu",
+    "gpu_allowed": false,
+    "network_required": false,
+    "deterministic_validator": true
+  },
+  "decision": {
+    "participant_contact_authorized_by_this_contract": false,
+    "formal_collection_authorized": false,
+    "confirmation_outcome_access_authorized": false,
+    "model_promotion_authorized": false,
+    "next_gate": "obtain_separate_ethics_and_participant_contact_authorization_then_complete_external_preoutcome_threshold_verification_before_any_5_to_8_person_rehearsal"
+  }
+}

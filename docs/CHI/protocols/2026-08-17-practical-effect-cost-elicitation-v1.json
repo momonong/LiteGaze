@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "worksheet_id": "lexigaze-chi-practical-effect-cost-elicitation-v1",
+  "created_on": "2026-08-17",
+  "status": "template_pending_preoutcome_elicitation",
+  "applies_to_protocol": "lexigaze-chi-reliability-aware-selective-fusion-v1",
+  "required_freeze_order": "freeze_before_any_target_rehearsal_or_future_confirmation_cohort_word_review_outcome_or_F0_F1_F2_prediction_loss_or_comparison_is_opened",
+  "interpretation_boundary": "This worksheet defines a product-relevance threshold; it does not estimate an effect, accuracy, ability, proficiency, learning benefit, or required sample size.",
+  "comparison_contract": {
+    "metric": "mean_multiclass_negative_log_likelihood",
+    "loss_difference_convention": "F2_minus_reference_negative_is_better",
+    "references": [
+      "F1",
+      "F0"
+    ],
+    "estimand_population": "all sampled probe-label rows in the single frozen joint participant-passage-capture-device confirmation partition",
+    "F2_system_definition": "use F2 only on predeclared selected gaze-eligible rows and exact F1 probabilities on missing, ineligible, and unselected rows; never drop a row",
+    "F1_reference_definition": "score F1 text-plus-person probabilities on the identical all-row confirmation population",
+    "F0_reference_definition": "score always-on F0 text-person-gaze probabilities on the identical all-row confirmation population using its development-frozen missing-gaze branch",
+    "sampling_weight_rule": "equal row weights only when all pre-outcome probe sampling probabilities are identical; otherwise use Hajek-normalized inverse-probability weights frozen before labels",
+    "uncertainty_rule": "the same participant-by-passage-family crossed-cluster method and the same rows and weights for F2_minus_F1 and F2_minus_F0",
+    "joint_confirmatory_rule": "on_the_same_frozen_confirmation_partition_both_upper_95_percent_bounds_must_be_at_or_below_their_negative_practical_thresholds",
+    "separate_component_claims": "descriptive_unless_separately_multiplicity_controlled",
+    "conditional_selected_eligible_risk_may_replace_primary_estimand": false
+  },
+  "elicitation_method": {
+    "name": "deterministic_unanimous_synthetic_grid_with_separate_operational_co_gates",
+    "instructions": [
+      "Use only synthetic probability examples and product-process costs; do not inspect target rehearsal or future confirmation cohort labels, model predictions, losses, or comparison results.",
+      "For every role, comparator, cost context, and frozen NLL-grid value, record worthwhile or not_worthwhile while holding all operational co-gates at their budget boundaries.",
+      "Ratings must be monotonic within each role-comparator-context series; the threshold is the smallest positive grid value unanimously worthwhile across every role and cost context, with no interpolation or manual choice inside a bracket.",
+      "Record at least two signoff roles disjoint from every elicitor plus actual file hashes for the synthetic packet, unopened confirmation manifest, and outcome-access log."
+    ],
+    "nll_reduction_grid": [
+      0.0025,
+      0.005,
+      0.01,
+      0.02,
+      0.04,
+      0.08
+    ],
+    "cost_context_ids": [
+      "participant_burden_boundary",
+      "prompt_error_boundary",
+      "camera_missingness_boundary"
+    ],
+    "cost_context_definitions": {
+      "participant_burden_boundary": "synthetic scenario fixes added active time and compute at their operational maxima while review-prompt and gaze-coverage co-gates remain exactly at budget",
+      "prompt_error_boundary": "synthetic scenario fixes added review prompts at their operational maximum and exposes no participant data while other co-gates remain exactly at budget",
+      "camera_missingness_boundary": "synthetic scenario fixes system gaze eligibility at its operational minimum and calibration-slope change at its maximum while every unselected or ineligible row uses exact F1 fallback"
+    },
+    "rating_values": [
+      "not_worthwhile",
+      "worthwhile"
+    ],
+    "role_ratings": [],
+    "selected_threshold_rule": "minimum_positive_grid_value_unanimously_worthwhile_across_all_signoff_roles_and_cost_contexts",
+    "operational_co_gates_are_separate_from_NLL": true,
+    "operational_budget": {
+      "maximum_added_active_seconds_per_visit": null,
+      "maximum_added_compute_ms_per_passage": null,
+      "maximum_added_review_prompts_per_passage": null,
+      "minimum_system_gaze_eligible_coverage": null,
+      "maximum_absolute_calibration_slope_change": null
+    },
+    "operational_gate_estimands": {
+      "maximum_added_active_seconds_per_visit": {
+        "estimand": "mean paired F2-enabled minus F1-only foreground active seconds per scheduled visit block with every unfinished block assigned the frozen 3600-second active-time cap",
+        "reference": "counterbalanced within-participant F1-only block on the same frozen task bank and device",
+        "denominator": "all scheduled paired visit blocks; any unmatched F2 or F1 block fails the co-gate and no completed-only deletion is allowed",
+        "uncertainty": "participant-cluster bootstrap upper one-sided 95 percent bound; fewer than eight independent participant clusters withholds the bound and fails closed",
+        "pass_rule": "upper_one_sided_95_percent_bound_at_or_below_maximum_added_active_seconds_per_visit"
+      },
+      "maximum_added_compute_ms_per_passage": {
+        "estimand": "mean paired F2 minus F1 end-to-end CPU elapsed milliseconds per passage replay",
+        "reference": "identical frozen input replay on the same declared CPU device and software revision with F1 gaze disabled",
+        "denominator": "all scheduled passage replays including timeout and error replays assigned the predeclared timeout cap",
+        "uncertainty": "passage-family-cluster bootstrap upper one-sided 95 percent bound; fewer than eight independent passage families withholds the bound and fails closed",
+        "pass_rule": "upper_one_sided_95_percent_bound_at_or_below_maximum_added_compute_ms_per_passage"
+      },
+      "maximum_added_review_prompts_per_passage": {
+        "estimand": "mean paired F2-enabled minus F1-only emitted review prompts per scheduled passage",
+        "reference": "counterbalanced within-participant F1-only passage on the same frozen task bank",
+        "denominator": "all scheduled paired passages including incomplete passages with every prompt emitted before the terminal or last event",
+        "uncertainty": "participant-by-passage-family crossed-cluster bootstrap upper one-sided 95 percent bound; fewer than eight independent participant clusters or eight independent passage-family clusters withholds the bound and fails closed",
+        "pass_rule": "upper_one_sided_95_percent_bound_at_or_below_maximum_added_review_prompts_per_passage"
+      },
+      "minimum_system_gaze_eligible_coverage": {
+        "estimand": "fraction of all sampled confirmation probe rows that are predeclared gaze-eligible before labels and selected for F2; missing, ineligible, and unselected rows remain in the denominator and use exact F1 fallback",
+        "reference": "no comparator subtraction; the frozen minimum is an absolute system-hybrid coverage floor",
+        "denominator": "all sampled probe rows on the single frozen joint confirmation partition with no completed-only or eligible-only deletion",
+        "uncertainty": "participant-by-passage-family crossed-cluster bootstrap lower one-sided 95 percent bound; fewer than eight independent participant clusters or eight independent passage-family clusters withholds the bound and fails closed",
+        "pass_rule": "lower_one_sided_95_percent_bound_at_or_above_minimum_system_gaze_eligible_coverage"
+      },
+      "maximum_absolute_calibration_slope_change": {
+        "estimand": "maximum across the three one-vs-rest classes of the absolute F2 minus F1 logistic recalibration-slope difference on all sampled confirmation rows",
+        "reference": "F1 probabilities on the identical rows and weights; F2 uses exact F1 probabilities on missing, ineligible, and unselected rows",
+        "denominator": "all sampled probe-label rows on the single frozen joint confirmation partition using the same pre-outcome sampling weights as primary NLL",
+        "uncertainty": "participant-by-passage-family crossed-cluster bootstrap upper one-sided 95 percent bound of the maximum absolute classwise difference; fewer than eight independent participant clusters, fewer than eight independent passage-family clusters, any non-estimable class, or any withheld bound fails closed",
+        "pass_rule": "upper_one_sided_95_percent_bound_at_or_below_maximum_absolute_calibration_slope_change"
+      }
+    },
+    "confirmation_operational_rule": "all_five_operational_co_gates_must_pass_separately_with_no_weighting_tradeoff_or_compensation"
+  },
+  "practical_thresholds": {
+    "F2_minus_F1": {
+      "selected_minimum_reduction_nll": null,
+      "derivation_rule": "minimum_positive_grid_value_unanimously_worthwhile_across_all_signoff_roles_and_cost_contexts",
+      "required_observed_difference": "mean_F2_minus_F1_NLL_at_or_below_negative_selected_threshold",
+      "required_interval_bound": "upper_95_percent_bound_at_or_below_negative_selected_threshold"
+    },
+    "F2_minus_F0": {
+      "selected_minimum_reduction_nll": null,
+      "derivation_rule": "minimum_positive_grid_value_unanimously_worthwhile_across_all_signoff_roles_and_cost_contexts",
+      "required_observed_difference": "mean_F2_minus_F0_NLL_at_or_below_negative_selected_threshold",
+      "required_interval_bound": "upper_95_percent_bound_at_or_below_negative_selected_threshold"
+    }
+  },
+  "synthetic_anchor_packet": {
+    "packet_id": null,
+    "packet_sha256": null,
+    "contains_participant_data": null,
+    "contains_observed_model_effects": null,
+    "scenario_cell_count": 36,
+    "nll_reduction_grid_matches_worksheet": null,
+    "cost_context_ids_match_worksheet": null,
+    "operational_profile_held_constant": null
+  },
+  "external_evidence_contract": {
+    "synthetic_packet": "actual SHA256 match plus synthetic_only, no participant data, no observed effects, exact NLL grid, exact cost contexts, and 36 scenario cells",
+    "confirmation_manifest": "actual SHA256 match plus assignment frozen, target outcomes and model predictions absent, and confirmation partition unopened",
+    "outcome_access_log": "actual SHA256 match plus an as-of time at or after worksheet freeze and no target outcome, prediction, loss, or comparison access",
+    "manual_review_still_required": true
+  },
+  "attestations": {
+    "target_cohort_word_review_outcomes_accessed_before_freeze": null,
+    "target_cohort_F0_F1_F2_predictions_or_losses_accessed_before_freeze": null,
+    "confirmation_partition_opened_before_freeze": null,
+    "thresholds_selected_from_observed_effects": null,
+    "rehearsal_or_confirmation_sample_size_changed_to_chase_threshold": null
+  },
+  "freeze_record": {
+    "frozen_at_utc": null,
+    "elicitor_roles": [],
+    "independent_signoff_roles": [],
+    "unopened_confirmation_assignment_manifest_sha256": null,
+    "outcome_access_log_sha256": null,
+    "change_policy": "any_postfreeze_change_creates_a_new_version_and_requires_new_unopened_confirmation_data"
+  },
+  "authorization": {
+    "participant_collection_authorized": false,
+    "confirmation_outcome_access_authorized": false,
+    "model_training_or_promotion_authorized": false,
+    "effect_accuracy_ability_or_learning_claim_authorized": false
+  },
+  "compute": {
+    "validator_device": "cpu",
+    "gpu_required": false,
+    "network_required": false
+  }
+}

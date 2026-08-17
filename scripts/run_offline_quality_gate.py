@@ -78,6 +78,8 @@ TEST_TARGETS = (
     "scripts.test_chi_selective_fusion_evaluation",
     "scripts.test_chi_selective_fusion_power",
     "scripts.test_chi_selective_fusion_smoke",
+    "scripts.test_chi_dress_rehearsal",
+    "scripts.test_dress_rehearsal_readiness",
 )
 
 PROVIDER_CREDENTIALS = (

@@ -149,16 +149,27 @@ Before any recruitment or claim-bearing collection:
 6. Treat a `5–8` participant dress rehearsal and a `20–40` participant feasibility pilot as process checks, not validity confirmation. Determine the confirmatory sample by simulation/power using the frozen estimand and clustered participant/passage structure.
 7. Before making interruption, workload, trust, or assistance-timing claims, freeze a separate interaction-outcome contract: the exposed interface behavior, prompt policy, contrasts, instruments, timing, burden and harm outcomes, stopping/exclusion rules, and analysis. The current machine-readable protocol does not authorize those claims.
 
+The process-only dress-rehearsal contract and practical-effect elicitation
+procedure are frozen for internal dry-run and review; the participant
+invitation/debrief and moderator runbook are implemented as review drafts, not
+finalized or authorized participant materials. None of these artifacts
+authorizes external recruitment: the
+applicable ethics determination, exact approved contacts and participant
+materials, compensation-policy binding, independent human cost judgments,
+operational budgets, signoff, and actual 5–8-person rehearsal evidence remain
+pending. Until those inputs are present, both readiness validators fail closed.
+
 ## CHI 2027 go/no-go
 
 The official Papers deadline is **Thursday, 10 September 2026, Anywhere on Earth**. CHI 2027 has no separate abstract deadline; short papers receive the same review process, and an incomplete paper or grossly insufficient methods/data can be desk rejected ([CHI 2027 Papers](https://chi2027.acm.org/authors/papers/)).
 
 **Internal decision date:** **2026-08-24**. If the human-evidence gates below are not met, do not force a CHI 2027 Papers claim from synthetic, public-dataset, or one-person evidence.
 
-**Current Papers status (2026-08-17): `NO-GO`.** The software and planning
-artifacts are ready for rehearsal, but ethics context, authorized anchors,
-interaction outcomes, a practical effect threshold, and claim-bearing human
-evidence are not complete.
+**Current Papers status (2026-08-17): `NO-GO`.** The implementation and planning
+artifacts are ready for internal dry-run and review, but participant-facing
+templates are not finalized or authorized, and ethics context, authorized
+anchors, interaction outcomes, a human-approved practical effect threshold, and
+claim-bearing evidence are not complete.
 
 ### GO only if all are true
 
@@ -192,8 +203,11 @@ On no-go, preserve the full-paper protocol and target a later completed study. I
 | A6 | Leakage-safe evaluator | F0/F1/F2, exact fallback, all-row hybrid risk, normalized RPS, label-shuffle sentinel, and diagnostic crossed-cluster bootstrap; statistical-method review still required | `core/cognition/selective_fusion_evaluation.py` | file SHA-256 `7ea88b00ffa55a696e7a1c7d22418c1c0a4940ec1d1d00e5c56c0a5d6c072450` |
 | A7 | Synthetic yield/power sensitivity | 54 cells x 200 replications; no human outcomes; not a recruitment recommendation | `docs/CHI/experiments/2026-08-17-reliability-aware-selective-fusion-power-v1.json` | SHA-256 `7c806ce162c3070b50f0a0103eff8e9c011292eca5e5c4a2d1c9487b3f038b36` |
 | A8 | Current-data export/schema smoke | 1 self-development participant, 48 reviews, 0 gaze-eligible sessions; no fit or effect estimate | `docs/CHI/experiments/2026-08-17-current-data-fusion-smoke-v1.json` | SHA-256 `e4fd5d6e90e7234e5b12449670544d4818b5a9ca118b0061a62292a3425d6657` |
-| A9 | Human-study readiness delta | NO-GO: ethics context, authorized anchors, practical threshold, interaction-outcome contract, dress rehearsal, and claim-bearing human evidence remain | This ledger, `Human-study evidence required` | Owner: research team before 2026-08-24 internal decision |
-| A10 | CPU-only full repository quality gate | `514/514` passed, 0 failures/errors/skips; CUDA hidden, Torch not imported, network/process probes blocked, artifact changes empty; GPU pre/post snapshots both 0% and 189 MiB (peak not continuously measured) | `docs/CHI/experiments/2026-08-17-chi-selective-fusion-quality-gate.json` | SHA-256 `b4ccbe550e187dcdb6f7354d80c43b1b9d17530598b64b1d02fb48b6589b5d4b` |
+| A9 | Human-study readiness delta | Software contract implemented and participant-facing templates drafted for internal review only; external collection remains NO-GO pending ethics/contact/material authorization, human practical-effect judgments and budgets, signoff, the 5–8-person process rehearsal, a separate interaction-outcome contract, and claim-bearing evidence | This ledger, `Human-study evidence required` | Owner: research team before 2026-08-24 internal decision |
+| A10 | CPU-only full repository quality gate | `549/549` passed in 223.762 s, 0 failures/errors/skips; CUDA hidden, Torch not imported, network/process probes blocked, artifact changes empty; GPU pre/post snapshots both 0% and 191 MiB (peak not continuously measured) | `docs/CHI/experiments/2026-08-17-chi-selective-fusion-quality-gate.json` | SHA-256 `751fbb3e81947b9a983345f2f0f89b8946ad60db8e8e878f6cf5d32a1bf394aa` |
+| A11 | Frozen process-only dress-rehearsal contract | Exact outcome-blind `DR01`–`DR08` slots; 5–8 participants; no extension to chase a gate; rehearsal rows excluded from confirmation; unfinished and no-capture opportunities retained in process denominators | `docs/CHI/protocols/2026-08-17-dress-rehearsal-process-measurement-v1.json` | SHA-256 `6f6264a58e820e47c414f1e86fd499dccb4930a587258cabc694ba80e7c610bd` |
+| A12 | Practical-effect and operational-cost elicitation worksheet | Frozen NLL grid, three cost contexts, both F1/F0 comparisons, independent-role unanimity rule, and non-compensating operational co-gates; human ratings, budgets, and signoff remain pending, so no threshold is selected | `docs/CHI/protocols/2026-08-17-practical-effect-cost-elicitation-v1.json` | SHA-256 `0e59975d1b1aa4d3359fd8169d9eb5096098495c55710ccad7ab22c728db3459` |
+| A13 | Participant-facing rehearsal readiness bundle | Invitation, debrief, moderator runbook, and fail-closed approval/readiness audit are implemented; current verdict is `NO_GO_external_participants` and no external participant is authorized | `docs/participant_study/`, `scripts/audit_dress_rehearsal_readiness.py` | Bound by the delivery commit; the audit script SHA-256 is `ff4c95188255e2ca57752f1df5abd58c41d9834c8938db9032b37dacaef71120` |
 
 ## Primary-source anchors
 

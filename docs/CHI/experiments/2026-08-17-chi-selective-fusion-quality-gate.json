@@ -1,5 +1,5 @@
 {
-  "duration_seconds": 244.505,
+  "duration_seconds": 223.762,
   "errors": 0,
   "failures": 0,
   "safeguards": {
@@ -15,17 +15,17 @@
   "skipped": 0,
   "status": "passed",
   "supervisor": {
-    "duration_seconds": 244.862,
+    "duration_seconds": 224.04,
     "gpu_after": {
       "available": true,
       "rows": [
-        "0, NVIDIA GeForce RTX 5090 Laptop GPU, 0, 189, 24463"
+        "0, NVIDIA GeForce RTX 5090 Laptop GPU, 0, 191, 24463"
       ]
     },
     "gpu_before": {
       "available": true,
       "rows": [
-        "0, NVIDIA GeForce RTX 5090 Laptop GPU, 0, 189, 24463"
+        "0, NVIDIA GeForce RTX 5090 Laptop GPU, 0, 191, 24463"
       ]
     },
     "platform": "Windows-10-10.0.26200-SP0",
@@ -81,8 +81,10 @@
     "scripts.test_webcam_gaze_measurement_run_analysis",
     "scripts.test_chi_selective_fusion_evaluation",
     "scripts.test_chi_selective_fusion_power",
-    "scripts.test_chi_selective_fusion_smoke"
+    "scripts.test_chi_selective_fusion_smoke",
+    "scripts.test_chi_dress_rehearsal",
+    "scripts.test_dress_rehearsal_readiness"
   ],
-  "tests_run": 514,
+  "tests_run": 549,
   "unexpected_successes": 0
 }
